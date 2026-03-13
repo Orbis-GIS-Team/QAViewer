@@ -631,13 +631,13 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
               {layerVisibility.management_counties && layerData.management_counties ? (
                 <GeoJSON
                   data={layerData.management_counties}
-                  style={{ color: "#2f6c6a", weight: 1.3, fillOpacity: 0 }}
+                  style={{ color: "#2ab7a9", weight: 1.3, fillOpacity: 0 }}
                 />
               ) : null}
               {layerVisibility.tax_counties && layerData.tax_counties ? (
                 <GeoJSON
                   data={layerData.tax_counties}
-                  style={{ color: "#8a7f6a", weight: 1.1, fillOpacity: 0 }}
+                  style={{ color: "#94a3b8", weight: 1.1, fillOpacity: 0 }}
                 />
               ) : null}
             </Pane>
@@ -646,7 +646,7 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
               {layerVisibility.management_tracts && layerData.management_tracts ? (
                 <GeoJSON
                   data={layerData.management_tracts}
-                  style={{ color: "#4f7c4d", weight: 1.2, fillOpacity: 0.04, fillColor: "#6e9d5f" }}
+                  style={{ color: "#38bdf8", weight: 1.2, fillOpacity: 0.04, fillColor: "#7dd3fc" }}
                 />
               ) : null}
             </Pane>
@@ -655,7 +655,7 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
               {layerVisibility.primary_parcels && layerData.primary_parcels ? (
                 <GeoJSON
                   data={layerData.primary_parcels}
-                  style={{ color: "#19324d", weight: 1.1, fillOpacity: 0.03, fillColor: "#7fa4b8" }}
+                  style={{ color: "#1a3646", weight: 1.1, fillOpacity: 0.03, fillColor: "#334155" }}
                 />
               ) : null}
             </Pane>
@@ -667,9 +667,9 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
                   pointToLayer={(_feature, latlng) =>
                     L.circleMarker(latlng, {
                       radius: 4,
-                      color: "#b75e2b",
+                      color: "#2ab7a9",
                       weight: 1,
-                      fillColor: "#f6b26b",
+                      fillColor: "#5eead4",
                       fillOpacity: 0.9,
                     })
                   }
@@ -942,16 +942,16 @@ function questionAreaStyle(feature: QuestionAreaFeature | undefined, selectedCod
   const active = feature?.properties?.code === selectedCode;
   const palette =
     severity === "high"
-      ? { color: "#8c3b33", fillColor: "#c75b46" }
+      ? { color: "#ef4444", fillColor: "#f87171" }
       : severity === "low"
-        ? { color: "#7d6b48", fillColor: "#d8b974" }
-        : { color: "#9f5a24", fillColor: "#e19347" };
+        ? { color: "#eab308", fillColor: "#fde047" }
+        : { color: "#f97316", fillColor: "#fb923c" };
 
   return {
-    color: active ? "#111111" : palette.color,
+    color: active ? "#1a3646" : palette.color,
     weight: active ? 3 : 2,
     fillColor: palette.fillColor,
-    fillOpacity: active ? 0.45 : 0.28,
+    fillOpacity: active ? 0.5 : 0.3,
   };
 }
 

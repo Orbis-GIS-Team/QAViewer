@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leaflet Map Guide — QAViewer</title>
+  
+  <!-- Mermaid for diagrams -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  
+  <!-- Prism for syntax highlighting -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-sql.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+
+  <style>
+    :root {
+      --primary: #1a3646;
+      --accent: #2ab7a9;
+      --bg: #f4f7f9;
+      --text: #334155;
+      --muted: #64748b;
+      --border: #e2e8f0;
+    }
+    
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.7;
+      color: var(--text);
+      background: var(--bg);
+      margin: 0;
+      display: flex;
+    }
+
+    nav {
+      width: 280px;
+      height: 100vh;
+      position: fixed;
+      background: white;
+      border-right: 1px solid var(--border);
+      padding: 2rem 1.5rem;
+      overflow-y: auto;
+      box-sizing: border-box;
+      box-shadow: 2px 0 10px rgba(0,0,0,0.02);
+    }
+
+    nav h2 {
+      color: var(--primary);
+      font-size: 1.1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 0;
+      margin-bottom: 1.5rem;
+    }
+
+    nav ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    nav li {
+      margin-bottom: 0.75rem;
+    }
+
+    nav li.sub {
+      margin-left: 1rem;
+      font-size: 0.9em;
+    }
+
+    nav a {
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    nav a:hover {
+      color: var(--accent);
+    }
+
+    main {
+      margin-left: 280px;
+      padding: 3rem 5rem;
+      max-width: 1000px;
+      background: white;
+      min-height: 100vh;
+      box-sizing: border-box;
+      box-shadow: 0 0 20px rgba(0,0,0,0.03);
+    }
+
+    h1, h2, h3, h4 {
+      color: var(--primary);
+      margin-top: 2.5rem;
+      scroll-margin-top: 2rem;
+    }
+
+    h1 { 
+      font-size: 2.5rem; 
+      border-bottom: 4px solid var(--accent); 
+      padding-bottom: 0.5rem; 
+      display: inline-block;
+      margin-top: 0;
+    }
+    
+    h2 { 
+      font-size: 1.8rem; 
+      border-bottom: 1px solid var(--border); 
+      padding-bottom: 0.5rem; 
+    }
+
+    code {
+      background: #f1f5f9;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.9em;
+      color: #0f172a;
+      border: 1px solid #e2e8f0;
+    }
+
+    pre {
+      border-radius: 8px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      margin: 1.5rem 0 !important;
+    }
+
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+      border: none;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      background: #f8fafc;
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    tr:hover td {
+      background: #f8fafc;
+    }
+
+    .visual-aide {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      margin: 2rem 0;
+      text-align: center;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+    }
+
+    .visual-aide h4 {
+      margin-top: 0;
+      margin-bottom: 1.5rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .mermaid {
+      display: flex;
+      justify-content: center;
+      background: white;
+      padding: 2rem;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      margin: 2rem 0;
+    }
+
+    hr {
+      border: 0;
+      height: 1px;
+      background: var(--border);
+      margin: 3rem 0;
+    }
+
+    .note {
+      background: #f0fdfa;
+      border-left: 4px solid var(--accent);
+      padding: 1rem 1.5rem;
+      border-radius: 0 8px 8px 0;
+      margin: 1.5rem 0;
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <h2>Contents</h2>
+    <ul>
+      <li><a href="#intro">Introduction</a></li>
+      <li><a href="#what-is-leaflet">What is Leaflet?</a></li>
+      <li><a href="#what-is-react-leaflet">What is React-Leaflet?</a></li>
+      <li><a href="#core-concepts">Core Concepts</a></li>
+      <li class="sub"><a href="#tiles">Tiles</a></li>
+      <li class="sub"><a href="#layers">Layers & Styling</a></li>
+      <li class="sub"><a href="#panes">Panes (Z-Order)</a></li>
+      <li><a href="#usage-in-qaviewer">Usage in QAViewer</a></li>
+      <li class="sub"><a href="#data-layers">The Five Data Layers</a></li>
+      <li class="sub"><a href="#viewport-tracking">Viewport Tracking</a></li>
+      <li><a href="#postgis-connection">Connection to PostGIS</a></li>
+      <li class="sub"><a href="#data-pipeline">The Data Pipeline</a></li>
+      <li class="sub"><a href="#bbox-filter">Bounding Box Filter</a></li>
+      <li><a href="#quick-reference">Quick Reference</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <h1 id="intro">Leaflet Map Guide — QAViewer</h1>
+    <p class="lead">This document explains how Leaflet works in general, and specifically how it is being used in this project. It is intended as a visual reference for making symbology and configuration changes to the map.</p>
+
+    <hr>
+
+    <h2 id="what-is-leaflet">What is Leaflet?</h2>
+    <p><a href="https://leafletjs.com/" target="_blank" style="color: var(--accent); font-weight: 500;">Leaflet</a> is the most widely used open-source JavaScript library for interactive maps. It is lightweight, fast, and has a very large ecosystem of plugins.</p>
+    <p>At its core, Leaflet gives you:</p>
+    <ul>
+      <li>A <strong>map container</strong> — a <code>&lt;div&gt;</code> element that renders tiles (the actual base map imagery).</li>
+      <li><strong>Layers</strong> — things you draw on top of the base tiles (polygons, points, lines, popups, etc.).</li>
+      <li><strong>Controls</strong> — UI widgets like the zoom buttons, scale bar, and attribution text.</li>
+      <li><strong>Events</strong> — hooks for when the user pans, zooms, clicks, hovers, etc.</li>
+    </ul>
+
+    <h2 id="what-is-react-leaflet">What is React-Leaflet?</h2>
+    <p>This project uses <strong>react-leaflet</strong> (version 5), which is a thin React wrapper around the core Leaflet library. Instead of writing imperative JavaScript like <code>map.addLayer(...)</code>, you write declarative JSX like <code>&lt;GeoJSON data={...} /&gt;</code>.</p>
+    <p>Underneath, react-leaflet is still calling the regular Leaflet API — it just synchronizes Leaflet's state with React's rendering cycle.</p>
+
+    <hr>
+
+    <h2 id="core-concepts">Core Concepts You Need to Know</h2>
+
+    <h3 id="tiles">Tiles (the base map)</h3>
+    <p>The background map imagery you see (roads, terrain, satellite, etc.) comes from a <strong>tile layer</strong>. Tiles are pre-rendered image squares served from a remote server. The most common free provider is OpenStreetMap.</p>
+    <pre><code class="language-text">https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png</code></pre>
+
+    <h3 id="layers">Layers & Styling</h3>
+    <p>Every layer accepts a <code>style</code> property that controls how it looks. For polygon and line layers, the style object can include:</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Property</th>
+          <th>What it does</th>
+          <th>Example value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><code>color</code></td><td>Stroke (border/outline) color</td><td><code>"#ef4444"</code></td></tr>
+        <tr><td><code>weight</code></td><td>Stroke width in pixels</td><td><code>2</code></td></tr>
+        <tr><td><code>fillColor</code></td><td>Interior fill color</td><td><code>"#f87171"</code></td></tr>
+        <tr><td><code>fillOpacity</code></td><td>Fill transparency (0 = invisible, 1 = solid)</td><td><code>0.3</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3 id="panes">Panes (Z-Order)</h3>
+    <p>A <strong>Pane</strong> controls the draw order (z-order) of layers. Layers in a higher <code>zIndex</code> pane are drawn on top of layers in a lower <code>zIndex</code> pane. This is how you ensure question area polygons always appear above parcel boundaries.</p>
+
+    <!-- VISUAL AIDE: PANES -->
+    <div class="visual-aide">
+      <h4>Visual Aide: Map Panes & Z-Index Stacking</h4>
+      <svg viewBox="0 0 500 350" width="100%" height="350" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <style>
+            .layer { stroke-width: 2; transition: transform 0.3s ease; cursor: pointer; }
+            .layer:hover { transform: translateY(-15px); }
+            .label { font-family: system-ui, sans-serif; font-size: 15px; font-weight: 600; fill: #1a3646; }
+            .sub-label { font-family: system-ui, sans-serif; font-size: 13px; fill: #64748b; }
+          </style>
+        </defs>
+        
+        <!-- Base Map -->
+        <g class="layer" transform="translate(0, 140)">
+          <path d="M 100 150 L 400 150 L 300 50 L 0 50 Z" fill="#f1f5f9" stroke="#cbd5e1" />
+          <path d="M 50 100 L 150 100 M 100 120 L 200 120" stroke="#e2e8f0" stroke-width="4" stroke-dasharray="10 5"/>
+          <text x="330" y="130" class="label">Base Tiles</text>
+          <text x="330" y="148" class="sub-label">z-index: 0</text>
+        </g>
+        
+        <!-- Counties (350) -->
+        <g class="layer" transform="translate(0, 105)">
+          <path d="M 100 150 L 400 150 L 300 50 L 0 50 Z" fill="rgba(42, 183, 169, 0.05)" stroke="#2ab7a9" />
+          <path d="M 150 50 L 250 150" stroke="#2ab7a9" stroke-width="1" stroke-dasharray="4 4"/>
+          <text x="330" y="130" class="label">Counties</text>
+          <text x="330" y="148" class="sub-label">z-index: 350</text>
+        </g>
+        
+        <!-- Management (370) -->
+        <g class="layer" transform="translate(0, 70)">
+          <path d="M 100 150 L 400 150 L 300 50 L 0 50 Z" fill="rgba(56, 189, 248, 0.05)" stroke="#38bdf8" />
+          <path d="M 120 100 L 180 100 L 200 130 L 140 130 Z" fill="rgba(56, 189, 248, 0.2)" stroke="#38bdf8"/>
+          <text x="330" y="130" class="label">Management</text>
+          <text x="330" y="148" class="sub-label">z-index: 370</text>
+        </g>
+        
+        <!-- Parcels (390) -->
+        <g class="layer" transform="translate(0, 35)">
+          <path d="M 100 150 L 400 150 L 300 50 L 0 50 Z" fill="rgba(26, 54, 70, 0.05)" stroke="#1a3646" />
+          <path d="M 160 80 L 190 80 L 180 110 L 150 110 Z" fill="rgba(26, 54, 70, 0.1)" stroke="#1a3646"/>
+          <path d="M 190 80 L 220 80 L 210 110 L 180 110 Z" fill="rgba(26, 54, 70, 0.1)" stroke="#1a3646"/>
+          <text x="330" y="130" class="label">Parcels</text>
+          <text x="330" y="148" class="sub-label">z-index: 390</text>
+        </g>
+        
+        <!-- Question Areas (430) -->
+        <g class="layer" transform="translate(0, 0)">
+          <path d="M 100 150 L 400 150 L 300 50 L 0 50 Z" fill="rgba(239, 68, 68, 0.02)" stroke="rgba(239, 68, 68, 0.3)" />
+          <path d="M 165 85 L 185 85 L 175 105 Z" fill="rgba(239, 68, 68, 0.6)" stroke="#ef4444" stroke-width="2"/>
+          <circle cx="200" cy="95" r="8" fill="rgba(245, 158, 11, 0.6)" stroke="#f59e0b" stroke-width="2"/>
+          <text x="330" y="130" class="label">Question Areas</text>
+          <text x="330" y="148" class="sub-label">z-index: 430</text>
+        </g>
+      </svg>
+    </div>
+
+    <hr>
+
+    <h2 id="usage-in-qaviewer">How Leaflet is Used in QAViewer</h2>
+    <p>The map lives entirely inside <code>frontend/src/components/MapWorkspace.tsx</code>.</p>
+
+    <h3 id="data-layers">The Data Layers</h3>
+    <p>These are the core data layers. Style is computed dynamically per feature via the <code>questionAreaStyle</code> function:</p>
+    
+    <pre><code class="language-typescript">function questionAreaStyle(feature, selectedCode) {
+  const severity = feature?.properties?.severity ?? "medium";
+  const active = feature?.properties?.code === selectedCode;
+
+  const palette =
+    severity === "high"
+      ? { color: "#ef4444", fillColor: "#f87171" }   // Red
+      : severity === "low"
+        ? { color: "#eab308", fillColor: "#fde047" } // Yellow
+        : { color: "#f97316", fillColor: "#fb923c" }; // Orange (medium)
+
+  return {
+    color: active ? "#1a3646" : palette.color,  // Navy outline when selected
+    weight: active ? 3 : 2,                     // Thicker border when selected
+    fillColor: palette.fillColor,
+    fillOpacity: active ? 0.5 : 0.3,            // More opaque when selected
+  };
+}</code></pre>
+
+    <h3 id="viewport-tracking">Viewport Tracking (MapViewportWatcher)</h3>
+    <p>Every time the user finishes panning or zooming, this component reads the new map bounds and calls <code>onChange</code> with a bounding box string in the format <code>west,south,east,north</code>. That bounding box is then passed to the API as a <code>bbox</code> query parameter so only features within the visible area are fetched.</p>
+
+    <hr>
+
+    <h2 id="postgis-connection">How Leaflet Connects to PostGIS</h2>
+    <p>Leaflet has no direct connection to PostGIS. It only knows about GeoJSON — a standard text format for geographic shapes. The connection is indirect and goes through several steps.</p>
+
+    <h3 id="data-pipeline">The Full Data Pipeline</h3>
+    
+    <!-- VISUAL AIDE: PIPELINE -->
+    <div class="mermaid">
+    flowchart TD
+        DB[(PostGIS Database\nGeometry stored natively)] -->|ST_AsGeoJSON| API(Express API\nBackend)
+        API -->|HTTP Response\nFeatureCollection| React[React State\nFrontend]
+        React -->|data prop| Leaflet{Leaflet Map\nGeoJSON Layer}
+        
+        style DB fill:#1a3646,stroke:#0f172a,color:#fff,stroke-width:2px
+        style API fill:#2ab7a9,stroke:#14b8a6,color:#fff,stroke-width:2px
+        style React fill:#38bdf8,stroke:#0ea5e9,color:#fff,stroke-width:2px
+        style Leaflet fill:#ef4444,stroke:#dc2626,color:#fff,stroke-width:2px
+    </div>
+
+    <div class="note">
+      <strong>Important:</strong> PostGIS converts geometry to GeoJSON <em>inside the SQL query</em> using <code>ST_AsGeoJSON()</code>. This means geometry arrives at the API layer already in a format the browser can use. Leaflet never touches the database.
+    </div>
+
+    <h3 id="bbox-filter">The Bounding Box Filter (ST_MakeEnvelope)</h3>
+    <p>To avoid sending every feature in the entire database to the browser on every map move, the API uses a <strong>spatial bounding box filter</strong>. This is one of the most important performance mechanisms in the app.</p>
+
+    <pre><code class="language-sql">WHERE geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)</code></pre>
+
+    <!-- VISUAL AIDE: BOUNDING BOX -->
+    <div class="visual-aide">
+      <h4>Visual Aide: Spatial Bounding Box Filter (&&)</h4>
+      <svg viewBox="0 0 500 250" width="100%" height="250" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+            <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#f1f5f9" stroke-width="1"/>
+          </pattern>
+        </defs>
+        
+        <!-- Background Grid -->
+        <rect width="500" height="250" fill="url(#grid)" />
+        
+        <!-- Outside features (Ignored) -->
+        <path d="M 40 40 L 80 50 L 60 90 Z" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2" />
+        <circle cx="450" cy="60" r="18" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2" />
+        <path d="M 410 200 L 470 180 L 450 230 Z" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2" />
+        <path d="M 70 190 L 110 180 L 90 220 Z" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2" />
+    
+        <!-- Viewport Bounding Box -->
+        <rect x="130" y="40" width="240" height="170" fill="rgba(42, 183, 169, 0.05)" stroke="#2ab7a9" stroke-width="3" stroke-dasharray="8 4" />
+        <text x="140" y="65" font-family="system-ui" font-size="13" font-weight="bold" fill="#2ab7a9">Leaflet Viewport (Map Bounds)</text>
+        
+        <!-- Inside features (Queried) -->
+        <path d="M 180 100 L 240 90 L 220 150 L 160 140 Z" fill="rgba(239, 68, 68, 0.2)" stroke="#ef4444" stroke-width="2" />
+        <circle cx="310" cy="120" r="22" fill="rgba(245, 158, 11, 0.2)" stroke="#f59e0b" stroke-width="2" />
+        <path d="M 250 160 L 290 150 L 270 190 Z" fill="rgba(16, 185, 129, 0.2)" stroke="#10b981" stroke-width="2" />
+    
+        <!-- Labels -->
+        <text x="40" y="115" font-family="system-ui" font-size="12" fill="#94a3b8">Ignored by PostGIS</text>
+        <text x="185" y="130" font-family="system-ui" font-size="12" font-weight="bold" fill="#b91c1c">Fetched via API</text>
+      </svg>
+      <p style="margin-top: 1rem; font-size: 0.9rem; color: var(--muted);">PostGIS uses a GIST spatial index to instantly find only the features that fall inside the Leaflet viewport rectangle. Features outside are never transferred over the network.</p>
+    </div>
+
+    <hr>
+
+    <h2 id="quick-reference">Quick Reference: Where to Change Symbology</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>What you want to change</th>
+          <th>Where to find it in <code>MapWorkspace.tsx</code></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Question area colors by severity</td><td><code>questionAreaStyle()</code> function (~line 940)</td></tr>
+        <tr><td>Question area selected state styling</td><td><code>questionAreaStyle()</code> function — <code>active</code> branch</td></tr>
+        <tr><td>Management county outline color/weight</td><td><code>&lt;Pane name="counties"&gt;</code> — first <code>GeoJSON</code> <code>style</code> prop</td></tr>
+        <tr><td>Tax county outline color/weight</td><td><code>&lt;Pane name="counties"&gt;</code> — second <code>GeoJSON</code> <code>style</code> prop</td></tr>
+        <tr><td>Management tract fill/outline</td><td><code>&lt;Pane name="management"&gt;</code> — <code>GeoJSON</code> <code>style</code> prop</td></tr>
+        <tr><td>Primary parcel fill/outline</td><td><code>&lt;Pane name="parcels"&gt;</code> — <code>GeoJSON</code> <code>style</code> prop</td></tr>
+        <tr><td>Parcel point size/color</td><td><code>&lt;Pane name="points"&gt;</code> — <code>circleMarker</code> options inside <code>pointToLayer</code></td></tr>
+        <tr><td>Base map tile source</td><td><code>&lt;TileLayer url="..."&gt;</code></td></tr>
+        <tr><td>Draw order of layers</td><td><code>zIndex</code> value on each <code>&lt;Pane&gt;</code></td></tr>
+      </tbody>
+    </table>
+
+  </main>
+
+  <script>
+    // Initialize Mermaid
+    mermaid.initialize({ 
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }
+    });
+  </script>
+</body>
+</html>
