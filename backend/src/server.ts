@@ -6,6 +6,7 @@ import { authenticateRequest } from "./lib/auth.js";
 import { pool, waitForDatabase, withClient, withTransaction } from "./lib/db.js";
 import { ensureSchema } from "./lib/schema.js";
 import { ensureSeedData } from "./lib/seed.js";
+import adminRoutes from "./routes/admin.js";
 import authRoutes from "./routes/auth.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import layerRoutes from "./routes/layers.js";
@@ -37,6 +38,7 @@ async function bootstrap(): Promise<void> {
   });
 
   app.use("/api/auth", authRoutes);
+  app.use("/api/admin", authenticateRequest, adminRoutes);
   app.use("/api/dashboard", authenticateRequest, dashboardRoutes);
   app.use("/api/layers", authenticateRequest, layerRoutes);
   app.use("/api/question-areas", authenticateRequest, questionAreaRoutes);

@@ -133,6 +133,7 @@ router.get("/", async (req, res) => {
     tract_name: string | null;
     assigned_reviewer: string | null;
     geometry: object;
+    centroid_geom: object;
   }>(
     `
       SELECT
@@ -151,7 +152,8 @@ router.get("/", async (req, res) => {
         analysis_name,
         tract_name,
         assigned_reviewer,
-        ST_AsGeoJSON(geom, 5)::jsonb AS geometry
+        ST_AsGeoJSON(geom, 5)::jsonb AS geometry,
+        ST_AsGeoJSON(centroid, 5)::jsonb AS centroid_geom
       FROM question_areas
       ${whereClause}
       ORDER BY code
@@ -181,6 +183,7 @@ router.get("/", async (req, res) => {
           analysisName: row.analysis_name,
           tractName: row.tract_name,
           assignedReviewer: row.assigned_reviewer,
+          centroid: row.centroid_geom,
         },
       })),
     ),

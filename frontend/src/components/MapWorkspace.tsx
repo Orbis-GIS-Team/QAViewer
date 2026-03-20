@@ -6,6 +6,7 @@ import L from "leaflet";
 import {
   GeoJSON,
   MapContainer,
+  Marker,
   Pane,
   TileLayer,
   useMap,
@@ -53,6 +54,7 @@ type QuestionAreaFeature = Feature<
     analysisName: string | null;
     tractName: string | null;
     assignedReviewer: string | null;
+    centroid?: { type: string; coordinates: number[] };
   }
 >;
 
@@ -119,6 +121,7 @@ type EditDraft = {
 type MapWorkspaceProps = {
   session: Session;
   onLogout: () => void;
+  onOpenAdmin?: () => void;
 };
 
 const STATUS_OPTIONS = ["review", "active", "resolved", "hold"];
@@ -133,16 +136,16 @@ type LegendItem = {
   label: string;
   swatch: string;
   toggleable: boolean;
+  indented?: boolean;
 };
 
 const LEGEND_ITEMS: LegendItem[] = [
-  { key: "management_tracts", label: "Management", swatch: "management", toggleable: true },
   { key: "primary_parcels", label: "Primary Parcels", swatch: "parcels", toggleable: true },
-  { key: "qa_active", label: "Active QA Parcel", swatch: "qa-active", toggleable: false },
-  { key: "qa_inactive", label: "Inactive QA Parcel", swatch: "qa-inactive", toggleable: false },
+  { key: "qa_active", label: "Question Area", swatch: "qa-marker", toggleable: false, indented: true },
+  { key: "management_tracts", label: "Management", swatch: "management", toggleable: true },
 ];
 
-export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
+export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspaceProps) {
   const [summary, setSummary] = useState<SummaryPayload | null>(null);
   const [questionAreas, setQuestionAreas] = useState<QuestionAreaCollection | null>(null);
   const [mapBbox, setMapBbox] = useState("-126,24,-66,49");
@@ -151,7 +154,7 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
   const [searchInput, setSearchInput] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchField, setSearchField] = useState("all");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft>({
@@ -234,9 +237,9 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
     });
     if (searchFilter) {
       params.set("search", searchFilter);
-    }
-    if (statusFilter !== "all") {
-      params.set("status", statusFilter);
+      if (searchField !== "all") {
+        params.set("field", searchField); // In case backend adds support later
+      }
     }
 
     setBusy((current) => ({ ...current, questionAreas: true }));
@@ -270,7 +273,7 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
       alive = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedCode intentionally excluded to avoid redundant refetch on selection
-  }, [mapBbox, searchFilter, session.token, statusFilter]);
+  }, [mapBbox, searchFilter, searchField, session.token]);
 
   useEffect(() => {
     const visibleLayers = (Object.keys(layerVisibility) as LayerKey[]).filter(
@@ -483,6 +486,11 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
           <h1>Question area review console</h1>
         </div>
         <div className="header-actions">
+          {onOpenAdmin ? (
+            <button className="ghost-button" onClick={onOpenAdmin} type="button">
+              Admin console
+            </button>
+          ) : null}
           <div className="user-chip">
             <span>{session.user.name}</span>
             <small>{session.user.role}</small>
@@ -506,7 +514,7 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
 
           <section className="panel-section">
             <div className="section-heading">
-              <h2>Search and filter</h2>
+              <h2>Search</h2>
               <span>{busy.questionAreas ? "Refreshing..." : `${questionAreas?.features.length ?? 0} visible`}</span>
             </div>
             <form
@@ -516,12 +524,38 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
                 setSearchFilter(searchInput.trim());
               }}
             >
-              <input
-                className="search-input"
-                placeholder="Search by parcel number, QA ID, owner, project..."
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-              />
+              <div className="filter-row">
+                <select value={searchField} onChange={(event) => setSearchField(event.target.value)}>
+                  <option value="all">Search all fields</option>
+                  <option value="parcelnumb">Parcel Number</option>
+                  <option value="county">County</option>
+                  <option value="qa_id">Question Area ID</option>
+                </select>
+                <button className="primary-button" type="submit">
+                  Search map
+                </button>
+              </div>
+              
+              <div className="search-input-row">
+                <input
+                  className="search-input"
+                  placeholder="Type search term..."
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                />
+                <button
+                  className="ghost-button clear-button"
+                  type="button"
+                  onClick={() => {
+                    setSearchInput("");
+                    setSearchFilter("");
+                    setSearchResults([]);
+                  }}
+                >
+                  Clear
+                </button>
+              </div>
+
               {searchResults.length > 0 ? (
                 <div className="search-results">
                   {searchResults.map((result) => (
@@ -537,30 +571,6 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
                   ))}
                 </div>
               ) : null}
-              <div className="filter-row">
-                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                  <option value="all">All statuses</option>
-                  {STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-                <button className="primary-button" type="submit">
-                  Search map
-                </button>
-                <button
-                  className="ghost-button"
-                  type="button"
-                  onClick={() => {
-                    setSearchInput("");
-                    setSearchFilter("");
-                    setSearchResults([]);
-                  }}
-                >
-                  Clear
-                </button>
-              </div>
             </form>
           </section>
 
@@ -573,7 +583,7 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
                 const isToggleable = item.toggleable;
                 const isVisible = !isToggleable || layerVisibility[item.key as LayerKey];
                 return (
-                  <div key={item.key} className="legend-item">
+                  <div key={item.key} className={`legend-item ${item.indented ? 'legend-item-indented' : ''}`}>
                     <span className={`legend-swatch legend-swatch-${item.swatch}`} />
                     <span className="legend-label">{item.label}</span>
                     {isToggleable ? (
@@ -645,7 +655,7 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
               {layerVisibility.primary_parcels && layerData.primary_parcels ? (
                 <GeoJSON
                   data={layerData.primary_parcels}
-                  style={primaryParcelStyle}
+                  style={{ color: "#ea580c", weight: 2, fillOpacity: 0 }}
                 />
               ) : null}
             </Pane>
@@ -654,12 +664,27 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
               {questionAreas ? (
                 <GeoJSON
                   data={questionAreas}
-                  style={(feature) => questionAreaStyle(feature as QuestionAreaFeature, selectedCode)}
+                  style={{
+                    color: "transparent",
+                    weight: 0,
+                    fillColor: "transparent",
+                    fillOpacity: 0,
+                  }}
                   onEachFeature={(feature, layer) => {
                     layer.on("click", () => {
                       setSelectedCode((feature as QuestionAreaFeature).properties?.code ?? null);
                     });
                   }}
+                />
+              ) : null}
+            </Pane>
+
+            <Pane name="qa-markers" style={{ zIndex: 450 }}>
+              {questionAreas ? (
+                <QAMarkerLayer
+                  questionAreas={questionAreas}
+                  selectedCode={selectedCode}
+                  onSelect={setSelectedCode}
                 />
               ) : null}
             </Pane>
@@ -900,6 +925,37 @@ function ManagementPatternDefs() {
   );
 }
 
+function QAMarkerLayer({
+  questionAreas,
+  selectedCode,
+  onSelect,
+}: {
+  questionAreas: QuestionAreaCollection;
+  selectedCode: string | null;
+  onSelect: (code: string | null) => void;
+}) {
+  return (
+    <>
+      {questionAreas.features.map((feature) => {
+        const centroid = feature.properties?.centroid;
+        if (!centroid || centroid.type !== "Point") return null;
+        const [lng, lat] = centroid.coordinates;
+        const code = feature.properties?.code ?? "";
+        return (
+          <Marker
+            key={code}
+            position={[lat, lng]}
+            icon={createQAMarker(selectedCode, feature as QuestionAreaFeature)}
+            eventHandlers={{
+              click: () => onSelect(code),
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 function MapFocus({ detail }: { detail: QuestionAreaDetail | null }) {
   const map = useMap();
   const code = detail?.code ?? null;
@@ -928,45 +984,14 @@ function DetailItem({ label, children }: { label: string; children: string }) {
   );
 }
 
-function primaryParcelStyle(feature: any) {
-  const status = feature?.properties?.QA_Status?.toLowerCase() || "";
-  const isActive = status === "active";
-  
-  if (isActive) {
-    return { color: "#ea580c", weight: 2, fillOpacity: 0 };
-  }
-  return { color: "#94a3b8", weight: 1, fillOpacity: 0.05, fillColor: "#94a3b8" };
-}
-
-function questionAreaStyle(feature: QuestionAreaFeature | undefined, selectedCode: string | null) {
-  const status = feature?.properties?.status ?? "review";
+function createQAMarker(selectedCode: string | null, feature: QuestionAreaFeature | undefined) {
   const isSelected = feature?.properties?.code === selectedCode;
-  const isActive = status === "active";
-
-  if (isSelected) {
-    return {
-      color: "#1a3646",
-      weight: 3,
-      fillColor: isActive ? "#fb923c" : "#94a3b8",
-      fillOpacity: 0.65,
-    };
-  }
-
-  if (isActive) {
-    return {
-      color: "#ea580c",
-      weight: 2,
-      fillColor: "#fb923c",
-      fillOpacity: 0.5,
-    };
-  }
-
-  return {
-    color: "#94a3b8",
-    weight: 1,
-    fillColor: "#cbd5e1",
-    fillOpacity: 0.2,
-  };
+  return L.divIcon({
+    className: "qa-marker-icon",
+    html: `<div class="qa-marker-inner ${isSelected ? 'selected' : ''}">?</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
 }
 
 function humanize(value: string) {

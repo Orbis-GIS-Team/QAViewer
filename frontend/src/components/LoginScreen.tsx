@@ -72,7 +72,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           </label>
           {error ? <p className="form-error">{error}</p> : null}
           <button className="primary-button" disabled={submitting} type="submit">
-            {submitting ? "Signing in..." : "Enter reviewer workspace"}
+            {submitting ? "Signing in..." : "Enter workspace"}
           </button>
         </form>
       </section>

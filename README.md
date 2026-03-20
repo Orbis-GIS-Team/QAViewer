@@ -74,9 +74,11 @@ The seed assets were generated from the provided geodatabase. To rebuild them:
 - Comments
 - Document upload/list/download
 - Basic status tracking
+- Admin console for user creation, role management, and guarded account deletion
 
 ## Notes
 
 - The backend imports the seed layers automatically on first start if the database is empty.
 - Documents are stored in `backend/uploads`.
+- Admin users can switch between the review workspace and the administration console from the header.
 - The question-area seed is built from `BTG_Spatial_Fix_Primary_Erase` and `BTG_Spatial_Fix_Comparison_Erase`, with parcel context attached from the primary parcel layer.
