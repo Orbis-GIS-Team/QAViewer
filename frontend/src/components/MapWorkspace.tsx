@@ -698,9 +698,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         </aside>
 
         <section className="map-panel">
-          <div className="map-statusbar">
-            <span>{feedback ?? "Map synced to PostGIS-backed question area records."}</span>
-          </div>
           <MapContainer center={[39.5, -95]} zoom={4} className="leaflet-shell" zoomControl={false}>
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
