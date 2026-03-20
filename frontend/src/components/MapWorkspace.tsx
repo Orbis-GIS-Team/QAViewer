@@ -577,7 +577,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         <aside className="workspace-panel left-panel">
           <section className="panel-section stats-section">
             <div className="stat-card">
-              <div className="stat-icon" aria-hidden="true">🎯</div>
               <div className="stat-content">
                 <span>Active Question Areas</span>
                 <strong>
