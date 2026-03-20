@@ -6,7 +6,6 @@ type LoginScreenProps = {
 
 const DEMO_ACCOUNTS = [
   { label: "Admin", email: "admin@qaviewer.local", password: "admin123!" },
-  { label: "Reviewer", email: "reviewer@qaviewer.local", password: "review123!" },
   { label: "Client", email: "client@qaviewer.local", password: "client123!" },
 ];
 

@@ -295,7 +295,7 @@ textarea {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -410,6 +410,7 @@ textarea {
 
 .tab-nav {
   display: flex;
+  flex-wrap: wrap;
   border-bottom: 1px solid var(--panel-edge);
   background: #f8fafc;
   padding: 0 20px;
@@ -437,7 +438,25 @@ textarea {
 
 .tab-content {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-tab-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-search-box {
+  margin-bottom: 16px;
+}
+
+.admin-user-list {
+  padding: 0;
 }
 
 .admin-user-meta-v2 {

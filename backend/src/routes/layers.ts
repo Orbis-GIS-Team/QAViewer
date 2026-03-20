@@ -29,6 +29,91 @@ const layerConfig = {
   },
 } as const;
 
+router.get("/:layerKey/:id", async (req, res) => {
+  const layerKey = String(req.params.layerKey) as keyof typeof layerConfig;
+  const layer = layerConfig[layerKey];
+
+  if (!layer) {
+    res.status(404).json({ message: "Unknown layer." });
+    return;
+  }
+
+  const featureId = Number(req.params.id);
+  if (!Number.isInteger(featureId) || featureId <= 0) {
+    res.status(400).json({ message: "Invalid feature id." });
+    return;
+  }
+
+  if (layerKey === "primary_parcels") {
+    const result = await query<{
+      id: number;
+      properties: Record<string, unknown>;
+      geometry: object;
+    }>(
+      `
+        SELECT
+          p.id,
+          p.raw_properties
+            || jsonb_build_object('questionAreaCode', qa.code) AS properties,
+          ${layer.geometryExpression} AS geometry
+        FROM parcel_features p
+        LEFT JOIN LATERAL (
+          SELECT code
+          FROM question_areas
+          WHERE primary_parcel_number = p.parcel_number
+             OR (p.ptv_parcel IS NOT NULL AND primary_parcel_code = p.ptv_parcel)
+          ORDER BY code
+          LIMIT 1
+        ) qa ON true
+        WHERE p.id = $1
+        LIMIT 1
+      `,
+      [featureId],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      res.status(404).json({ message: "Feature not found." });
+      return;
+    }
+
+    res.json({
+      type: "Feature",
+      geometry: row.geometry,
+      properties: {
+        id: row.id,
+        ...row.properties,
+      },
+    });
+    return;
+  }
+
+  const result = await query<{ id: number; properties: Record<string, unknown>; geometry: object }>(
+    `
+      SELECT id, raw_properties AS properties, ${layer.geometryExpression} AS geometry
+      FROM ${layer.table}
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [featureId],
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    res.status(404).json({ message: "Feature not found." });
+    return;
+  }
+
+  res.json({
+    type: "Feature",
+    geometry: row.geometry,
+    properties: {
+      id: row.id,
+      ...row.properties,
+    },
+  });
+});
+
 router.get("/:layerKey", async (req, res) => {
   const layerKey = String(req.params.layerKey) as keyof typeof layerConfig;
   const layer = layerConfig[layerKey];

@@ -7,7 +7,7 @@ import { query } from "../lib/db.js";
 
 const router = Router();
 
-const ROLE_OPTIONS = ["admin", "reviewer", "client"] as const;
+const ROLE_OPTIONS = ["admin", "client"] as const;
 
 const emailSchema = z.string().trim().email().transform((value) => value.toLowerCase());
 
@@ -122,8 +122,7 @@ router.get("/users", async (_req, res) => {
       ORDER BY
         CASE u.role
           WHEN 'admin' THEN 0
-          WHEN 'reviewer' THEN 1
-          ELSE 2
+          ELSE 1
         END,
         u.name ASC,
         u.email ASC

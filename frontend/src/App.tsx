@@ -5,7 +5,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { MapWorkspace } from "./components/MapWorkspace";
 import { apiRequest } from "./lib/api";
 
-export type UserRole = "admin" | "reviewer" | "client";
+export type UserRole = "admin" | "client";
 
 export type Session = {
   token: string;

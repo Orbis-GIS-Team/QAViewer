@@ -29,6 +29,13 @@ type UserDraft = {
   password: string;
 };
 
+type FeedbackState = {
+  message: string;
+  type: "success" | "error" | "info";
+};
+
+type AdminTab = "users" | "create" | "details";
+
 type AdminWorkspaceProps = {
   session: Session;
   onLogout: () => void;
@@ -64,6 +71,15 @@ function summarizeActivity(user: ManagedUser): string {
   return parts.length > 0 ? parts.join(" | ") : "No authored activity yet";
 }
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((segment) => segment[0] ?? "")
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
 export function AdminWorkspace({
   session,
   onLogout,
@@ -73,10 +89,10 @@ export function AdminWorkspace({
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"edit" | "create">("edit");
+  const [activeTab, setActiveTab] = useState<AdminTab>("users");
   const [createDraft, setCreateDraft] = useState<UserDraft>(() => emptyUserDraft());
   const [editDraft, setEditDraft] = useState<UserDraft>(() => emptyUserDraft());
-  const [feedback, setFeedback] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [busy, setBusy] = useState({
     loading: false,
     creating: false,
@@ -86,21 +102,17 @@ export function AdminWorkspace({
 
   const selectedUser = users.find((user) => user.id === selectedUserId) ?? null;
   const adminCount = users.filter((user) => user.role === "admin").length;
+  const filteredUsers = users.filter((user) => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) {
+      return true;
+    }
 
-  const filteredUsers = users.filter(
-    (u) =>
-      u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  function getInitials(name: string) {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
-  }
+    return (
+      user.name.toLowerCase().includes(query) ||
+      user.email.toLowerCase().includes(query)
+    );
+  });
 
   async function loadUsers(preferredSelection?: number | null) {
     setBusy((current) => ({ ...current, loading: true }));
@@ -112,11 +124,13 @@ export function AdminWorkspace({
 
       setUsers(payload.users);
       setSelectedUserId((current) => {
-        const nextSelection = preferredSelection !== undefined ? preferredSelection : current;
-        if (nextSelection && payload.users.some((user) => user.id === nextSelection)) {
-          return nextSelection;
+        if (preferredSelection !== undefined) {
+          return payload.users.some((user) => user.id === preferredSelection)
+            ? preferredSelection
+            : null;
         }
-        return payload.users[0]?.id ?? null;
+
+        return current && payload.users.some((user) => user.id === current) ? current : null;
       });
     } catch (error) {
       setFeedback({
@@ -146,12 +160,19 @@ export function AdminWorkspace({
     });
   }, [selectedUser]);
 
-  // Clear feedback after 5 seconds
   useEffect(() => {
-    if (feedback) {
-      const timer = setTimeout(() => setFeedback(null), 5000);
-      return () => clearTimeout(timer);
+    if (!selectedUser && activeTab === "details") {
+      setActiveTab("users");
     }
+  }, [activeTab, selectedUser]);
+
+  useEffect(() => {
+    if (!feedback) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setFeedback(null), 5000);
+    return () => window.clearTimeout(timer);
   }, [feedback]);
 
   async function handleCreateUser(event: FormEvent<HTMLFormElement>) {
@@ -168,7 +189,7 @@ export function AdminWorkspace({
       setCreateDraft(emptyUserDraft());
       await loadUsers(payload.user.id);
       setFeedback({ message: `Created ${payload.user.name}.`, type: "success" });
-      setActiveTab("edit");
+      setActiveTab("details");
     } catch (error) {
       setFeedback({
         message: error instanceof Error ? error.message : "Failed to create user.",
@@ -239,7 +260,8 @@ export function AdminWorkspace({
       });
 
       const deletedName = selectedUser.name;
-      await loadUsers();
+      await loadUsers(null);
+      setActiveTab("users");
       setFeedback({ message: `Deleted ${deletedName}.`, type: "success" });
     } catch (error) {
       setFeedback({
@@ -261,9 +283,9 @@ export function AdminWorkspace({
   return (
     <main className="workspace-shell">
       <header className="workspace-header">
-        <div className="header-brand">
+        <div>
           <p className="eyebrow">QAViewer</p>
-          <h1>Administration</h1>
+          <h1>Administration console</h1>
         </div>
         <div className="header-actions">
           <button className="ghost-button" onClick={onOpenReview} type="button">
@@ -279,81 +301,86 @@ export function AdminWorkspace({
         </div>
       </header>
 
-      {feedback && (
-        <div className={`toast toast-${feedback.type}`}>
-          {feedback.message}
-        </div>
-      )}
+      {feedback ? <div className={`toast toast-${feedback.type}`}>{feedback.message}</div> : null}
 
       <section className="admin-grid">
-        <aside className="workspace-panel">
-          <header className="panel-header">
-            <div className="section-heading">
-              <h2>Users</h2>
-              <span className="count-badge">{users.length}</span>
-            </div>
-            <div className="search-box">
-              <input
-                type="text"
-                placeholder="Search users..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="search-input"
-              />
-            </div>
-          </header>
-          <div className="result-list">
-            {filteredUsers.map((user) => (
-              <button
-                key={user.id}
-                className={`list-card user-card ${user.id === selectedUserId ? "selected" : ""}`}
-                onClick={() => {
-                  setSelectedUserId(user.id);
-                  setActiveTab("edit");
-                }}
-                type="button"
-              >
-                <div className="user-avatar">
-                  {getInitials(user.name)}
-                </div>
-                <div className="user-info">
-                  <div className="user-card-head">
-                    <strong>{user.name}</strong>
-                    <span className={`badge role-badge role-${user.role}`}>{labelRole(user.role)}</span>
-                  </div>
-                  <span className="user-email">{user.email}</span>
-                  <small className="user-activity">
-                    {user.id === session.user.id ? "Current account • " : ""}
-                    {summarizeActivity(user)}
-                  </small>
-                </div>
-              </button>
-            ))}
-            {!busy.loading && filteredUsers.length === 0 ? (
-              <p className="empty-state">No users match your search.</p>
-            ) : null}
-          </div>
-        </aside>
-
         <section className="workspace-panel">
-          <nav className="tab-nav">
+          <nav className="tab-nav" aria-label="Admin navigation">
             <button
-              className={`tab-link ${activeTab === "edit" ? "active" : ""}`}
-              onClick={() => setActiveTab("edit")}
+              className={`tab-link ${activeTab === "users" ? "active" : ""}`}
+              onClick={() => setActiveTab("users")}
+              type="button"
             >
-              User Details
+              Users
             </button>
             <button
               className={`tab-link ${activeTab === "create" ? "active" : ""}`}
               onClick={() => setActiveTab("create")}
+              type="button"
             >
-              Create New User
+              Create user
             </button>
+            {selectedUser ? (
+              <button
+                className={`tab-link ${activeTab === "details" ? "active" : ""}`}
+                onClick={() => setActiveTab("details")}
+                type="button"
+              >
+                User details
+              </button>
+            ) : null}
           </nav>
 
           <div className="tab-content">
-            {activeTab === "create" && (
-              <section className="panel-section">
+            {activeTab === "users" ? (
+              <section className="panel-section admin-tab-section">
+                <div className="section-heading">
+                  <h2>Users</h2>
+                  <span>{busy.loading ? "Refreshing..." : `${filteredUsers.length} shown`}</span>
+                </div>
+                <div className="search-box admin-search-box">
+                  <input
+                    className="search-input"
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder="Search users..."
+                    type="text"
+                    value={searchTerm}
+                  />
+                </div>
+                <div className="result-list admin-user-list">
+                  {filteredUsers.map((user) => (
+                    <button
+                      key={user.id}
+                      className={`list-card user-card ${user.id === selectedUserId ? "selected" : ""}`}
+                      onClick={() => {
+                        setSelectedUserId(user.id);
+                        setActiveTab("details");
+                      }}
+                      type="button"
+                    >
+                      <div className="user-avatar">{getInitials(user.name)}</div>
+                      <div className="user-info">
+                        <div className="user-card-head">
+                          <strong>{user.name}</strong>
+                          <span className={`badge role-badge role-${user.role}`}>{labelRole(user.role)}</span>
+                        </div>
+                        <span className="user-email">{user.email}</span>
+                        <small className="user-activity">
+                          {user.id === session.user.id ? "Current account | " : ""}
+                          {summarizeActivity(user)}
+                        </small>
+                      </div>
+                    </button>
+                  ))}
+                  {!busy.loading && filteredUsers.length === 0 ? (
+                    <p className="empty-state">No users match your search.</p>
+                  ) : null}
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "create" ? (
+              <section className="panel-section admin-tab-section">
                 <div className="section-heading">
                   <h2>Create user</h2>
                   <span>New account credentials</span>
@@ -362,8 +389,8 @@ export function AdminWorkspace({
                   <label>
                     Name
                     <input
+                      placeholder="Full name"
                       required
-                      placeholder="Full Name"
                       value={createDraft.name}
                       onChange={(event) =>
                         setCreateDraft((current) => ({ ...current, name: event.target.value }))
@@ -374,9 +401,9 @@ export function AdminWorkspace({
                     <label>
                       Email
                       <input
+                        placeholder="email@example.com"
                         required
                         type="email"
-                        placeholder="email@example.com"
                         value={createDraft.email}
                         onChange={(event) =>
                           setCreateDraft((current) => ({ ...current, email: event.target.value }))
@@ -405,9 +432,9 @@ export function AdminWorkspace({
                   <label>
                     Password
                     <input
+                      placeholder="Minimum 8 characters"
                       required
                       type="password"
-                      placeholder="Minimum 8 characters"
                       value={createDraft.password}
                       onChange={(event) =>
                         setCreateDraft((current) => ({ ...current, password: event.target.value }))
@@ -421,22 +448,22 @@ export function AdminWorkspace({
                   </div>
                 </form>
               </section>
-            )}
+            ) : null}
 
-            {activeTab === "edit" && selectedUser && (
-              <section className="panel-section">
+            {activeTab === "details" && selectedUser ? (
+              <section className="panel-section admin-tab-section">
                 <div className="section-heading">
-                  <h2>Edit user</h2>
-                  <span className="status-label">Active Member</span>
+                  <h2>User details</h2>
+                  <span>{selectedUser.email}</span>
                 </div>
 
                 <div className="admin-user-meta-v2">
                   <div className="meta-item">
-                    <small>Member Since</small>
+                    <small>Member since</small>
                     <span>{new Date(selectedUser.createdAt).toLocaleDateString()}</span>
                   </div>
                   <div className="meta-item">
-                    <small>Authored Content</small>
+                    <small>Authored content</small>
                     <span>{summarizeActivity(selectedUser)}</span>
                   </div>
                 </div>
@@ -455,6 +482,7 @@ export function AdminWorkspace({
                     <label>
                       Email
                       <input
+                        type="email"
                         value={editDraft.email}
                         onChange={(event) =>
                           setEditDraft((current) => ({ ...current, email: event.target.value }))
@@ -481,10 +509,10 @@ export function AdminWorkspace({
                     </label>
                   </div>
                   <label>
-                    Update Password
+                    Update password
                     <input
-                      type="password"
                       placeholder="Leave blank to keep current"
+                      type="password"
                       value={editDraft.password}
                       onChange={(event) =>
                         setEditDraft((current) => ({ ...current, password: event.target.value }))
@@ -493,7 +521,7 @@ export function AdminWorkspace({
                   </label>
                   <div className="form-actions">
                     <button className="primary-button" disabled={busy.saving} type="submit">
-                      {busy.saving ? "Saving Changes..." : "Save user changes"}
+                      {busy.saving ? "Saving changes..." : "Save user changes"}
                     </button>
                   </div>
                 </form>
@@ -502,7 +530,8 @@ export function AdminWorkspace({
                   <div className="danger-info">
                     <h3>Delete user</h3>
                     <p>
-                      Removing a user is permanent. This action is disabled if the user has active contributions.
+                      Removing a user is permanent. This action is disabled for the current admin,
+                      the last admin, and users with authored activity.
                     </p>
                   </div>
                   <button
@@ -515,15 +544,7 @@ export function AdminWorkspace({
                   </button>
                 </div>
               </section>
-            )}
-
-            {activeTab === "edit" && !selectedUser && (
-              <div className="empty-state-large">
-                <div className="empty-icon">👤</div>
-                <h3>No User Selected</h3>
-                <p>Select a user from the list on the left to view and edit their profile.</p>
-              </div>
-            )}
+            ) : null}
           </div>
         </section>
       </section>

@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 import { config } from "../config.js";
 import { query } from "./db.js";
 
-export type Role = "admin" | "reviewer" | "client";
+export type Role = "admin" | "client";
 
 export type AuthUser = {
   id: number;

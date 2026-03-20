@@ -15,12 +15,6 @@ const DEMO_USERS = [
     role: "admin",
   },
   {
-    name: "Morgan Review",
-    email: "reviewer@qaviewer.local",
-    password: "review123!",
-    role: "reviewer",
-  },
-  {
     name: "Cameron Client",
     email: "client@qaviewer.local",
     password: "client123!",
@@ -331,7 +325,7 @@ async function seedComments(client: PoolClient): Promise<void> {
 
   const { rows: users } = await client.query<{ id: number; email: string }>(
     `SELECT id, email FROM users WHERE email IN ($1, $2) ORDER BY email`,
-    ["admin@qaviewer.local", "reviewer@qaviewer.local"],
+    ["admin@qaviewer.local", "client@qaviewer.local"],
   );
   const userMap = new Map(users.map((user) => [user.email, user.id]));
 
@@ -348,7 +342,7 @@ async function seedComments(client: PoolClient): Promise<void> {
   for (const [index, area] of questionAreas.entries()) {
     const authorId =
       index % 2 === 0
-        ? userMap.get("reviewer@qaviewer.local")
+        ? userMap.get("client@qaviewer.local")
         : userMap.get("admin@qaviewer.local");
 
     if (!authorId) {

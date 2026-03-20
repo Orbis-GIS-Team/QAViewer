@@ -60,6 +60,26 @@ type QuestionAreaFeature = Feature<
 
 type QuestionAreaCollection = FeatureCollection<Geometry, QuestionAreaFeature["properties"]>;
 
+type ParcelFeatureProperties = {
+  id: number;
+  parcelnumb: string | null;
+  County: string | null;
+  State: string | null;
+  RegridOwner: string | null;
+  PropertyName: string | null;
+  AnalysisName: string | null;
+  TractName: string | null;
+  QA_Status: string | null;
+  GIS_Acres: number | null;
+  SpatialOverlayNotes: string | null;
+  PTVParcel: string | null;
+  Exists_in_Mgt: string | boolean | null;
+  Exists_in_PTV: string | boolean | null;
+  questionAreaCode?: string | null;
+};
+
+type ParcelFeature = Feature<Geometry, ParcelFeatureProperties>;
+
 type QuestionAreaDetail = {
   id: number;
   code: string;
@@ -157,6 +177,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [searchField, setSearchField] = useState("all");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
+  const [selectedParcelId, setSelectedParcelId] = useState<number | null>(null);
+  const [selectedParcelDetail, setSelectedParcelDetail] = useState<ParcelFeature | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft>({
     status: "review",
     summary: "",
@@ -170,6 +192,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     summary: false,
     questionAreas: false,
     detail: false,
+    parcel: false,
     saving: false,
     commenting: false,
     uploading: false,
@@ -351,6 +374,37 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     };
   }, [selectedCode, session.token]);
 
+  useEffect(() => {
+    if (!selectedParcelId) {
+      setSelectedParcelDetail(null);
+      return;
+    }
+
+    let alive = true;
+    setBusy((current) => ({ ...current, parcel: true }));
+
+    apiRequest<ParcelFeature>(`/layers/primary_parcels/${selectedParcelId}`, { token: session.token })
+      .then((payload) => {
+        if (alive) {
+          setSelectedParcelDetail(payload);
+        }
+      })
+      .catch((error) => {
+        if (alive) {
+          setFeedback(error instanceof Error ? error.message : "Failed to load parcel details.");
+        }
+      })
+      .finally(() => {
+        if (alive) {
+          setBusy((current) => ({ ...current, parcel: false }));
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [selectedParcelId, session.token]);
+
   async function refreshSummary() {
     const payload = await apiRequest<SummaryPayload>("/dashboard/summary", { token: session.token });
     setSummary(payload);
@@ -464,19 +518,36 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     }
   }
 
+  function selectQuestionArea(code: string | null) {
+    setSelectedParcelId(null);
+    setSelectedCode(code);
+  }
+
+  function selectParcel(parcelId: number | null) {
+    setSelectedCode(null);
+    setSelectedParcelId(parcelId);
+  }
+
   function handleSearchSelection(result: SearchResult) {
     setSearchInput(result.label);
     setSearchResults([]);
 
     if (result.type === "question_area") {
-      setSelectedCode(result.id);
+      selectQuestionArea(result.id);
       return;
     }
 
-    setSearchFilter(result.label);
+    const parcelId = Number(result.id);
+    if (Number.isInteger(parcelId) && parcelId > 0) {
+      setSearchFilter("");
+      selectParcel(parcelId);
+    }
   }
 
   const activeCount = summary?.statuses.active ?? 0;
+  const selectedGeometry = selectedDetail?.geometry ?? selectedParcelDetail?.geometry ?? null;
+  const selectedGeometryKey =
+    selectedDetail?.code ?? (selectedParcelDetail?.properties?.id ?? null);
 
   return (
     <main className="workspace-shell">
@@ -633,7 +704,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
             <MapViewportWatcher onChange={setMapBbox} />
-            <MapFocus detail={selectedDetail} />
+            <MapFocus geometry={selectedGeometry} targetKey={selectedGeometryKey} />
             <ManagementPatternDefs />
 
             <Pane name="management" style={{ zIndex: 370 }}>
@@ -655,7 +726,14 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
               {layerVisibility.primary_parcels && layerData.primary_parcels ? (
                 <GeoJSON
                   data={layerData.primary_parcels}
-                  style={{ color: "#ea580c", weight: 2, fillOpacity: 0 }}
+                  style={(feature) =>
+                    primaryParcelStyle(feature as ParcelFeature | undefined, selectedParcelId)
+                  }
+                  onEachFeature={(feature, layer) => {
+                    layer.on("click", () => {
+                      selectParcel(Number((feature as ParcelFeature).properties?.id ?? 0) || null);
+                    });
+                  }}
                 />
               ) : null}
             </Pane>
@@ -672,7 +750,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                   }}
                   onEachFeature={(feature, layer) => {
                     layer.on("click", () => {
-                      setSelectedCode((feature as QuestionAreaFeature).properties?.code ?? null);
+                      selectQuestionArea((feature as QuestionAreaFeature).properties?.code ?? null);
                     });
                   }}
                 />
@@ -684,7 +762,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 <QAMarkerLayer
                   questionAreas={questionAreas}
                   selectedCode={selectedCode}
-                  onSelect={setSelectedCode}
+                  onSelect={selectQuestionArea}
                 />
               ) : null}
             </Pane>
@@ -692,10 +770,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         </section>
 
         <aside className="workspace-panel right-panel">
-          {busy.detail ? <p className="empty-state">Loading question area details...</p> : null}
-          {!busy.detail && !selectedDetail ? (
+          {busy.detail || busy.parcel ? <p className="empty-state">Loading selection details...</p> : null}
+          {!busy.detail && !busy.parcel && !selectedDetail && !selectedParcelDetail ? (
             <p className="empty-state">
-              Select a question area from the map or the result list to open its review dossier.
+              Select a question area or parcel from the map or the result list to open its details.
             </p>
           ) : null}
 
@@ -749,7 +827,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                     </select>
                   </label>
                   <label>
-                    Assigned reviewer
+                    Assigned user
                     <input
                       value={editDraft.assignedReviewer}
                       onChange={(event) =>
@@ -891,6 +969,74 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
               </section>
             </>
           ) : null}
+
+          {!selectedDetail && selectedParcelDetail ? (
+            <>
+              <section className="panel-section">
+                <div className="section-heading">
+                  <h2>{selectedParcelDetail.properties.parcelnumb ?? "Parcel record"}</h2>
+                  <span>Parcel</span>
+                </div>
+                <div className="badge-row">
+                  <span
+                    className={`badge ${
+                      isParcelActive(selectedParcelDetail.properties.QA_Status)
+                        ? "severity-medium"
+                        : "neutral"
+                    }`}
+                  >
+                    {isParcelActive(selectedParcelDetail.properties.QA_Status) ? "Active" : "Not active"}
+                  </span>
+                </div>
+                <dl className="detail-grid">
+                  <DetailItem label="Parcel Code">
+                    {selectedParcelDetail.properties.PTVParcel ?? "None"}
+                  </DetailItem>
+                  <DetailItem label="QA ID">
+                    {selectedParcelDetail.properties.questionAreaCode ?? "None"}
+                  </DetailItem>
+                  <DetailItem label="Owner">
+                    {selectedParcelDetail.properties.RegridOwner ?? "Unknown"}
+                  </DetailItem>
+                  <DetailItem label="County">
+                    {selectedParcelDetail.properties.County ?? "Unknown"}
+                  </DetailItem>
+                  <DetailItem label="State">
+                    {selectedParcelDetail.properties.State ?? "Unknown"}
+                  </DetailItem>
+                  <DetailItem label="Property">
+                    {selectedParcelDetail.properties.PropertyName ?? "None"}
+                  </DetailItem>
+                  <DetailItem label="Analysis">
+                    {selectedParcelDetail.properties.AnalysisName ?? "None"}
+                  </DetailItem>
+                  <DetailItem label="Tract">
+                    {selectedParcelDetail.properties.TractName ?? "None"}
+                  </DetailItem>
+                  <DetailItem label="GIS Acres">
+                    {formatMetric(selectedParcelDetail.properties.GIS_Acres)}
+                  </DetailItem>
+                </dl>
+                {selectedParcelDetail.properties.SpatialOverlayNotes ? (
+                  <div className="qa-reason">
+                    <dt>Parcel notes</dt>
+                    <dd>{selectedParcelDetail.properties.SpatialOverlayNotes}</dd>
+                  </div>
+                ) : null}
+              </section>
+
+              <section className="panel-section">
+                <div className="section-heading">
+                  <h2>Parcel status</h2>
+                  <span>Read only</span>
+                </div>
+                <p className="panel-note">
+                  Parcels without question areas can be inspected here, but review controls only
+                  appear when a question area record exists.
+                </p>
+              </section>
+            </>
+          ) : null}
         </aside>
       </section>
     </main>
@@ -956,23 +1102,50 @@ function QAMarkerLayer({
   );
 }
 
-function MapFocus({ detail }: { detail: QuestionAreaDetail | null }) {
+function MapFocus({
+  geometry,
+  targetKey,
+}: {
+  geometry: Geometry | null;
+  targetKey: string | number | null;
+}) {
   const map = useMap();
-  const code = detail?.code ?? null;
 
   useEffect(() => {
-    if (!detail) {
+    if (!geometry) {
       return;
     }
 
-    const bounds = L.geoJSON(detail.geometry as never).getBounds();
+    const bounds = L.geoJSON(geometry as never).getBounds();
     if (bounds.isValid()) {
       map.fitBounds(bounds.pad(0.35));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-center when a different QA is selected
-  }, [code, map]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-center when a different item is selected
+  }, [map, targetKey]);
 
   return null;
+}
+
+function primaryParcelStyle(
+  feature: ParcelFeature | undefined,
+  selectedParcelId: number | null,
+) {
+  const isSelected = feature?.properties?.id === selectedParcelId;
+
+  if (isSelected) {
+    return {
+      color: "#1a3646",
+      weight: 3,
+      fillColor: "#fdba74",
+      fillOpacity: 0.2,
+    };
+  }
+
+  return {
+    color: "#ea580c",
+    weight: 2,
+    fillOpacity: 0,
+  };
 }
 
 function DetailItem({ label, children }: { label: string; children: string }) {
@@ -1018,4 +1191,8 @@ function formatFileSize(bytes: number) {
     return `${(bytes / 1024).toFixed(1)} KB`;
   }
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isParcelActive(value: string | null | undefined) {
+  return value?.toLowerCase() === "active";
 }

@@ -329,7 +329,7 @@ router.get("/:code", async (req, res) => {
   });
 });
 
-router.patch("/:code", requireRole("admin", "reviewer"), async (req, res) => {
+router.patch("/:code", requireRole("admin", "client"), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ message: "Invalid update payload." });
@@ -388,7 +388,7 @@ router.patch("/:code", requireRole("admin", "reviewer"), async (req, res) => {
   });
 });
 
-router.post("/:code/comments", requireRole("admin", "reviewer"), async (req, res) => {
+router.post("/:code/comments", requireRole("admin", "client"), async (req, res) => {
   const parsed = commentSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ message: "Comment body is required." });
@@ -428,7 +428,7 @@ router.post("/:code/comments", requireRole("admin", "reviewer"), async (req, res
   });
 });
 
-router.post("/:code/documents", requireRole("admin", "reviewer"), (req, res, next) => {
+router.post("/:code/documents", requireRole("admin", "client"), (req, res, next) => {
   upload.single("file")(req, res, (err: unknown) => {
     if (err instanceof multer.MulterError) {
       res.status(400).json({ message: `Upload error: ${err.message}` });
