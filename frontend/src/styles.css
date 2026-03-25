@@ -679,6 +679,21 @@ textarea {
   color: var(--muted);
 }
 
+.upload-row {
+  display: grid;
+  gap: 12px;
+}
+
+.upload-row .primary-button {
+  justify-self: start;
+}
+
+.field-hint {
+  margin: -8px 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
 .qa-reason {
   background: #fffbeb;
   border: 1px solid #fde68a;

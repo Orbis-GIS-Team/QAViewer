@@ -208,10 +208,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [parcelCommentDraft, setParcelCommentDraft] = useState("");
   const [parcelStatusDraft, setParcelStatusDraft] = useState("active");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadInputKey, setUploadInputKey] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [busy, setBusy] = useState({
     summary: false,
-    questionAreas: false,
     detail: false,
     parcel: false,
     saving: false,
@@ -221,6 +221,11 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     uploading: false,
   });
   const deferredSearch = useDeferredValue(searchInput);
+  const selectedParcelQuestionAreaCode =
+    typeof selectedParcelDetail?.properties.questionAreaCode === "string" &&
+    selectedParcelDetail.properties.questionAreaCode.trim()
+      ? selectedParcelDetail.properties.questionAreaCode.trim()
+      : null;
 
   useEffect(() => {
     let alive = true;
@@ -288,7 +293,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       }
     }
 
-    setBusy((current) => ({ ...current, questionAreas: true }));
     apiRequest<QuestionAreaCollection>(`/question-areas?${params.toString()}`, {
       token: session.token,
     })
@@ -307,11 +311,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       .catch((error) => {
         if (alive) {
           setFeedback(error instanceof Error ? error.message : "Failed to load question areas.");
-        }
-      })
-      .finally(() => {
-        if (alive) {
-          setBusy((current) => ({ ...current, questionAreas: false }));
         }
       });
 
@@ -432,6 +431,11 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   useEffect(() => {
     setParcelCommentDraft("");
   }, [selectedParcelId]);
+
+  useEffect(() => {
+    setSelectedFile(null);
+    setUploadInputKey((current) => current + 1);
+  }, [selectedCode, selectedParcelId]);
 
   async function refreshSummary() {
     const payload = await apiRequest<SummaryPayload>("/dashboard/summary", { token: session.token });
@@ -557,16 +561,19 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         body: { status: parcelStatusDraft },
       });
       await reloadParcelDetail();
-      setFeedback("Parcel status updated.");
+      setFeedback("QA status updated.");
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Parcel status update failed.");
+      setFeedback(error instanceof Error ? error.message : "QA status update failed.");
     } finally {
       setBusy((current) => ({ ...current, parcelStatusSaving: false }));
     }
   }
 
-  async function handleUploadDocument() {
-    if (!selectedCode || !selectedFile) {
+  async function uploadDocumentForQuestionArea(
+    questionAreaCode: string,
+    reload: () => Promise<void>,
+  ) {
+    if (!selectedFile) {
       return;
     }
 
@@ -577,18 +584,36 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     setFeedback(null);
 
     try {
-      await apiRequest(`/question-areas/${selectedCode}/documents`, {
+      await apiRequest(`/question-areas/${questionAreaCode}/documents`, {
         method: "POST",
         token: session.token,
         formData,
       });
       setSelectedFile(null);
-      await Promise.all([reloadDetail(), refreshSummary()]);
+      setUploadInputKey((current) => current + 1);
+      await Promise.all([reload(), refreshSummary()]);
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Upload failed.");
     } finally {
       setBusy((current) => ({ ...current, uploading: false }));
     }
+  }
+
+  async function handleUploadDocument() {
+    if (!selectedCode) {
+      return;
+    }
+
+    await uploadDocumentForQuestionArea(selectedCode, reloadDetail);
+  }
+
+  async function handleParcelUploadDocument() {
+    if (!selectedParcelQuestionAreaCode) {
+      setFeedback("This parcel is not linked to a question area.");
+      return;
+    }
+
+    await uploadDocumentForQuestionArea(selectedParcelQuestionAreaCode, reloadParcelDetail);
   }
 
   async function handleDownloadDocument(fileRecord: QuestionAreaDetail["documents"][number]) {
@@ -697,7 +722,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
             <section className="panel-section">
               <div className="section-heading">
                 <h2>Search</h2>
-                <span>{busy.questionAreas ? "Refreshing..." : `${questionAreas?.features.length ?? 0} visible`}</span>
               </div>
               <form
                 className="search-stack"
@@ -1032,6 +1056,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                   </div>
                   <div className="upload-row">
                     <input
+                      key={`question-area-upload-${uploadInputKey}`}
                       onChange={(event: ChangeEvent<HTMLInputElement>) =>
                         setSelectedFile(event.target.files?.[0] ?? null)
                       }
@@ -1055,21 +1080,22 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 <section className="panel-section">
                   <div className="section-heading">
                     <h2>{selectedParcelDetail.properties.parcelnumb ?? "Parcel record"}</h2>
-                    <span>Parcel</span>
                   </div>
-                  <div className="badge-row">
-                    <span
-                      className={`badge ${
-                        isWorkflowActive(selectedParcelDetail.properties.reviewStatus)
-                          ? "severity-medium"
-                          : "neutral"
-                      }`}
-                    >
-                      {selectedParcelDetail.properties.reviewStatus?.toLowerCase() === "review"
-                        ? "Active"
-                        : humanize(selectedParcelDetail.properties.reviewStatus ?? "active")}
-                    </span>
-                  </div>
+                  {isParcelActive(selectedParcelDetail.properties.QA_Status) ? (
+                    <div className="badge-row">
+                      <span
+                        className={`badge ${
+                          isWorkflowActive(selectedParcelDetail.properties.reviewStatus)
+                            ? "severity-medium"
+                            : "neutral"
+                        }`}
+                      >
+                        {selectedParcelDetail.properties.reviewStatus?.toLowerCase() === "review"
+                          ? "Active"
+                          : humanize(selectedParcelDetail.properties.reviewStatus ?? "active")}
+                      </span>
+                    </div>
+                  ) : null}
                   <dl className="detail-grid">
                     <DetailItem label="Parcel Code">
                       {selectedParcelDetail.properties.PTVParcel ?? "None"}
@@ -1089,9 +1115,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                     <DetailItem label="Property">
                       {selectedParcelDetail.properties.PropertyName ?? "None"}
                     </DetailItem>
-                    <DetailItem label="Analysis">
-                      {selectedParcelDetail.properties.AnalysisName ?? "None"}
-                    </DetailItem>
                     <DetailItem label="Tract">
                       {selectedParcelDetail.properties.TractName ?? "None"}
                     </DetailItem>
@@ -1106,36 +1129,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                       <dd>{selectedParcelDetail.properties.SpatialOverlayNotes}</dd>
                     </div>
                   ) : null}
-                </section>
-
-                <section className="panel-section">
-                  <div className="section-heading">
-                    <h2>Parcel status</h2>
-                    <span>Tracked</span>
-                  </div>
-                  <div className="form-stack">
-                    <label>
-                      Status
-                      <select
-                        value={parcelStatusDraft}
-                        onChange={(event) => setParcelStatusDraft(event.target.value)}
-                      >
-                        {STATUS_OPTIONS.map((status) => (
-                          <option key={status} value={status}>
-                            {humanize(status)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button
-                      className="primary-button"
-                      disabled={busy.parcelStatusSaving}
-                      onClick={handleParcelStatusSave}
-                      type="button"
-                    >
-                      {busy.parcelStatusSaving ? "Saving..." : "Save parcel status"}
-                    </button>
-                  </div>
                 </section>
 
                 <section className="panel-section">
@@ -1172,6 +1165,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 <section className="panel-section">
                   <div className="section-heading">
                     <h2>Documents</h2>
+                    <span>{selectedParcelDetail.documents.length} attached</span>
                   </div>
                   <div className="document-list">
                     {selectedParcelDetail.documents.map((document) => (
@@ -1189,6 +1183,55 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                         </button>
                       </article>
                     ))}
+                  </div>
+                  <div className="upload-row">
+                    <input
+                      key={`parcel-upload-${uploadInputKey}`}
+                      disabled={!selectedParcelQuestionAreaCode || busy.uploading}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                        setSelectedFile(event.target.files?.[0] ?? null)
+                      }
+                      type="file"
+                    />
+                    <button
+                      className="primary-button"
+                      disabled={!selectedParcelQuestionAreaCode || !selectedFile || busy.uploading}
+                      onClick={handleParcelUploadDocument}
+                      type="button"
+                    >
+                      {busy.uploading ? "Uploading..." : "Upload"}
+                    </button>
+                  </div>
+                  <p className="field-hint">
+                    {selectedParcelQuestionAreaCode
+                      ? `Uploads are attached to question area ${selectedParcelQuestionAreaCode}.`
+                      : "Documents can be uploaded after this parcel is linked to a question area."}
+                  </p>
+                </section>
+
+                <section className="panel-section">
+                  <div className="form-stack">
+                    <label>
+                      Update QA Status
+                      <select
+                        value={parcelStatusDraft}
+                        onChange={(event) => setParcelStatusDraft(event.target.value)}
+                      >
+                        {STATUS_OPTIONS.map((status) => (
+                          <option key={status} value={status}>
+                            {humanize(status)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      className="primary-button"
+                      disabled={busy.parcelStatusSaving}
+                      onClick={handleParcelStatusSave}
+                      type="button"
+                    >
+                      {busy.parcelStatusSaving ? "Saving..." : "Save QA Status"}
+                    </button>
                   </div>
                 </section>
               </>
