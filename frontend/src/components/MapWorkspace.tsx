@@ -22,6 +22,7 @@ type SearchResult = {
   label: string;
   subtitle: string;
   sourceGroup?: string;
+  questionAreaCode?: string | null;
 };
 
 type SummaryPayload = {
@@ -54,6 +55,7 @@ type QuestionAreaFeature = Feature<
     analysisName: string | null;
     tractName: string | null;
     assignedReviewer: string | null;
+    linkedParcelId?: number | null;
     centroid?: { type: string; coordinates: number[] };
   }
 >;
@@ -118,6 +120,7 @@ type QuestionAreaDetail = {
   analysisName: string | null;
   tractName: string | null;
   assignedReviewer: string | null;
+  linkedParcelId: number | null;
   sourceLayers: string[];
   relatedParcels: Array<{
     parcelNumber: string | null;
@@ -375,6 +378,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
           return;
         }
         setSelectedDetail(payload);
+        setSelectedParcelId(payload.linkedParcelId ?? null);
         setEditDraft({
           status: payload.status,
           summary: payload.summary,
@@ -399,7 +403,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   }, [selectedCode, session.token]);
 
   useEffect(() => {
-    if (!selectedParcelId) {
+    if (!selectedParcelId || selectedCode) {
       setSelectedParcelDetail(null);
       return;
     }
@@ -409,10 +413,25 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
     apiRequest<ParcelDetail>(`/parcels/${selectedParcelId}`, { token: session.token })
       .then((payload) => {
-        if (alive) {
-          setSelectedParcelDetail(payload);
-          setParcelStatusDraft(payload.properties.reviewStatus ?? deriveInitialParcelStatus(payload.properties.QA_Status));
+        if (!alive) {
+          return;
         }
+        const questionAreaCode =
+          typeof payload.properties.questionAreaCode === "string" &&
+          payload.properties.questionAreaCode.trim()
+            ? payload.properties.questionAreaCode.trim()
+            : null;
+
+        if (questionAreaCode) {
+          setSelectedParcelDetail(null);
+          setSelectedCode(questionAreaCode);
+          return;
+        }
+
+        setSelectedParcelDetail(payload);
+        setParcelStatusDraft(
+          payload.properties.reviewStatus ?? deriveInitialParcelStatus(payload.properties.QA_Status),
+        );
       })
       .catch((error) => {
         if (alive) {
@@ -428,7 +447,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     return () => {
       alive = false;
     };
-  }, [selectedParcelId, session.token]);
+  }, [selectedCode, selectedParcelId, session.token]);
 
   useEffect(() => {
     setParcelCommentDraft("");
@@ -452,6 +471,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       token: session.token,
     });
     setSelectedDetail(payload);
+    setSelectedParcelId(payload.linkedParcelId ?? null);
     setEditDraft({
       status: payload.status,
       summary: payload.summary,
@@ -632,13 +652,24 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     }
   }
 
-  function selectQuestionArea(code: string | null) {
+  function selectQuestionArea(code: string | null, linkedParcelId?: number | null) {
     setSelectedParcelDetail(null);
-    setSelectedParcelId(null);
+    setSelectedParcelId(linkedParcelId ?? null);
     setSelectedCode(code);
   }
 
   function selectParcel(parcelId: number | null, parcelFeature?: ParcelFeature | null) {
+    const questionAreaCode =
+      typeof parcelFeature?.properties?.questionAreaCode === "string" &&
+      parcelFeature.properties.questionAreaCode.trim()
+        ? parcelFeature.properties.questionAreaCode.trim()
+        : null;
+
+    if (questionAreaCode && parcelId) {
+      selectQuestionArea(questionAreaCode, parcelId);
+      return;
+    }
+
     setSelectedDetail(null);
     setSelectedCode(null);
     if (parcelFeature) {
@@ -675,6 +706,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     const parcelId = Number(result.id);
     if (Number.isInteger(parcelId) && parcelId > 0) {
       setSearchFilter("");
+      if (typeof result.questionAreaCode === "string" && result.questionAreaCode.trim()) {
+        selectQuestionArea(result.questionAreaCode.trim(), parcelId);
+        return;
+      }
       selectParcel(parcelId);
     }
   }
@@ -1305,7 +1340,7 @@ function QAMarkerLayer({
 }: {
   questionAreas: QuestionAreaCollection;
   selectedCode: string | null;
-  onSelect: (code: string | null) => void;
+  onSelect: (code: string | null, linkedParcelId?: number | null) => void;
 }) {
   return (
     <>
@@ -1314,13 +1349,17 @@ function QAMarkerLayer({
         if (!centroid || centroid.type !== "Point") return null;
         const [lng, lat] = centroid.coordinates;
         const code = feature.properties?.code ?? "";
+        const linkedParcelId =
+          typeof feature.properties?.linkedParcelId === "number"
+            ? feature.properties.linkedParcelId
+            : null;
         return (
           <Marker
             key={code}
             position={[lat, lng]}
             icon={createQAMarker(selectedCode, feature as QuestionAreaFeature)}
             eventHandlers={{
-              click: () => onSelect(code),
+              click: () => onSelect(code, linkedParcelId),
             }}
           />
         );

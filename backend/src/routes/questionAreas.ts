@@ -83,16 +83,16 @@ router.get("/", async (req, res) => {
     const placeholder = `$${params.length}`;
     clauses.push(`
       (
-        code ILIKE ${placeholder}
-        OR title ILIKE ${placeholder}
-        OR summary ILIKE ${placeholder}
-        OR COALESCE(primary_parcel_number, '') ILIKE ${placeholder}
-        OR COALESCE(primary_parcel_code, '') ILIKE ${placeholder}
-        OR COALESCE(primary_owner_name, '') ILIKE ${placeholder}
-        OR COALESCE(property_name, '') ILIKE ${placeholder}
-        OR COALESCE(analysis_name, '') ILIKE ${placeholder}
-        OR COALESCE(tract_name, '') ILIKE ${placeholder}
-        OR COALESCE(search_keywords, '') ILIKE ${placeholder}
+        qa.code ILIKE ${placeholder}
+        OR qa.title ILIKE ${placeholder}
+        OR qa.summary ILIKE ${placeholder}
+        OR COALESCE(qa.primary_parcel_number, '') ILIKE ${placeholder}
+        OR COALESCE(qa.primary_parcel_code, '') ILIKE ${placeholder}
+        OR COALESCE(qa.primary_owner_name, '') ILIKE ${placeholder}
+        OR COALESCE(qa.property_name, '') ILIKE ${placeholder}
+        OR COALESCE(qa.analysis_name, '') ILIKE ${placeholder}
+        OR COALESCE(qa.tract_name, '') ILIKE ${placeholder}
+        OR COALESCE(qa.search_keywords, '') ILIKE ${placeholder}
       )
     `);
   }
@@ -100,7 +100,7 @@ router.get("/", async (req, res) => {
   const status = String(req.query.status ?? "").trim();
   if (status) {
     params.push(status);
-    clauses.push(`status = $${params.length}`);
+    clauses.push(`qa.status = $${params.length}`);
   }
 
   const bbox = parseBbox(String(req.query.bbox ?? ""));
@@ -108,7 +108,7 @@ router.get("/", async (req, res) => {
     const [west, south, east, north] = bbox;
     params.push(west, south, east, north);
     clauses.push(
-      `geom && ST_MakeEnvelope($${params.length - 3}, $${params.length - 2}, $${params.length - 1}, $${params.length}, 4326)`,
+      `qa.geom && ST_MakeEnvelope($${params.length - 3}, $${params.length - 2}, $${params.length - 1}, $${params.length}, 4326)`,
     );
   }
 
@@ -132,6 +132,7 @@ router.get("/", async (req, res) => {
     analysis_name: string | null;
     tract_name: string | null;
     assigned_reviewer: string | null;
+    linked_parcel_id: number | null;
     geometry: object;
     centroid_geom: object;
   }>(
@@ -152,9 +153,32 @@ router.get("/", async (req, res) => {
         analysis_name,
         tract_name,
         assigned_reviewer,
+        linked_parcel.id AS linked_parcel_id,
         ST_AsGeoJSON(geom, 5)::jsonb AS geometry,
         ST_AsGeoJSON(centroid, 5)::jsonb AS centroid_geom
-      FROM question_areas
+      FROM question_areas qa
+      LEFT JOIN LATERAL (
+        SELECT p.id
+        FROM parcel_features p
+        WHERE (
+          qa.primary_parcel_number IS NOT NULL
+          AND p.parcel_number = qa.primary_parcel_number
+          AND COALESCE(p.county, '') = COALESCE(qa.county, '')
+          AND COALESCE(p.state, '') = COALESCE(qa.state, '')
+        ) OR (
+          qa.primary_parcel_code IS NOT NULL
+          AND p.ptv_parcel = qa.primary_parcel_code
+          AND COALESCE(p.county, '') = COALESCE(qa.county, '')
+          AND COALESCE(p.state, '') = COALESCE(qa.state, '')
+        )
+        ORDER BY
+          CASE
+            WHEN qa.primary_parcel_number IS NOT NULL AND p.parcel_number = qa.primary_parcel_number THEN 0
+            ELSE 1
+          END,
+          p.id
+        LIMIT 1
+      ) linked_parcel ON true
       ${whereClause}
       ORDER BY code
       LIMIT ${limit}
@@ -183,6 +207,7 @@ router.get("/", async (req, res) => {
           analysisName: row.analysis_name,
           tractName: row.tract_name,
           assignedReviewer: row.assigned_reviewer,
+          linkedParcelId: row.linked_parcel_id,
           centroid: row.centroid_geom,
         },
       })),
@@ -213,6 +238,7 @@ router.get("/:code", async (req, res) => {
     source_layers: unknown;
     related_parcels: unknown;
     metrics: unknown;
+    linked_parcel_id: number | null;
     geometry: object;
     centroid: object;
   }>(
@@ -239,10 +265,33 @@ router.get("/:code", async (req, res) => {
         source_layers,
         related_parcels,
         metrics,
-        ST_AsGeoJSON(geom, 6)::jsonb AS geometry,
-        ST_AsGeoJSON(centroid, 6)::jsonb AS centroid
-      FROM question_areas
-      WHERE code = $1
+        linked_parcel.id AS linked_parcel_id,
+        ST_AsGeoJSON(qa.geom, 6)::jsonb AS geometry,
+        ST_AsGeoJSON(qa.centroid, 6)::jsonb AS centroid
+      FROM question_areas qa
+      LEFT JOIN LATERAL (
+        SELECT p.id
+        FROM parcel_features p
+        WHERE (
+          qa.primary_parcel_number IS NOT NULL
+          AND p.parcel_number = qa.primary_parcel_number
+          AND COALESCE(p.county, '') = COALESCE(qa.county, '')
+          AND COALESCE(p.state, '') = COALESCE(qa.state, '')
+        ) OR (
+          qa.primary_parcel_code IS NOT NULL
+          AND p.ptv_parcel = qa.primary_parcel_code
+          AND COALESCE(p.county, '') = COALESCE(qa.county, '')
+          AND COALESCE(p.state, '') = COALESCE(qa.state, '')
+        )
+        ORDER BY
+          CASE
+            WHEN qa.primary_parcel_number IS NOT NULL AND p.parcel_number = qa.primary_parcel_number THEN 0
+            ELSE 1
+          END,
+          p.id
+        LIMIT 1
+      ) linked_parcel ON true
+      WHERE qa.code = $1
     `,
     [req.params.code],
   );
@@ -309,6 +358,7 @@ router.get("/:code", async (req, res) => {
     sourceLayers: row.source_layers,
     relatedParcels: row.related_parcels,
     metrics: row.metrics,
+    linkedParcelId: row.linked_parcel_id,
     geometry: row.geometry,
     centroid: row.centroid,
     comments: comments.rows.map((comment) => ({

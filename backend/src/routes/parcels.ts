@@ -49,11 +49,25 @@ async function getParcelBase(parcelId: number): Promise<ParcelRow | null> {
         p.review_status
       FROM parcel_features p
       LEFT JOIN LATERAL (
-        SELECT code
-        FROM question_areas
-        WHERE primary_parcel_number = p.parcel_number
-           OR (p.ptv_parcel IS NOT NULL AND primary_parcel_code = p.ptv_parcel)
-        ORDER BY code
+        SELECT qa.code
+        FROM question_areas qa
+        WHERE (
+          p.parcel_number IS NOT NULL
+          AND qa.primary_parcel_number = p.parcel_number
+          AND COALESCE(qa.county, '') = COALESCE(p.county, '')
+          AND COALESCE(qa.state, '') = COALESCE(p.state, '')
+        ) OR (
+          p.ptv_parcel IS NOT NULL
+          AND qa.primary_parcel_code = p.ptv_parcel
+          AND COALESCE(qa.county, '') = COALESCE(p.county, '')
+          AND COALESCE(qa.state, '') = COALESCE(p.state, '')
+        )
+        ORDER BY
+          CASE
+            WHEN p.parcel_number IS NOT NULL AND qa.primary_parcel_number = p.parcel_number THEN 0
+            ELSE 1
+          END,
+          qa.code
         LIMIT 1
       ) qa ON true
       WHERE p.id = $1
