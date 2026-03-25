@@ -83,6 +83,31 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
   `);
 
   await client.query(`
+    ALTER TABLE parcel_features
+    ADD COLUMN IF NOT EXISTS review_status TEXT
+  `);
+
+  await client.query(`
+    UPDATE parcel_features
+    SET review_status = CASE
+      WHEN COALESCE(LOWER(qa_status), '') LIKE '%active%' THEN 'active'
+      ELSE 'review'
+    END
+    WHERE review_status IS NULL
+  `);
+
+  await client.query(`
+    ALTER TABLE parcel_features
+    DROP CONSTRAINT IF EXISTS parcel_features_review_status_check
+  `);
+
+  await client.query(`
+    ALTER TABLE parcel_features
+    ADD CONSTRAINT parcel_features_review_status_check
+    CHECK (review_status IN ('review', 'active', 'resolved', 'hold'))
+  `);
+
+  await client.query(`
     CREATE TABLE IF NOT EXISTS parcel_points (
       id SERIAL PRIMARY KEY,
       parcel_id INTEGER,
@@ -141,6 +166,27 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
   `);
 
   await client.query(`
+    CREATE TABLE IF NOT EXISTS parcel_comments (
+      id SERIAL PRIMARY KEY,
+      parcel_id INTEGER NOT NULL REFERENCES parcel_features(id) ON DELETE CASCADE,
+      author_id INTEGER NOT NULL REFERENCES users(id),
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS parcel_status_history (
+      id SERIAL PRIMARY KEY,
+      parcel_id INTEGER NOT NULL REFERENCES parcel_features(id) ON DELETE CASCADE,
+      author_id INTEGER NOT NULL REFERENCES users(id),
+      previous_status TEXT,
+      next_status TEXT NOT NULL CHECK (next_status IN ('review', 'active', 'resolved', 'hold')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await client.query(`
     CREATE TABLE IF NOT EXISTS documents (
       id SERIAL PRIMARY KEY,
       question_area_id INTEGER NOT NULL REFERENCES question_areas(id) ON DELETE CASCADE,
@@ -166,6 +212,8 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS comments_question_area_id_idx ON comments (question_area_id);
     CREATE INDEX IF NOT EXISTS documents_question_area_id_idx ON documents (question_area_id);
+    CREATE INDEX IF NOT EXISTS parcel_comments_parcel_id_idx ON parcel_comments (parcel_id);
+    CREATE INDEX IF NOT EXISTS parcel_status_history_parcel_id_idx ON parcel_status_history (parcel_id);
 
     CREATE INDEX IF NOT EXISTS question_areas_code_trgm_idx ON question_areas USING GIN (code gin_trgm_ops);
     CREATE INDEX IF NOT EXISTS question_areas_title_trgm_idx ON question_areas USING GIN (title gin_trgm_ops);

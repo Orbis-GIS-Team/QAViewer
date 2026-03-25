@@ -8,7 +8,6 @@ import {
   MapContainer,
   Marker,
   Pane,
-  Popup,
   TileLayer,
   useMap,
   useMapEvents,
@@ -77,9 +76,28 @@ type ParcelFeatureProperties = {
   Exists_in_Mgt: string | boolean | null;
   Exists_in_PTV: string | boolean | null;
   questionAreaCode?: string | null;
+  reviewStatus?: string | null;
 };
 
 type ParcelFeature = Feature<Geometry, ParcelFeatureProperties>;
+
+type ParcelDetail = ParcelFeature & {
+  comments: Array<{
+    id: number;
+    body: string;
+    createdAt: string;
+    authorName: string;
+    authorRole: string;
+  }>;
+  documents: Array<{
+    id: number;
+    originalName: string;
+    mimeType: string | null;
+    sizeBytes: number;
+    createdAt: string;
+    downloadUrl: string;
+  }>;
+};
 
 type QuestionAreaDetail = {
   id: number;
@@ -179,8 +197,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
   const [selectedParcelId, setSelectedParcelId] = useState<number | null>(null);
-  const [selectedParcelDetail, setSelectedParcelDetail] = useState<ParcelFeature | null>(null);
-  const [popupInfo, setPopupInfo] = useState<{ latlng: L.LatLng; properties: ParcelFeatureProperties } | null>(null);
+  const [selectedParcelDetail, setSelectedParcelDetail] = useState<ParcelDetail | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft>({
     status: "review",
     summary: "",
@@ -188,6 +205,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     assignedReviewer: "",
   });
   const [commentDraft, setCommentDraft] = useState("");
+  const [parcelCommentDraft, setParcelCommentDraft] = useState("");
+  const [parcelStatusDraft, setParcelStatusDraft] = useState("review");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [busy, setBusy] = useState({
@@ -197,6 +216,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     parcel: false,
     saving: false,
     commenting: false,
+    parcelCommenting: false,
+    parcelStatusSaving: false,
     uploading: false,
   });
   const deferredSearch = useDeferredValue(searchInput);
@@ -385,10 +406,11 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     let alive = true;
     setBusy((current) => ({ ...current, parcel: true }));
 
-    apiRequest<ParcelFeature>(`/layers/primary_parcels/${selectedParcelId}`, { token: session.token })
+    apiRequest<ParcelDetail>(`/parcels/${selectedParcelId}`, { token: session.token })
       .then((payload) => {
         if (alive) {
           setSelectedParcelDetail(payload);
+          setParcelStatusDraft(payload.properties.reviewStatus ?? deriveInitialParcelStatus(payload.properties.QA_Status));
         }
       })
       .catch((error) => {
@@ -406,6 +428,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       alive = false;
     };
   }, [selectedParcelId, session.token]);
+
+  useEffect(() => {
+    setParcelCommentDraft("");
+  }, [selectedParcelId]);
 
   async function refreshSummary() {
     const payload = await apiRequest<SummaryPayload>("/dashboard/summary", { token: session.token });
@@ -480,6 +506,65 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     }
   }
 
+  async function reloadParcelDetail() {
+    if (!selectedParcelId) {
+      return;
+    }
+
+    const payload = await apiRequest<ParcelDetail>(`/parcels/${selectedParcelId}`, {
+      token: session.token,
+    });
+    setSelectedParcelDetail(payload);
+    setParcelStatusDraft(payload.properties.reviewStatus ?? deriveInitialParcelStatus(payload.properties.QA_Status));
+  }
+
+  async function handleParcelCommentSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedParcelId || !parcelCommentDraft.trim()) {
+      return;
+    }
+
+    setBusy((current) => ({ ...current, parcelCommenting: true }));
+    setFeedback(null);
+
+    try {
+      await apiRequest(`/parcels/${selectedParcelId}/comments`, {
+        method: "POST",
+        token: session.token,
+        body: { body: parcelCommentDraft.trim() },
+      });
+      setParcelCommentDraft("");
+      await reloadParcelDetail();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Parcel comment failed.");
+    } finally {
+      setBusy((current) => ({ ...current, parcelCommenting: false }));
+    }
+  }
+
+  async function handleParcelStatusSave() {
+    if (!selectedParcelId) {
+      return;
+    }
+
+    setBusy((current) => ({ ...current, parcelStatusSaving: true }));
+    setFeedback(null);
+
+    try {
+      await apiRequest(`/parcels/${selectedParcelId}/status`, {
+        method: "PATCH",
+        token: session.token,
+        body: { status: parcelStatusDraft },
+      });
+      await reloadParcelDetail();
+      setFeedback("Parcel status updated.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Parcel status update failed.");
+    } finally {
+      setBusy((current) => ({ ...current, parcelStatusSaving: false }));
+    }
+  }
+
   async function handleUploadDocument() {
     if (!selectedCode || !selectedFile) {
       return;
@@ -521,12 +606,33 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   }
 
   function selectQuestionArea(code: string | null) {
+    setSelectedParcelDetail(null);
     setSelectedParcelId(null);
     setSelectedCode(code);
   }
 
-  function selectParcel(parcelId: number | null) {
+  function selectParcel(parcelId: number | null, parcelFeature?: ParcelFeature | null) {
+    setSelectedDetail(null);
     setSelectedCode(null);
+    if (parcelFeature) {
+      setSelectedParcelDetail({
+        ...parcelFeature,
+        properties: {
+          ...parcelFeature.properties,
+          reviewStatus:
+            parcelFeature.properties.reviewStatus ??
+            deriveInitialParcelStatus(parcelFeature.properties.QA_Status),
+        },
+        comments: [],
+        documents: [],
+      });
+      setParcelStatusDraft(
+        parcelFeature.properties.reviewStatus ??
+          deriveInitialParcelStatus(parcelFeature.properties.QA_Status),
+      );
+    } else if (!parcelId) {
+      setSelectedParcelDetail(null);
+    }
     setSelectedParcelId(parcelId);
   }
 
@@ -547,9 +653,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   }
 
   const activeCount = summary?.statuses.active ?? 0;
-  const selectedGeometry = selectedDetail?.geometry ?? selectedParcelDetail?.geometry ?? null;
-  const selectedGeometryKey =
-    selectedDetail?.code ?? (selectedParcelDetail?.properties?.id ?? null);
+  const selectedGeometry = selectedDetail?.geometry ?? null;
+  const selectedGeometryKey = selectedDetail?.code ?? null;
 
   return (
     <main className="workspace-shell">
@@ -703,8 +808,9 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         <section className="map-panel">
           <MapContainer center={[39.5, -95]} zoom={4} className="leaflet-shell" zoomControl={false}>
             <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; OpenStreetMap contributors &copy; CARTO'
+              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+              subdomains={["a", "b", "c", "d"]}
             />
             <MapViewportWatcher onChange={setMapBbox} />
             <MapFocus geometry={selectedGeometry} targetKey={selectedGeometryKey} />
@@ -733,47 +839,26 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                     primaryParcelStyle(feature as ParcelFeature | undefined, selectedParcelId)
                   }
                   onEachFeature={(feature, layer) => {
-                    layer.on("click", (e) => {
-                      const properties = (feature as ParcelFeature).properties;
-                      selectParcel(Number(properties?.id ?? 0) || null);
-                      setPopupInfo({
-                        latlng: e.latlng,
-                        properties: properties,
-                      });
+                    layer.on("click", () => {
+                      const parcelFeature = feature as ParcelFeature;
+                      const properties = parcelFeature.properties;
+                      selectParcel(Number(properties?.id ?? 0) || null, parcelFeature);
                     });
                   }}
                 />
               ) : null}
             </Pane>
 
-            {popupInfo ? (
-              <Popup
-                position={popupInfo.latlng}
-                onClose={() => setPopupInfo(null)}
-                closeButton={true}
-              >
-                <div className="parcel-popup">
-                  <strong>{popupInfo.properties.parcelnumb ?? "Parcel record"}</strong>
-                  <p>{popupInfo.properties.RegridOwner ?? "Unknown owner"}</p>
-                  <small>{popupInfo.properties.County}, {popupInfo.properties.State}</small>
-                </div>
-              </Popup>
-            ) : null}
-
             <Pane name="question-areas" style={{ zIndex: 430 }}>
               {questionAreas ? (
                 <GeoJSON
                   data={questionAreas}
+                  interactive={false}
                   style={{
                     color: "transparent",
                     weight: 0,
                     fillColor: "transparent",
                     fillOpacity: 0,
-                  }}
-                  onEachFeature={(feature, layer) => {
-                    layer.on("click", () => {
-                      selectQuestionArea((feature as QuestionAreaFeature).properties?.code ?? null);
-                    });
                   }}
                 />
               ) : null}
@@ -808,9 +893,15 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                     <span>{selectedDetail.code}</span>
                   </div>
                   <div className="badge-row">
-                    <span className={`badge severity-${selectedDetail.severity}`}>{selectedDetail.severity}</span>
-                    <span className="badge neutral">{selectedDetail.status}</span>
-                    <span className="badge neutral">{selectedDetail.sourceGroup}</span>
+                    <span
+                      className={`badge ${
+                        selectedDetail.status.toLowerCase() === "active"
+                          ? "severity-medium"
+                          : "neutral"
+                      }`}
+                    >
+                      {selectedDetail.status}
+                    </span>
                   </div>
                   <dl className="detail-grid">
                     <DetailItem label="Parcel #">{selectedDetail.primaryParcelNumber ?? "None"}</DetailItem>
@@ -889,40 +980,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
                 <section className="panel-section">
                   <div className="section-heading">
-                    <h2>Metrics</h2>
-                    <span>GIS-derived</span>
-                  </div>
-                  <dl className="detail-grid">
-                    {Object.entries(selectedDetail.metrics).map(([key, value]) => (
-                      <DetailItem key={key} label={humanize(key)}>
-                        {formatMetric(value)}
-                      </DetailItem>
-                    ))}
-                  </dl>
-                </section>
-
-                <section className="panel-section">
-                  <div className="section-heading">
-                    <h2>Related parcels</h2>
-                    <span>{selectedDetail.relatedParcels.length} linked</span>
-                  </div>
-                  <div className="parcel-list">
-                    {selectedDetail.relatedParcels.map((parcel) => (
-                      <article key={`${parcel.parcelNumber}-${parcel.source}`} className="related-card">
-                        <strong>{parcel.parcelCode ?? parcel.parcelNumber ?? "Parcel record"}</strong>
-                        <span>{parcel.ownerName ?? "Unknown owner"}</span>
-                        <small>
-                          {[parcel.county, parcel.state, parcel.source].filter(Boolean).join(" | ")}
-                        </small>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="panel-section">
-                  <div className="section-heading">
-                    <h2>Discussion</h2>
-                    <span>{selectedDetail.comments.length} comments</span>
+                    <h2>Comment window</h2>
                   </div>
                   <div className="comment-list">
                     {selectedDetail.comments.map((comment) => (
@@ -938,7 +996,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                   </div>
                   <form className="form-stack" onSubmit={handleCommentSubmit}>
                     <label>
-                      Add comment
                       <textarea
                         rows={3}
                         value={commentDraft}
@@ -1003,12 +1060,12 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                   <div className="badge-row">
                     <span
                       className={`badge ${
-                        isParcelActive(selectedParcelDetail.properties.QA_Status)
+                        isWorkflowActive(selectedParcelDetail.properties.reviewStatus)
                           ? "severity-medium"
                           : "neutral"
                       }`}
                     >
-                      {isParcelActive(selectedParcelDetail.properties.QA_Status) ? "Active" : "Not active"}
+                      {humanize(selectedParcelDetail.properties.reviewStatus ?? "review")}
                     </span>
                   </div>
                   <dl className="detail-grid">
@@ -1040,9 +1097,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                       {formatMetric(selectedParcelDetail.properties.GIS_Acres)}
                     </DetailItem>
                   </dl>
-                  {selectedParcelDetail.properties.SpatialOverlayNotes ? (
+                  {isParcelActive(selectedParcelDetail.properties.QA_Status) &&
+                  selectedParcelDetail.properties.SpatialOverlayNotes ? (
                     <div className="qa-reason">
-                      <dt>Parcel notes</dt>
+                      <dt>Question Area Reason</dt>
                       <dd>{selectedParcelDetail.properties.SpatialOverlayNotes}</dd>
                     </div>
                   ) : null}
@@ -1051,12 +1109,85 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 <section className="panel-section">
                   <div className="section-heading">
                     <h2>Parcel status</h2>
-                    <span>Read only</span>
+                    <span>Tracked</span>
                   </div>
-                  <p className="panel-note">
-                    Parcels without question areas can be inspected here, but review controls only
-                    appear when a question area record exists.
-                  </p>
+                  <div className="form-stack">
+                    <label>
+                      Status
+                      <select
+                        value={parcelStatusDraft}
+                        onChange={(event) => setParcelStatusDraft(event.target.value)}
+                      >
+                        {STATUS_OPTIONS.map((status) => (
+                          <option key={status} value={status}>
+                            {humanize(status)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      className="primary-button"
+                      disabled={busy.parcelStatusSaving}
+                      onClick={handleParcelStatusSave}
+                      type="button"
+                    >
+                      {busy.parcelStatusSaving ? "Saving..." : "Save parcel status"}
+                    </button>
+                  </div>
+                </section>
+
+                <section className="panel-section">
+                  <div className="section-heading">
+                    <h2>Comments</h2>
+                  </div>
+                  <div className="comment-list">
+                    {selectedParcelDetail.comments.map((comment) => (
+                      <article key={comment.id} className="comment-card">
+                        <div>
+                          <strong>{comment.authorName}</strong>
+                          <small>{comment.authorRole}</small>
+                        </div>
+                        <p>{comment.body}</p>
+                        <span>{new Date(comment.createdAt).toLocaleString()}</span>
+                      </article>
+                    ))}
+                  </div>
+                  <form className="form-stack" onSubmit={handleParcelCommentSubmit}>
+                    <label>
+                      Add comment
+                      <textarea
+                        rows={3}
+                        value={parcelCommentDraft}
+                        onChange={(event) => setParcelCommentDraft(event.target.value)}
+                      />
+                    </label>
+                    <button className="primary-button" disabled={busy.parcelCommenting} type="submit">
+                      {busy.parcelCommenting ? "Posting..." : "Post comment"}
+                    </button>
+                  </form>
+                </section>
+
+                <section className="panel-section">
+                  <div className="section-heading">
+                    <h2>Documents</h2>
+                  </div>
+                  <div className="document-list">
+                    {selectedParcelDetail.documents.map((document) => (
+                      <article key={document.id} className="document-card">
+                        <div>
+                          <strong>{document.originalName}</strong>
+                          <small>{formatFileSize(document.sizeBytes)}</small>
+                        </div>
+                        <button
+                          className="ghost-button"
+                          onClick={() => handleDownloadDocument(document)}
+                          type="button"
+                        >
+                          Download
+                        </button>
+                      </article>
+                    ))}
+                  </div>
                 </section>
               </>
             ) : null}
@@ -1221,5 +1352,13 @@ function formatFileSize(bytes: number) {
 }
 
 function isParcelActive(value: string | null | undefined) {
+  return value?.toLowerCase().includes("active") ?? false;
+}
+
+function isWorkflowActive(value: string | null | undefined) {
   return value?.toLowerCase() === "active";
+}
+
+function deriveInitialParcelStatus(value: string | null | undefined) {
+  return isParcelActive(value) ? "active" : "review";
 }
