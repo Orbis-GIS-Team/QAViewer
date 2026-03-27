@@ -6,6 +6,7 @@ import L from "leaflet";
 import {
   GeoJSON,
   MapContainer,
+  Marker,
   Pane,
   TileLayer,
   useMap,
@@ -21,6 +22,7 @@ type SearchResult = {
   label: string;
   subtitle: string;
   sourceGroup?: string;
+  questionAreaCode?: string | null;
 };
 
 type SummaryPayload = {
@@ -33,10 +35,7 @@ type SummaryPayload = {
 
 type LayerKey =
   | "primary_parcels"
-  | "parcel_points"
-  | "management_tracts"
-  | "tax_counties"
-  | "management_counties";
+  | "management_tracts";
 
 type QuestionAreaFeature = Feature<
   Geometry,
@@ -56,10 +55,51 @@ type QuestionAreaFeature = Feature<
     analysisName: string | null;
     tractName: string | null;
     assignedReviewer: string | null;
+    linkedParcelId?: number | null;
+    centroid?: { type: string; coordinates: number[] };
   }
 >;
 
 type QuestionAreaCollection = FeatureCollection<Geometry, QuestionAreaFeature["properties"]>;
+
+type ParcelFeatureProperties = {
+  id: number;
+  parcelnumb: string | null;
+  County: string | null;
+  State: string | null;
+  RegridOwner: string | null;
+  PropertyName: string | null;
+  AnalysisName: string | null;
+  TractName: string | null;
+  QA_Status: string | null;
+  GIS_Acres: number | null;
+  SpatialOverlayNotes: string | null;
+  PTVParcel: string | null;
+  Exists_in_Mgt: string | boolean | null;
+  Exists_in_PTV: string | boolean | null;
+  questionAreaCode?: string | null;
+  reviewStatus?: string | null;
+};
+
+type ParcelFeature = Feature<Geometry, ParcelFeatureProperties>;
+
+type ParcelDetail = ParcelFeature & {
+  comments: Array<{
+    id: number;
+    body: string;
+    createdAt: string;
+    authorName: string;
+    authorRole: string;
+  }>;
+  documents: Array<{
+    id: number;
+    originalName: string;
+    mimeType: string | null;
+    sizeBytes: number;
+    createdAt: string;
+    downloadUrl: string;
+  }>;
+};
 
 type QuestionAreaDetail = {
   id: number;
@@ -80,6 +120,7 @@ type QuestionAreaDetail = {
   analysisName: string | null;
   tractName: string | null;
   assignedReviewer: string | null;
+  linkedParcelId: number | null;
   sourceLayers: string[];
   relatedParcels: Array<{
     parcelNumber: string | null;
@@ -122,19 +163,31 @@ type EditDraft = {
 type MapWorkspaceProps = {
   session: Session;
   onLogout: () => void;
+  onOpenAdmin?: () => void;
 };
 
-const STATUS_OPTIONS = ["review", "active", "resolved", "hold"];
+const STATUS_OPTIONS = ["active", "resolved", "hold"];
 
 const initialLayers: Record<LayerKey, boolean> = {
   primary_parcels: true,
-  parcel_points: false,
-  management_tracts: false,
-  tax_counties: false,
-  management_counties: true,
+  management_tracts: true,
 };
 
-export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
+type LegendItem = {
+  key: string;
+  label: string;
+  swatch: string;
+  toggleable: boolean;
+  indented?: boolean;
+};
+
+const LEGEND_ITEMS: LegendItem[] = [
+  { key: "primary_parcels", label: "Primary Parcels", swatch: "parcels", toggleable: true },
+  { key: "qa_active", label: "Question Area", swatch: "qa-marker", toggleable: false, indented: true },
+  { key: "management_tracts", label: "Management", swatch: "management", toggleable: true },
+];
+
+export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspaceProps) {
   const [summary, setSummary] = useState<SummaryPayload | null>(null);
   const [questionAreas, setQuestionAreas] = useState<QuestionAreaCollection | null>(null);
   const [mapBbox, setMapBbox] = useState("-126,24,-66,49");
@@ -143,27 +196,41 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
   const [searchInput, setSearchInput] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchField, setSearchField] = useState("all");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
+  const [selectedParcelId, setSelectedParcelId] = useState<number | null>(null);
+  const [selectedParcelDetail, setSelectedParcelDetail] = useState<ParcelDetail | null>(null);
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [editDraft, setEditDraft] = useState<EditDraft>({
-    status: "review",
+    status: "active",
     summary: "",
     description: "",
     assignedReviewer: "",
   });
   const [commentDraft, setCommentDraft] = useState("");
+  const [parcelCommentDraft, setParcelCommentDraft] = useState("");
+  const [parcelStatusDraft, setParcelStatusDraft] = useState("active");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadInputKey, setUploadInputKey] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [busy, setBusy] = useState({
     summary: false,
-    questionAreas: false,
     detail: false,
+    parcel: false,
     saving: false,
     commenting: false,
+    parcelCommenting: false,
+    parcelStatusSaving: false,
     uploading: false,
   });
   const deferredSearch = useDeferredValue(searchInput);
+  const selectedParcelQuestionAreaCode =
+    typeof selectedParcelDetail?.properties.questionAreaCode === "string" &&
+    selectedParcelDetail.properties.questionAreaCode.trim()
+      ? selectedParcelDetail.properties.questionAreaCode.trim()
+      : null;
 
   useEffect(() => {
     let alive = true;
@@ -226,12 +293,11 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
     });
     if (searchFilter) {
       params.set("search", searchFilter);
-    }
-    if (statusFilter !== "all") {
-      params.set("status", statusFilter);
+      if (searchField !== "all") {
+        params.set("field", searchField); // In case backend adds support later
+      }
     }
 
-    setBusy((current) => ({ ...current, questionAreas: true }));
     apiRequest<QuestionAreaCollection>(`/question-areas?${params.toString()}`, {
       token: session.token,
     })
@@ -251,17 +317,13 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
         if (alive) {
           setFeedback(error instanceof Error ? error.message : "Failed to load question areas.");
         }
-      })
-      .finally(() => {
-        if (alive) {
-          setBusy((current) => ({ ...current, questionAreas: false }));
-        }
       });
 
     return () => {
       alive = false;
     };
-  }, [mapBbox, searchFilter, selectedCode, session.token, statusFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedCode intentionally excluded to avoid redundant refetch on selection
+  }, [mapBbox, searchFilter, searchField, session.token]);
 
   useEffect(() => {
     const visibleLayers = (Object.keys(layerVisibility) as LayerKey[]).filter(
@@ -316,6 +378,7 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
           return;
         }
         setSelectedDetail(payload);
+        setSelectedParcelId(payload.linkedParcelId ?? null);
         setEditDraft({
           status: payload.status,
           summary: payload.summary,
@@ -339,6 +402,62 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
     };
   }, [selectedCode, session.token]);
 
+  useEffect(() => {
+    if (!selectedParcelId || selectedCode) {
+      setSelectedParcelDetail(null);
+      return;
+    }
+
+    let alive = true;
+    setBusy((current) => ({ ...current, parcel: true }));
+
+    apiRequest<ParcelDetail>(`/parcels/${selectedParcelId}`, { token: session.token })
+      .then((payload) => {
+        if (!alive) {
+          return;
+        }
+        const questionAreaCode =
+          typeof payload.properties.questionAreaCode === "string" &&
+          payload.properties.questionAreaCode.trim()
+            ? payload.properties.questionAreaCode.trim()
+            : null;
+
+        if (questionAreaCode) {
+          setSelectedParcelDetail(null);
+          setSelectedCode(questionAreaCode);
+          return;
+        }
+
+        setSelectedParcelDetail(payload);
+        setParcelStatusDraft(
+          payload.properties.reviewStatus ?? deriveInitialParcelStatus(payload.properties.QA_Status),
+        );
+      })
+      .catch((error) => {
+        if (alive) {
+          setFeedback(error instanceof Error ? error.message : "Failed to load parcel details.");
+        }
+      })
+      .finally(() => {
+        if (alive) {
+          setBusy((current) => ({ ...current, parcel: false }));
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [selectedCode, selectedParcelId, session.token]);
+
+  useEffect(() => {
+    setParcelCommentDraft("");
+  }, [selectedParcelId]);
+
+  useEffect(() => {
+    setSelectedFile(null);
+    setUploadInputKey((current) => current + 1);
+  }, [selectedCode, selectedParcelId]);
+
   async function refreshSummary() {
     const payload = await apiRequest<SummaryPayload>("/dashboard/summary", { token: session.token });
     setSummary(payload);
@@ -352,6 +471,7 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
       token: session.token,
     });
     setSelectedDetail(payload);
+    setSelectedParcelId(payload.linkedParcelId ?? null);
     setEditDraft({
       status: payload.status,
       summary: payload.summary,
@@ -412,8 +532,70 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
     }
   }
 
-  async function handleUploadDocument() {
-    if (!selectedCode || !selectedFile) {
+  async function reloadParcelDetail() {
+    if (!selectedParcelId) {
+      return;
+    }
+
+    const payload = await apiRequest<ParcelDetail>(`/parcels/${selectedParcelId}`, {
+      token: session.token,
+    });
+    setSelectedParcelDetail(payload);
+    setParcelStatusDraft(payload.properties.reviewStatus ?? deriveInitialParcelStatus(payload.properties.QA_Status));
+  }
+
+  async function handleParcelCommentSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedParcelId || !parcelCommentDraft.trim()) {
+      return;
+    }
+
+    setBusy((current) => ({ ...current, parcelCommenting: true }));
+    setFeedback(null);
+
+    try {
+      await apiRequest(`/parcels/${selectedParcelId}/comments`, {
+        method: "POST",
+        token: session.token,
+        body: { body: parcelCommentDraft.trim() },
+      });
+      setParcelCommentDraft("");
+      await reloadParcelDetail();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Parcel comment failed.");
+    } finally {
+      setBusy((current) => ({ ...current, parcelCommenting: false }));
+    }
+  }
+
+  async function handleParcelStatusSave() {
+    if (!selectedParcelId) {
+      return;
+    }
+
+    setBusy((current) => ({ ...current, parcelStatusSaving: true }));
+    setFeedback(null);
+
+    try {
+      await apiRequest(`/parcels/${selectedParcelId}/status`, {
+        method: "PATCH",
+        token: session.token,
+        body: { status: parcelStatusDraft },
+      });
+      await reloadParcelDetail();
+      setFeedback("QA status updated.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "QA status update failed.");
+    } finally {
+      setBusy((current) => ({ ...current, parcelStatusSaving: false }));
+    }
+  }
+
+  async function uploadDocumentForQuestionArea(
+    questionAreaCode: string,
+    reload: () => Promise<void>,
+  ) {
+    if (!selectedFile) {
       return;
     }
 
@@ -424,18 +606,36 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
     setFeedback(null);
 
     try {
-      await apiRequest(`/question-areas/${selectedCode}/documents`, {
+      await apiRequest(`/question-areas/${questionAreaCode}/documents`, {
         method: "POST",
         token: session.token,
         formData,
       });
       setSelectedFile(null);
-      await Promise.all([reloadDetail(), refreshSummary()]);
+      setUploadInputKey((current) => current + 1);
+      await Promise.all([reload(), refreshSummary()]);
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Upload failed.");
     } finally {
       setBusy((current) => ({ ...current, uploading: false }));
     }
+  }
+
+  async function handleUploadDocument() {
+    if (!selectedCode) {
+      return;
+    }
+
+    await uploadDocumentForQuestionArea(selectedCode, reloadDetail);
+  }
+
+  async function handleParcelUploadDocument() {
+    if (!selectedParcelQuestionAreaCode) {
+      setFeedback("This parcel is not linked to a question area.");
+      return;
+    }
+
+    await uploadDocumentForQuestionArea(selectedParcelQuestionAreaCode, reloadParcelDetail);
   }
 
   async function handleDownloadDocument(fileRecord: QuestionAreaDetail["documents"][number]) {
@@ -452,200 +652,255 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
     }
   }
 
+  function selectQuestionArea(code: string | null, linkedParcelId?: number | null) {
+    setSelectedParcelDetail(null);
+    setSelectedParcelId(linkedParcelId ?? null);
+    setSelectedCode(code);
+  }
+
+  function selectParcel(parcelId: number | null, parcelFeature?: ParcelFeature | null) {
+    const questionAreaCode =
+      typeof parcelFeature?.properties?.questionAreaCode === "string" &&
+      parcelFeature.properties.questionAreaCode.trim()
+        ? parcelFeature.properties.questionAreaCode.trim()
+        : null;
+
+    if (questionAreaCode && parcelId) {
+      selectQuestionArea(questionAreaCode, parcelId);
+      return;
+    }
+
+    setSelectedDetail(null);
+    setSelectedCode(null);
+    if (parcelFeature) {
+      setSelectedParcelDetail({
+        ...parcelFeature,
+        properties: {
+          ...parcelFeature.properties,
+          reviewStatus:
+            parcelFeature.properties.reviewStatus ??
+            deriveInitialParcelStatus(parcelFeature.properties.QA_Status),
+        },
+        comments: [],
+        documents: [],
+      });
+      setParcelStatusDraft(
+        parcelFeature.properties.reviewStatus ??
+          deriveInitialParcelStatus(parcelFeature.properties.QA_Status),
+      );
+    } else if (!parcelId) {
+      setSelectedParcelDetail(null);
+    }
+    setSelectedParcelId(parcelId);
+  }
+
   function handleSearchSelection(result: SearchResult) {
     setSearchInput(result.label);
     setSearchResults([]);
 
     if (result.type === "question_area") {
-      setSelectedCode(result.id);
+      selectQuestionArea(result.id);
       return;
     }
 
-    setSearchFilter(result.label);
+    const parcelId = Number(result.id);
+    if (Number.isInteger(parcelId) && parcelId > 0) {
+      setSearchFilter("");
+      if (typeof result.questionAreaCode === "string" && result.questionAreaCode.trim()) {
+        selectQuestionArea(result.questionAreaCode.trim(), parcelId);
+        return;
+      }
+      selectParcel(parcelId);
+    }
   }
 
-  const questionAreaList = questionAreas?.features.slice(0, 12) ?? [];
   const activeCount = summary?.statuses.active ?? 0;
-  const reviewCount = summary?.statuses.review ?? summary?.questionAreas ?? 0;
-  const highSeverityCount = summary?.severities.high ?? 0;
+  const selectedGeometry = selectedDetail?.geometry ?? null;
+  const selectedGeometryKey = selectedDetail?.code ?? null;
 
   return (
     <main className="workspace-shell">
       <header className="workspace-header">
-        <div>
+        <div className="header-brand">
           <p className="eyebrow">QAViewer</p>
           <h1>Question area review console</h1>
         </div>
         <div className="header-actions">
-          <div className="user-chip">
-            <span>{session.user.name}</span>
-            <small>{session.user.role}</small>
+          <div className="header-actions-layout">
+            <div className="header-button-row">
+              {onOpenAdmin ? (
+                <button className="ghost-button" onClick={onOpenAdmin} type="button">
+                  Admin console
+                </button>
+              ) : null}
+              <button className="ghost-button" onClick={onLogout} type="button">
+                Sign out
+              </button>
+            </div>
+            <span className="user-name-sub">{session.user.name}</span>
           </div>
-          <button className="ghost-button" onClick={onLogout} type="button">
-            Sign out
-          </button>
         </div>
       </header>
 
-      <section className="workspace-grid">
-        <aside className="workspace-panel left-panel">
-          <section className="panel-section stats-section">
-            <div className="stat-card">
-              <span>Question areas</span>
-              <strong>{summary?.questionAreas ?? "..."}</strong>
-            </div>
-            <div className="stat-card">
-              <span>Under review</span>
-              <strong>{busy.summary ? "..." : reviewCount}</strong>
-            </div>
-            <div className="stat-card">
-              <span>High severity</span>
-              <strong>{busy.summary ? "..." : highSeverityCount}</strong>
-            </div>
-            <div className="stat-card">
-              <span>Active</span>
-              <strong>{busy.summary ? "..." : activeCount}</strong>
-            </div>
-          </section>
-
-          <section className="panel-section">
-            <div className="section-heading">
-              <h2>Search and filter</h2>
-              <span>{busy.questionAreas ? "Refreshing..." : `${questionAreas?.features.length ?? 0} visible`}</span>
-            </div>
-            <form
-              className="search-stack"
-              onSubmit={(event) => {
-                event.preventDefault();
-                setSearchFilter(searchInput.trim());
-              }}
-            >
-              <input
-                className="search-input"
-                placeholder="Search by QA ID, parcel, owner, project, keyword"
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-              />
-              {searchResults.length > 0 ? (
-                <div className="search-results">
-                  {searchResults.map((result) => (
-                    <button
-                      key={`${result.type}-${result.id}`}
-                      className="search-result"
-                      type="button"
-                      onClick={() => handleSearchSelection(result)}
-                    >
-                      <strong>{result.label}</strong>
-                      <span>{result.subtitle || result.type}</span>
-                    </button>
-                  ))}
+      <section
+        className={`workspace-grid ${leftPanelCollapsed ? "left-collapsed" : ""} ${
+          rightPanelCollapsed ? "right-collapsed" : ""
+        } ${leftPanelCollapsed && rightPanelCollapsed ? "both-collapsed" : ""}`}
+      >
+        <aside className={`workspace-panel left-panel ${leftPanelCollapsed ? "collapsed" : ""}`}>
+          <button
+            className="collapse-toggle"
+            onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+            title={leftPanelCollapsed ? "Expand panel" : "Collapse panel"}
+            type="button"
+          >
+            {leftPanelCollapsed ? "→" : "←"}
+          </button>
+          <div className="panel-content">
+            <section className="panel-section stats-section">
+              <div className="stat-card">
+                <div className="stat-content">
+                  <span>Active Question Areas</span>
+                  <strong>
+                    {busy.summary ? "..." : activeCount}
+                  </strong>
                 </div>
-              ) : null}
-              <div className="filter-row">
-                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-                  <option value="all">All statuses</option>
-                  {STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-                <button className="primary-button" type="submit">
-                  Search map
-                </button>
-                <button
-                  className="ghost-button"
-                  type="button"
-                  onClick={() => {
-                    setSearchInput("");
-                    setSearchFilter("");
-                    setSearchResults([]);
-                  }}
-                >
-                  Clear
-                </button>
               </div>
-            </form>
-          </section>
+            </section>
 
-          <section className="panel-section">
-            <div className="section-heading">
-              <h2>Layer stack</h2>
-              <span>Leaflet controls</span>
-            </div>
-            <div className="layer-list">
-              {(Object.keys(layerVisibility) as LayerKey[]).map((layer) => (
-                <label key={layer} className="layer-toggle">
-                  <input
-                    checked={layerVisibility[layer]}
-                    onChange={() =>
-                      setLayerVisibility((current) => ({
-                        ...current,
-                        [layer]: !current[layer],
-                      }))
-                    }
-                    type="checkbox"
-                  />
-                  <span>{layer.replaceAll("_", " ")}</span>
-                </label>
-              ))}
-            </div>
-          </section>
-
-          <section className="panel-section result-list">
-            <div className="section-heading">
-              <h2>Visible question areas</h2>
-              <span>{questionAreas?.features.length ?? 0} in viewport</span>
-            </div>
-            {questionAreaList.map((feature) => (
-              <button
-                key={feature.properties?.code}
-                className={`list-card ${selectedCode === feature.properties?.code ? "selected" : ""}`}
-                onClick={() => setSelectedCode(feature.properties?.code ?? null)}
-                type="button"
+            <section className="panel-section">
+              <div className="section-heading">
+                <h2>Search</h2>
+              </div>
+              <form
+                className="search-stack"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setSearchFilter(searchInput.trim());
+                }}
               >
-                <div>
-                  <strong>{feature.properties?.title}</strong>
-                  <span>{feature.properties?.code}</span>
+                <div className="filter-row">
+                  <select value={searchField} onChange={(event) => setSearchField(event.target.value)}>
+                    <option value="all">Search all fields</option>
+                    <option value="parcelnumb">Parcel Number</option>
+                    <option value="county">County</option>
+                    <option value="qa_id">Question Area ID</option>
+                  </select>
+                  <button className="primary-button" type="submit">
+                    Search map
+                  </button>
                 </div>
-                <small>{feature.properties?.primaryOwnerName ?? feature.properties?.county}</small>
-              </button>
-            ))}
-          </section>
+                
+                <div className="search-input-row">
+                  <input
+                    className="search-input"
+                    placeholder="Type search term..."
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
+                  />
+                  <button
+                    className="ghost-button clear-button"
+                    type="button"
+                    onClick={() => {
+                      setSearchInput("");
+                      setSearchFilter("");
+                      setSearchResults([]);
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                {searchResults.length > 0 ? (
+                  <div className="search-results glass">
+                    {searchResults.map((result) => (
+                      <button
+                        key={`${result.type}-${result.id}`}
+                        className="search-result"
+                        type="button"
+                        onClick={() => handleSearchSelection(result)}
+                      >
+                        <strong>{result.label}</strong>
+                        <span className="mono">{result.subtitle || result.type}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </form>
+            </section>
+
+            <section className="panel-section">
+              <div className="section-heading">
+                <h2>Legend</h2>
+              </div>
+              <div className="legend-list">
+                {LEGEND_ITEMS.map((item) => {
+                  const isToggleable = item.toggleable;
+                  const isVisible = !isToggleable || layerVisibility[item.key as LayerKey];
+                  return (
+                    <div key={item.key} className={`legend-item ${item.indented ? 'legend-item-indented' : ''}`}>
+                      <span className={`legend-swatch legend-swatch-${item.swatch}`} />
+                      <span className="legend-label">{item.label}</span>
+                      {isToggleable ? (
+                        <button
+                          className="legend-eye"
+                          type="button"
+                          title={isVisible ? "Hide layer" : "Show layer"}
+                          onClick={() =>
+                            setLayerVisibility((current) => ({
+                              ...current,
+                              [item.key]: !current[item.key as LayerKey],
+                            }))
+                          }
+                        >
+                          {isVisible ? (
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                          ) : (
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                              <line x1="1" y1="1" x2="23" y2="23" />
+                              <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+                            </svg>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="legend-eye-spacer" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
         </aside>
 
         <section className="map-panel">
-          <div className="map-statusbar">
-            <span>{feedback ?? "Map synced to PostGIS-backed question area records."}</span>
-          </div>
           <MapContainer center={[39.5, -95]} zoom={4} className="leaflet-shell" zoomControl={false}>
+            {/* ... TileLayer, ViewportWatcher, etc ... */}
             <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; OpenStreetMap contributors &copy; CARTO'
+              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+              subdomains={["a", "b", "c", "d"]}
             />
             <MapViewportWatcher onChange={setMapBbox} />
-            <MapFocus detail={selectedDetail} />
-
-            <Pane name="counties" style={{ zIndex: 350 }}>
-              {layerVisibility.management_counties && layerData.management_counties ? (
-                <GeoJSON
-                  data={layerData.management_counties}
-                  style={{ color: "#2f6c6a", weight: 1.3, fillOpacity: 0 }}
-                />
-              ) : null}
-              {layerVisibility.tax_counties && layerData.tax_counties ? (
-                <GeoJSON
-                  data={layerData.tax_counties}
-                  style={{ color: "#8a7f6a", weight: 1.1, fillOpacity: 0 }}
-                />
-              ) : null}
-            </Pane>
+            <MapFocus geometry={selectedGeometry} targetKey={selectedGeometryKey} />
+            <ManagementPatternDefs />
 
             <Pane name="management" style={{ zIndex: 370 }}>
               {layerVisibility.management_tracts && layerData.management_tracts ? (
                 <GeoJSON
                   data={layerData.management_tracts}
-                  style={{ color: "#4f7c4d", weight: 1.2, fillOpacity: 0.04, fillColor: "#6e9d5f" }}
+                  style={{
+                    color: "#39ff14",
+                    weight: 2.5,
+                    fillColor: "url(#management-pattern)",
+                    fillOpacity: 1,
+                    dashArray: "none",
+                  }}
                 />
               ) : null}
             </Pane>
@@ -654,24 +909,16 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
               {layerVisibility.primary_parcels && layerData.primary_parcels ? (
                 <GeoJSON
                   data={layerData.primary_parcels}
-                  style={{ color: "#19324d", weight: 1.1, fillOpacity: 0.03, fillColor: "#7fa4b8" }}
-                />
-              ) : null}
-            </Pane>
-
-            <Pane name="points" style={{ zIndex: 410 }}>
-              {layerVisibility.parcel_points && layerData.parcel_points ? (
-                <GeoJSON
-                  data={layerData.parcel_points}
-                  pointToLayer={(_feature, latlng) =>
-                    L.circleMarker(latlng, {
-                      radius: 4,
-                      color: "#b75e2b",
-                      weight: 1,
-                      fillColor: "#f6b26b",
-                      fillOpacity: 0.9,
-                    })
+                  style={(feature) =>
+                    primaryParcelStyle(feature as ParcelFeature | undefined, selectedParcelId)
                   }
+                  onEachFeature={(feature, layer) => {
+                    layer.on("click", () => {
+                      const parcelFeature = feature as ParcelFeature;
+                      const properties = parcelFeature.properties;
+                      selectParcel(Number(properties?.id ?? 0) || null, parcelFeature);
+                    });
+                  }}
                 />
               ) : null}
             </Pane>
@@ -680,212 +927,378 @@ export function MapWorkspace({ session, onLogout }: MapWorkspaceProps) {
               {questionAreas ? (
                 <GeoJSON
                   data={questionAreas}
-                  style={(feature) => questionAreaStyle(feature as QuestionAreaFeature, selectedCode)}
-                  onEachFeature={(feature, layer) => {
-                    layer.on("click", () => {
-                      setSelectedCode((feature as QuestionAreaFeature).properties?.code ?? null);
-                    });
+                  interactive={false}
+                  style={{
+                    color: "transparent",
+                    weight: 0,
+                    fillColor: "transparent",
+                    fillOpacity: 0,
                   }}
+                />
+              ) : null}
+            </Pane>
+
+            <Pane name="qa-markers" style={{ zIndex: 450 }}>
+              {questionAreas ? (
+                <QAMarkerLayer
+                  questionAreas={questionAreas}
+                  selectedCode={selectedCode}
+                  onSelect={selectQuestionArea}
                 />
               ) : null}
             </Pane>
           </MapContainer>
         </section>
 
-        <aside className="workspace-panel right-panel">
-          {busy.detail ? <p className="empty-state">Loading question area details...</p> : null}
-          {!busy.detail && !selectedDetail ? (
-            <p className="empty-state">
-              Select a question area from the map or the result list to open its review dossier.
-            </p>
-          ) : null}
+        <aside className={`workspace-panel right-panel ${rightPanelCollapsed ? "collapsed" : ""}`}>
+          <button
+            className="collapse-toggle"
+            onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+            title={rightPanelCollapsed ? "Expand panel" : "Collapse panel"}
+            type="button"
+          >
+            {rightPanelCollapsed ? "←" : "→"}
+          </button>
+          <div className="panel-content">
+            {busy.detail || busy.parcel ? <SkeletonDetail /> : null}
+            {!busy.detail && !busy.parcel && !selectedDetail && !selectedParcelDetail ? (
+              <p className="empty-state">
+                Select a question area or parcel from the map or the result list to open its details.
+              </p>
+            ) : null}
 
-          {selectedDetail ? (
-            <>
-              <section className="panel-section">
-                <div className="section-heading">
-                  <h2>{selectedDetail.title}</h2>
-                  <span>{selectedDetail.code}</span>
-                </div>
-                <div className="badge-row">
-                  <span className={`badge severity-${selectedDetail.severity}`}>{selectedDetail.severity}</span>
-                  <span className="badge neutral">{selectedDetail.status}</span>
-                  <span className="badge neutral">{selectedDetail.sourceGroup}</span>
-                </div>
-                <dl className="detail-grid">
-                  <DetailItem label="Parcel">{selectedDetail.primaryParcelCode ?? "None"}</DetailItem>
-                  <DetailItem label="Owner">{selectedDetail.primaryOwnerName ?? "Unknown"}</DetailItem>
-                  <DetailItem label="County">{selectedDetail.county ?? "Unknown"}</DetailItem>
-                  <DetailItem label="State">{selectedDetail.state ?? "Unknown"}</DetailItem>
-                  <DetailItem label="Property">{selectedDetail.propertyName ?? "None"}</DetailItem>
-                  <DetailItem label="Analysis">{selectedDetail.analysisName ?? "None"}</DetailItem>
-                </dl>
-              </section>
-
-              <section className="panel-section">
-                <div className="section-heading">
-                  <h2>Review controls</h2>
-                  <span>Editable</span>
-                </div>
-                <div className="form-stack">
-                  <label>
-                    Status
-                    <select
-                      value={editDraft.status}
-                      onChange={(event) =>
-                        setEditDraft((current) => ({ ...current, status: event.target.value }))
-                      }
+            {selectedDetail ? (
+              <>
+                <section className="panel-section">
+                  <div className="section-heading primary-heading">
+                    <h2>{selectedDetail.title}</h2>
+                    <span>{selectedDetail.code}</span>
+                  </div>
+                  <div className="badge-row">
+                    <span
+                      className={`badge ${
+                        selectedDetail.status.toLowerCase() === "active"
+                          ? "severity-medium"
+                          : "neutral"
+                      }`}
                     >
-                      {STATUS_OPTIONS.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Assigned reviewer
-                    <input
-                      value={editDraft.assignedReviewer}
-                      onChange={(event) =>
-                        setEditDraft((current) => ({
-                          ...current,
-                          assignedReviewer: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Summary
-                    <textarea
-                      rows={3}
-                      value={editDraft.summary}
-                      onChange={(event) =>
-                        setEditDraft((current) => ({ ...current, summary: event.target.value }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    Notes
-                    <textarea
-                      rows={4}
-                      value={editDraft.description}
-                      onChange={(event) =>
-                        setEditDraft((current) => ({ ...current, description: event.target.value }))
-                      }
-                    />
-                  </label>
-                  <button className="primary-button" disabled={busy.saving} onClick={handleSaveDetail} type="button">
-                    {busy.saving ? "Saving..." : "Save review state"}
-                  </button>
-                </div>
-              </section>
+                      {selectedDetail.status.toLowerCase() === "review" ? "Active" : selectedDetail.status}
+                    </span>
+                  </div>
+                  <dl className="detail-grid">
+                    <DetailItem label="Parcel #" mono>{selectedDetail.primaryParcelNumber ?? "None"}</DetailItem>
+                    <DetailItem label="Parcel Code" mono>{selectedDetail.primaryParcelCode ?? "None"}</DetailItem>
+                    <DetailItem label="Owner">{selectedDetail.primaryOwnerName ?? "Unknown"}</DetailItem>
+                    <DetailItem label="County">{selectedDetail.county ?? "Unknown"}</DetailItem>
+                    <DetailItem label="State">{selectedDetail.state ?? "Unknown"}</DetailItem>
+                    <DetailItem label="Property">{selectedDetail.propertyName ?? "None"}</DetailItem>
+                  </dl>
+                  {selectedDetail.description ? (
+                    <div className="qa-reason">
+                      <dt>QA Reason (Spatial Overlay Notes)</dt>
+                      <dd>{selectedDetail.description}</dd>
+                    </div>
+                  ) : null}
+                </section>
 
-              <section className="panel-section">
-                <div className="section-heading">
-                  <h2>Metrics</h2>
-                  <span>GIS-derived</span>
-                </div>
-                <dl className="detail-grid">
-                  {Object.entries(selectedDetail.metrics).map(([key, value]) => (
-                    <DetailItem key={key} label={humanize(key)}>
-                      {formatMetric(value)}
-                    </DetailItem>
-                  ))}
-                </dl>
-              </section>
-
-              <section className="panel-section">
-                <div className="section-heading">
-                  <h2>Related parcels</h2>
-                  <span>{selectedDetail.relatedParcels.length} linked</span>
-                </div>
-                <div className="parcel-list">
-                  {selectedDetail.relatedParcels.map((parcel) => (
-                    <article key={`${parcel.parcelNumber}-${parcel.source}`} className="related-card">
-                      <strong>{parcel.parcelCode ?? parcel.parcelNumber ?? "Parcel record"}</strong>
-                      <span>{parcel.ownerName ?? "Unknown owner"}</span>
-                      <small>
-                        {[parcel.county, parcel.state, parcel.source].filter(Boolean).join(" | ")}
-                      </small>
-                    </article>
-                  ))}
-                </div>
-              </section>
-
-              <section className="panel-section">
-                <div className="section-heading">
-                  <h2>Discussion</h2>
-                  <span>{selectedDetail.comments.length} comments</span>
-                </div>
-                <div className="comment-list">
-                  {selectedDetail.comments.map((comment) => (
-                    <article key={comment.id} className="comment-card">
-                      <div>
-                        <strong>{comment.authorName}</strong>
-                        <small>{comment.authorRole}</small>
-                      </div>
-                      <p>{comment.body}</p>
-                      <span>{new Date(comment.createdAt).toLocaleString()}</span>
-                    </article>
-                  ))}
-                </div>
-                <form className="form-stack" onSubmit={handleCommentSubmit}>
-                  <label>
-                    Add comment
-                    <textarea
-                      rows={3}
-                      value={commentDraft}
-                      onChange={(event) => setCommentDraft(event.target.value)}
-                    />
-                  </label>
-                  <button className="primary-button" disabled={busy.commenting} type="submit">
-                    {busy.commenting ? "Posting..." : "Post comment"}
-                  </button>
-                </form>
-              </section>
-
-              <section className="panel-section">
-                <div className="section-heading">
-                  <h2>Documents</h2>
-                  <span>{selectedDetail.documents.length} attached</span>
-                </div>
-                <div className="document-list">
-                  {selectedDetail.documents.map((document) => (
-                    <article key={document.id} className="document-card">
-                      <div>
-                        <strong>{document.originalName}</strong>
-                        <small>{formatFileSize(document.sizeBytes)}</small>
-                      </div>
-                      <button
-                        className="ghost-button"
-                        onClick={() => handleDownloadDocument(document)}
-                        type="button"
+                <section className="panel-section">
+                  <div className="section-heading">
+                    <h2>Workflow controls</h2>
+                    <span>Editable</span>
+                  </div>
+                  <div className="form-stack">
+                    <label>
+                      Status
+                      <select
+                        value={editDraft.status}
+                        onChange={(event) =>
+                          setEditDraft((current) => ({ ...current, status: event.target.value }))
+                        }
                       >
-                        Download
-                      </button>
-                    </article>
-                  ))}
-                </div>
-                <div className="upload-row">
-                  <input
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                      setSelectedFile(event.target.files?.[0] ?? null)
-                    }
-                    type="file"
-                  />
-                  <button
-                    className="primary-button"
-                    disabled={!selectedFile || busy.uploading}
-                    onClick={handleUploadDocument}
-                    type="button"
-                  >
-                    {busy.uploading ? "Uploading..." : "Upload"}
-                  </button>
-                </div>
-              </section>
-            </>
-          ) : null}
+                        {STATUS_OPTIONS.map((status) => (
+                          <option key={status} value={status}>
+                            {status}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Assigned user
+                      <input
+                        value={editDraft.assignedReviewer}
+                        onChange={(event) =>
+                          setEditDraft((current) => ({
+                            ...current,
+                            assignedReviewer: event.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Summary
+                      <textarea
+                        rows={3}
+                        value={editDraft.summary}
+                        onChange={(event) =>
+                          setEditDraft((current) => ({ ...current, summary: event.target.value }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      Notes
+                      <textarea
+                        rows={4}
+                        value={editDraft.description}
+                        onChange={(event) =>
+                          setEditDraft((current) => ({ ...current, description: event.target.value }))
+                        }
+                      />
+                    </label>
+                    <button className="primary-button" disabled={busy.saving} onClick={handleSaveDetail} type="button">
+                      {busy.saving ? "Saving..." : "Save review state"}
+                    </button>
+                  </div>
+                </section>
+
+                <section className="panel-section">
+                  <div className="section-heading">
+                    <h2>Comment window</h2>
+                  </div>
+                  <div className="comment-list">
+                    {selectedDetail.comments.map((comment) => (
+                      <article key={comment.id} className="comment-card">
+                        <div>
+                          <strong>{comment.authorName}</strong>
+                          <small>{comment.authorRole}</small>
+                        </div>
+                        <p>{comment.body}</p>
+                        <span>{new Date(comment.createdAt).toLocaleString()}</span>
+                      </article>
+                    ))}
+                  </div>
+                  <form className="form-stack" onSubmit={handleCommentSubmit}>
+                    <label>
+                      <textarea
+                        rows={3}
+                        value={commentDraft}
+                        onChange={(event) => setCommentDraft(event.target.value)}
+                      />
+                    </label>
+                    <button className="primary-button" disabled={busy.commenting} type="submit">
+                      {busy.commenting ? "Posting..." : "Post comment"}
+                    </button>
+                  </form>
+                </section>
+
+                <section className="panel-section">
+                  <div className="section-heading">
+                    <h2>Documents</h2>
+                    <span>{selectedDetail.documents.length} attached</span>
+                  </div>
+                  <div className="document-list">
+                    {selectedDetail.documents.map((document) => (
+                      <article key={document.id} className="document-card">
+                        <div>
+                          <strong>{document.originalName}</strong>
+                          <small>{formatFileSize(document.sizeBytes)}</small>
+                        </div>
+                        <button
+                          className="ghost-button"
+                          onClick={() => handleDownloadDocument(document)}
+                          type="button"
+                        >
+                          Download
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                  <div className="upload-row">
+                    <input
+                      key={`question-area-upload-${uploadInputKey}`}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                        setSelectedFile(event.target.files?.[0] ?? null)
+                      }
+                      type="file"
+                    />
+                    <button
+                      className="primary-button"
+                      disabled={!selectedFile || busy.uploading}
+                      onClick={handleUploadDocument}
+                      type="button"
+                    >
+                      {busy.uploading ? "Uploading..." : "Upload"}
+                    </button>
+                  </div>
+                </section>
+              </>
+            ) : null}
+
+            {!selectedDetail && selectedParcelDetail ? (
+              <>
+                <section className="panel-section">
+                  <div className="section-heading primary-heading">
+                    <h2>
+                      {selectedParcelDetail.properties.parcelnumb
+                        ? `Parcel #${selectedParcelDetail.properties.parcelnumb}`
+                        : "Parcel record"}
+                    </h2>
+                  </div>
+                  {isParcelActive(selectedParcelDetail.properties.QA_Status) ? (
+                    <div className="badge-row">
+                      <span
+                        className={`badge ${
+                          isWorkflowActive(selectedParcelDetail.properties.reviewStatus)
+                            ? "severity-medium"
+                            : "neutral"
+                        }`}
+                      >
+                        {selectedParcelDetail.properties.reviewStatus?.toLowerCase() === "review"
+                          ? "Active"
+                          : humanize(selectedParcelDetail.properties.reviewStatus ?? "active")}
+                      </span>
+                    </div>
+                  ) : null}
+                  <dl className="detail-grid">
+                    <DetailItem label="Parcel Code" mono>
+                      {selectedParcelDetail.properties.PTVParcel ?? "None"}
+                    </DetailItem>
+                    <DetailItem label="QA ID" mono>
+                      {selectedParcelDetail.properties.questionAreaCode ?? "None"}
+                    </DetailItem>
+                    <DetailItem label="Owner">
+                      {selectedParcelDetail.properties.RegridOwner ?? "Unknown"}
+                    </DetailItem>
+                    <DetailItem label="County">
+                      {selectedParcelDetail.properties.County ?? "Unknown"}
+                    </DetailItem>
+                    <DetailItem label="State">
+                      {selectedParcelDetail.properties.State ?? "Unknown"}
+                    </DetailItem>
+                    <DetailItem label="Property">
+                      {selectedParcelDetail.properties.PropertyName ?? "None"}
+                    </DetailItem>
+                    <DetailItem label="Tract">
+                      {selectedParcelDetail.properties.TractName ?? "None"}
+                    </DetailItem>
+                    <DetailItem label="GIS Acres" mono>
+                      {formatMetric(selectedParcelDetail.properties.GIS_Acres)}
+                    </DetailItem>
+                  </dl>
+                  {isParcelActive(selectedParcelDetail.properties.QA_Status) &&
+                  selectedParcelDetail.properties.SpatialOverlayNotes ? (
+                    <div className="qa-reason">
+                      <dt>Question Area Reason</dt>
+                      <dd>{selectedParcelDetail.properties.SpatialOverlayNotes}</dd>
+                    </div>
+                  ) : null}
+                </section>
+
+                <section className="panel-section">
+                  <div className="section-heading">
+                    <h2>Comments</h2>
+                  </div>
+                  <div className="comment-list">
+                    {selectedParcelDetail.comments.map((comment) => (
+                      <article key={comment.id} className="comment-card">
+                        <div>
+                          <strong>{comment.authorName}</strong>
+                          <small>{comment.authorRole}</small>
+                        </div>
+                        <p>{comment.body}</p>
+                        <span>{new Date(comment.createdAt).toLocaleString()}</span>
+                      </article>
+                    ))}
+                  </div>
+                  <form className="form-stack" onSubmit={handleParcelCommentSubmit}>
+                    <label>
+                      Add comment
+                      <textarea
+                        rows={3}
+                        value={parcelCommentDraft}
+                        onChange={(event) => setParcelCommentDraft(event.target.value)}
+                      />
+                    </label>
+                    <button className="primary-button" disabled={busy.parcelCommenting} type="submit">
+                      {busy.parcelCommenting ? "Posting..." : "Post comment"}
+                    </button>
+                  </form>
+                </section>
+
+                <section className="panel-section">
+                  <div className="section-heading">
+                    <h2>Documents</h2>
+                    <span>{selectedParcelDetail.documents.length} attached</span>
+                  </div>
+                  <div className="document-list">
+                    {selectedParcelDetail.documents.map((document) => (
+                      <article key={document.id} className="document-card">
+                        <div>
+                          <strong>{document.originalName}</strong>
+                          <small>{formatFileSize(document.sizeBytes)}</small>
+                        </div>
+                        <button
+                          className="ghost-button"
+                          onClick={() => handleDownloadDocument(document)}
+                          type="button"
+                        >
+                          Download
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                  <div className="upload-row">
+                    <input
+                      key={`parcel-upload-${uploadInputKey}`}
+                      disabled={!selectedParcelQuestionAreaCode || busy.uploading}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                        setSelectedFile(event.target.files?.[0] ?? null)
+                      }
+                      type="file"
+                    />
+                    <button
+                      className="primary-button"
+                      disabled={!selectedParcelQuestionAreaCode || !selectedFile || busy.uploading}
+                      onClick={handleParcelUploadDocument}
+                      type="button"
+                    >
+                      {busy.uploading ? "Uploading..." : "Upload"}
+                    </button>
+                  </div>
+                  <p className="field-hint">
+                    {selectedParcelQuestionAreaCode
+                      ? `Uploads are attached to question area ${selectedParcelQuestionAreaCode}.`
+                      : "Documents can be uploaded after this parcel is linked to a question area."}
+                  </p>
+                </section>
+
+                <section className="panel-section">
+                  <div className="form-stack">
+                    <label>
+                      Update QA Status
+                      <select
+                        value={parcelStatusDraft}
+                        onChange={(event) => setParcelStatusDraft(event.target.value)}
+                      >
+                        {STATUS_OPTIONS.map((status) => (
+                          <option key={status} value={status}>
+                            {humanize(status)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      className="primary-button"
+                      disabled={busy.parcelStatusSaving}
+                      onClick={handleParcelStatusSave}
+                      type="button"
+                    >
+                      {busy.parcelStatusSaving ? "Saving..." : "Save QA Status"}
+                    </button>
+                  </div>
+                </section>
+              </>
+            ) : null}
+          </div>
         </aside>
       </section>
     </main>
@@ -908,48 +1321,143 @@ function MapViewportWatcher({ onChange }: { onChange: (bbox: string) => void }) 
   return null;
 }
 
-function MapFocus({ detail }: { detail: QuestionAreaDetail | null }) {
+function ManagementPatternDefs() {
+  return (
+    <svg style={{ height: 0, width: 0, position: "absolute" }} aria-hidden="true">
+      <defs>
+        <pattern id="management-pattern" width="6" height="6" patternUnits="userSpaceOnUse">
+          <circle cx="3" cy="3" r="1" fill="#39ff14" />
+        </pattern>
+      </defs>
+    </svg>
+  );
+}
+
+function QAMarkerLayer({
+  questionAreas,
+  selectedCode,
+  onSelect,
+}: {
+  questionAreas: QuestionAreaCollection;
+  selectedCode: string | null;
+  onSelect: (code: string | null, linkedParcelId?: number | null) => void;
+}) {
+  return (
+    <>
+      {questionAreas.features.map((feature) => {
+        const centroid = feature.properties?.centroid;
+        if (!centroid || centroid.type !== "Point") return null;
+        const [lng, lat] = centroid.coordinates;
+        const code = feature.properties?.code ?? "";
+        const linkedParcelId =
+          typeof feature.properties?.linkedParcelId === "number"
+            ? feature.properties.linkedParcelId
+            : null;
+        return (
+          <Marker
+            key={code}
+            position={[lat, lng]}
+            icon={createQAMarker(selectedCode, feature as QuestionAreaFeature)}
+            eventHandlers={{
+              click: () => onSelect(code, linkedParcelId),
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function MapFocus({
+  geometry,
+  targetKey,
+}: {
+  geometry: Geometry | null;
+  targetKey: string | number | null;
+}) {
   const map = useMap();
 
   useEffect(() => {
-    if (!detail) {
+    if (!geometry) {
       return;
     }
 
-    const bounds = L.geoJSON(detail.geometry as never).getBounds();
+    const bounds = L.geoJSON(geometry as never).getBounds();
     if (bounds.isValid()) {
       map.fitBounds(bounds.pad(0.35));
     }
-  }, [detail, map]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-center when a different item is selected
+  }, [map, targetKey]);
 
   return null;
 }
 
-function DetailItem({ label, children }: { label: string; children: string }) {
+function primaryParcelStyle(
+  feature: ParcelFeature | undefined,
+  selectedParcelId: number | null,
+) {
+  const isSelected = feature?.properties?.id === selectedParcelId;
+  const isActive = isParcelActive(feature?.properties?.QA_Status);
+
+  if (isSelected) {
+    return {
+      color: "#1a3646",
+      weight: 3,
+      fillColor: "#fdba74",
+      fillOpacity: 0.2,
+    };
+  }
+
+  return {
+    color: isActive ? "#ea580c" : "#c2410c",
+    weight: 2,
+    fillColor: "#ea580c",
+    // Keep parcel interiors clickable even when they appear visually transparent.
+    fillOpacity: 0.01,
+  };
+}
+
+function DetailItem({
+  label,
+  children,
+  mono,
+}: {
+  label: string;
+  children: string;
+  mono?: boolean;
+}) {
   return (
     <div>
       <dt>{label}</dt>
-      <dd>{children}</dd>
+      <dd className={mono ? "mono" : ""}>{children}</dd>
     </div>
   );
 }
 
-function questionAreaStyle(feature: QuestionAreaFeature | undefined, selectedCode: string | null) {
-  const severity = feature?.properties?.severity ?? "medium";
-  const active = feature?.properties?.code === selectedCode;
-  const palette =
-    severity === "high"
-      ? { color: "#8c3b33", fillColor: "#c75b46" }
-      : severity === "low"
-        ? { color: "#7d6b48", fillColor: "#d8b974" }
-        : { color: "#9f5a24", fillColor: "#e19347" };
+function SkeletonDetail() {
+  return (
+    <section className="panel-section">
+      <div className="skeleton skeleton-heading" />
+      <div className="detail-grid">
+        {[...Array(6)].map((_, i) => (
+          <div key={i}>
+            <div className="skeleton" style={{ height: "0.75rem", width: "40%", marginBottom: "0.5rem" }} />
+            <div className="skeleton" style={{ height: "1.25rem", width: "80%" }} />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
-  return {
-    color: active ? "#111111" : palette.color,
-    weight: active ? 3 : 2,
-    fillColor: palette.fillColor,
-    fillOpacity: active ? 0.45 : 0.28,
-  };
+function createQAMarker(selectedCode: string | null, feature: QuestionAreaFeature | undefined) {
+  const isSelected = feature?.properties?.code === selectedCode;
+  return L.divIcon({
+    className: "qa-marker-icon",
+    html: `<div class="qa-marker-inner ${isSelected ? "selected pulse" : ""}">?</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
 }
 
 function humanize(value: string) {
@@ -976,4 +1484,16 @@ function formatFileSize(bytes: number) {
     return `${(bytes / 1024).toFixed(1)} KB`;
   }
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isParcelActive(value: string | null | undefined) {
+  return value?.toLowerCase().includes("active") ?? false;
+}
+
+function isWorkflowActive(value: string | null | undefined) {
+  return value?.toLowerCase() === "active";
+}
+
+function deriveInitialParcelStatus(value: string | null | undefined) {
+  return isParcelActive(value) ? "active" : "hold";
 }

@@ -15,12 +15,6 @@ const DEMO_USERS = [
     role: "admin",
   },
   {
-    name: "Morgan Review",
-    email: "reviewer@qaviewer.local",
-    password: "review123!",
-    role: "reviewer",
-  },
-  {
     name: "Cameron Client",
     email: "client@qaviewer.local",
     password: "client123!",
@@ -28,16 +22,36 @@ const DEMO_USERS = [
   },
 ];
 
+const SEED_TABLES = [
+  "question_areas",
+  "parcel_features",
+  "parcel_points",
+  "management_tracts",
+] as const;
+
+async function tableCounts(client: PoolClient): Promise<Record<string, number>> {
+  const result = await client.query<{ tbl: string; count: string }>(`
+    SELECT tbl, count FROM (
+      SELECT 'question_areas' AS tbl, COUNT(*)::text AS count FROM question_areas
+      UNION ALL
+      SELECT 'parcel_features', COUNT(*)::text FROM parcel_features
+      UNION ALL
+      SELECT 'parcel_points', COUNT(*)::text FROM parcel_points
+      UNION ALL
+      SELECT 'management_tracts', COUNT(*)::text FROM management_tracts
+    ) sub
+  `);
+  return Object.fromEntries(result.rows.map((r) => [r.tbl, Number(r.count)]));
+}
+
 export async function ensureSeedData(client: PoolClient): Promise<void> {
   await fs.mkdir(config.uploadsDir, { recursive: true });
 
   await seedUsers(client);
 
-  const existingCount = await client.query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM question_areas`,
-  );
-
-  if (Number(existingCount.rows[0]?.count ?? 0) > 0) {
+  const counts = await tableCounts(client);
+  const allPopulated = SEED_TABLES.every((t) => (counts[t] ?? 0) > 0);
+  if (allPopulated) {
     return;
   }
 
@@ -45,47 +59,46 @@ export async function ensureSeedData(client: PoolClient): Promise<void> {
   const parcelFeatures = await loadFeatureCollection("primary_parcels.geojson");
   const parcelPoints = await loadFeatureCollection("parcel_points.geojson");
   const managementTracts = await loadFeatureCollection("management_tracts.geojson");
-  const taxCounties = await loadFeatureCollection("tax_counties.geojson");
-  const managementCounties = await loadFeatureCollection("management_counties.geojson");
 
-  for (const feature of questionAreas.features) {
-    await insertQuestionArea(client, feature);
+  if ((counts["question_areas"] ?? 0) === 0) {
+    for (const feature of questionAreas.features) {
+      await insertQuestionArea(client, feature);
+    }
   }
 
-  for (const feature of parcelFeatures.features) {
-    await insertParcelFeature(client, feature);
+  if ((counts["parcel_features"] ?? 0) === 0) {
+    for (const feature of parcelFeatures.features) {
+      await insertParcelFeature(client, feature);
+    }
   }
 
-  for (const feature of parcelPoints.features) {
-    await insertParcelPoint(client, feature);
+  if ((counts["parcel_points"] ?? 0) === 0) {
+    for (const feature of parcelPoints.features) {
+      await insertParcelPoint(client, feature);
+    }
   }
 
-  for (const feature of managementTracts.features) {
-    await insertManagementTract(client, feature);
-  }
-
-  for (const feature of taxCounties.features) {
-    await insertCountyBoundary(client, feature, "tax_counties");
-  }
-
-  for (const feature of managementCounties.features) {
-    await insertCountyBoundary(client, feature, "management_counties");
+  if ((counts["management_tracts"] ?? 0) === 0) {
+    for (const feature of managementTracts.features) {
+      await insertManagementTract(client, feature);
+    }
   }
 
   await seedComments(client);
 }
 
 async function seedUsers(client: PoolClient): Promise<void> {
+  if (!config.demoMode) {
+    return;
+  }
+
   for (const user of DEMO_USERS) {
     const passwordHash = await hashPassword(user.password);
     await client.query(
       `
         INSERT INTO users (name, email, password_hash, role)
         VALUES ($1, $2, $3, $4)
-        ON CONFLICT (email) DO UPDATE
-        SET name = EXCLUDED.name,
-            password_hash = EXCLUDED.password_hash,
-            role = EXCLUDED.role
+        ON CONFLICT (email) DO NOTHING
       `,
       [user.name, user.email, passwordHash, user.role],
     );
@@ -301,45 +314,6 @@ async function insertManagementTract(
   );
 }
 
-async function insertCountyBoundary(
-  client: PoolClient,
-  feature: Feature<Geometry, GeoJsonProperties>,
-  layerGroup: "tax_counties" | "management_counties",
-): Promise<void> {
-  if (!feature.geometry) {
-    return;
-  }
-  const properties = feature.properties ?? {};
-  await client.query(
-    `
-      INSERT INTO county_boundaries (
-        layer_group,
-        name,
-        state_abbr,
-        county_state,
-        billed_acreage,
-        gis_acres,
-        raw_properties,
-        geom
-      )
-      VALUES (
-        $1, $2, $3, $4, $5, $6, $7::jsonb,
-        ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($8), 4326))
-      )
-    `,
-    [
-      layerGroup,
-      properties.NAME,
-      properties.State_Abbr,
-      properties.County_State,
-      properties.Billed_Acreage,
-      properties.GIS_Acres,
-      JSON.stringify(properties),
-      JSON.stringify(feature.geometry),
-    ],
-  );
-}
-
 async function seedComments(client: PoolClient): Promise<void> {
   const existingComments = await client.query<{ count: string }>(
     `SELECT COUNT(*)::text AS count FROM comments`,
@@ -351,7 +325,7 @@ async function seedComments(client: PoolClient): Promise<void> {
 
   const { rows: users } = await client.query<{ id: number; email: string }>(
     `SELECT id, email FROM users WHERE email IN ($1, $2) ORDER BY email`,
-    ["admin@qaviewer.local", "reviewer@qaviewer.local"],
+    ["admin@qaviewer.local", "client@qaviewer.local"],
   );
   const userMap = new Map(users.map((user) => [user.email, user.id]));
 
@@ -368,7 +342,7 @@ async function seedComments(client: PoolClient): Promise<void> {
   for (const [index, area] of questionAreas.entries()) {
     const authorId =
       index % 2 === 0
-        ? userMap.get("reviewer@qaviewer.local")
+        ? userMap.get("client@qaviewer.local")
         : userMap.get("admin@qaviewer.local");
 
     if (!authorId) {

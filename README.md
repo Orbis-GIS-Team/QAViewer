@@ -13,7 +13,7 @@ QAViewer is a Docker-first GIS review app built from the provided PRD and geodat
 
 - `scripts/export_seed_data.py`: reads the file geodatabase and writes normalized GeoJSON seed assets into `data/generated`
 - `backend/`: API, auth, PostGIS schema, seed loader, comments, and document upload/download endpoints
-- `frontend/`: Leaflet reviewer workspace with search, layer toggles, details, comments, and document management
+- `frontend/`: Leaflet review workspace with search, layer toggles, details, comments, and document management
 - `data/generated/`: exported GIS seed layers used by the backend on first start
 
 ## Run with Docker
@@ -33,7 +33,6 @@ docker compose up --build
 ## Demo credentials
 
 - `admin@qaviewer.local` / `admin123!`
-- `reviewer@qaviewer.local` / `review123!`
 - `client@qaviewer.local` / `client123!`
 
 ## Local development without Docker
@@ -74,9 +73,11 @@ The seed assets were generated from the provided geodatabase. To rebuild them:
 - Comments
 - Document upload/list/download
 - Basic status tracking
+- Admin console for user creation, role management, and guarded account deletion
 
 ## Notes
 
 - The backend imports the seed layers automatically on first start if the database is empty.
 - Documents are stored in `backend/uploads`.
+- Admin users can switch between the review workspace and the administration console from the header.
 - The question-area seed is built from `BTG_Spatial_Fix_Primary_Erase` and `BTG_Spatial_Fix_Comparison_Erase`, with parcel context attached from the primary parcel layer.

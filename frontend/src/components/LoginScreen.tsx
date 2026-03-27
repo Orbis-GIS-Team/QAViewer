@@ -6,7 +6,6 @@ type LoginScreenProps = {
 
 const DEMO_ACCOUNTS = [
   { label: "Admin", email: "admin@qaviewer.local", password: "admin123!" },
-  { label: "Reviewer", email: "reviewer@qaviewer.local", password: "review123!" },
   { label: "Client", email: "client@qaviewer.local", password: "client123!" },
 ];
 
@@ -72,7 +71,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           </label>
           {error ? <p className="form-error">{error}</p> : null}
           <button className="primary-button" disabled={submitting} type="submit">
-            {submitting ? "Signing in..." : "Enter reviewer workspace"}
+            {submitting ? "Signing in..." : "Enter workspace"}
           </button>
         </form>
       </section>

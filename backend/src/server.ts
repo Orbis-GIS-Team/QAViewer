@@ -6,9 +6,11 @@ import { authenticateRequest } from "./lib/auth.js";
 import { pool, waitForDatabase, withClient, withTransaction } from "./lib/db.js";
 import { ensureSchema } from "./lib/schema.js";
 import { ensureSeedData } from "./lib/seed.js";
+import adminRoutes from "./routes/admin.js";
 import authRoutes from "./routes/auth.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import layerRoutes from "./routes/layers.js";
+import parcelRoutes from "./routes/parcels.js";
 import questionAreaRoutes from "./routes/questionAreas.js";
 
 async function bootstrap(): Promise<void> {
@@ -27,13 +29,20 @@ async function bootstrap(): Promise<void> {
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true }));
 
-  app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok" });
+  app.get("/api/health", async (_req, res) => {
+    try {
+      await pool.query("SELECT 1");
+      res.json({ status: "ok" });
+    } catch {
+      res.status(503).json({ status: "degraded", message: "Database connection failed." });
+    }
   });
 
   app.use("/api/auth", authRoutes);
+  app.use("/api/admin", authenticateRequest, adminRoutes);
   app.use("/api/dashboard", authenticateRequest, dashboardRoutes);
   app.use("/api/layers", authenticateRequest, layerRoutes);
+  app.use("/api/parcels", authenticateRequest, parcelRoutes);
   app.use("/api/question-areas", authenticateRequest, questionAreaRoutes);
 
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

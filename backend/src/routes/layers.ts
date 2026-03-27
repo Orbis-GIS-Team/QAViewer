@@ -27,21 +27,106 @@ const layerConfig = {
     orderBy: "id",
     limit: 3000,
   },
-  tax_counties: {
-    table: "county_boundaries",
-    geometryExpression: "ST_AsGeoJSON(ST_SimplifyPreserveTopology(geom, 0.002), 5)::jsonb",
-    wherePrefix: "layer_group = 'tax_counties'",
-    orderBy: "id",
-    limit: 500,
-  },
-  management_counties: {
-    table: "county_boundaries",
-    geometryExpression: "ST_AsGeoJSON(ST_SimplifyPreserveTopology(geom, 0.002), 5)::jsonb",
-    wherePrefix: "layer_group = 'management_counties'",
-    orderBy: "id",
-    limit: 500,
-  },
 } as const;
+
+router.get("/:layerKey/:id", async (req, res) => {
+  const layerKey = String(req.params.layerKey) as keyof typeof layerConfig;
+  const layer = layerConfig[layerKey];
+
+  if (!layer) {
+    res.status(404).json({ message: "Unknown layer." });
+    return;
+  }
+
+  const featureId = Number(req.params.id);
+  if (!Number.isInteger(featureId) || featureId <= 0) {
+    res.status(400).json({ message: "Invalid feature id." });
+    return;
+  }
+
+  if (layerKey === "primary_parcels") {
+    const result = await query<{
+      id: number;
+      properties: Record<string, unknown>;
+      geometry: object;
+    }>(
+      `
+        SELECT
+          p.id,
+          p.raw_properties
+            || jsonb_build_object('questionAreaCode', qa.code) AS properties,
+          ST_AsGeoJSON(p.geom, 5)::jsonb AS geometry
+        FROM parcel_features p
+        LEFT JOIN LATERAL (
+          SELECT qa.code
+          FROM question_areas qa
+          WHERE (
+            p.parcel_number IS NOT NULL
+            AND qa.primary_parcel_number = p.parcel_number
+            AND COALESCE(qa.county, '') = COALESCE(p.county, '')
+            AND COALESCE(qa.state, '') = COALESCE(p.state, '')
+          ) OR (
+            p.ptv_parcel IS NOT NULL
+            AND qa.primary_parcel_code = p.ptv_parcel
+            AND COALESCE(qa.county, '') = COALESCE(p.county, '')
+            AND COALESCE(qa.state, '') = COALESCE(p.state, '')
+          )
+          ORDER BY
+            CASE
+              WHEN p.parcel_number IS NOT NULL AND qa.primary_parcel_number = p.parcel_number THEN 0
+              ELSE 1
+            END,
+            qa.code
+          LIMIT 1
+        ) qa ON true
+        WHERE p.id = $1
+        LIMIT 1
+      `,
+      [featureId],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      res.status(404).json({ message: "Feature not found." });
+      return;
+    }
+
+    res.json({
+      type: "Feature",
+      geometry: row.geometry,
+      properties: {
+        id: row.id,
+        ...row.properties,
+      },
+    });
+    return;
+  }
+
+  const result = await query<{ id: number; properties: Record<string, unknown>; geometry: object }>(
+    `
+      SELECT id, raw_properties AS properties, ${layer.geometryExpression} AS geometry
+      FROM ${layer.table}
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [featureId],
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    res.status(404).json({ message: "Feature not found." });
+    return;
+  }
+
+  res.json({
+    type: "Feature",
+    geometry: row.geometry,
+    properties: {
+      id: row.id,
+      ...row.properties,
+    },
+  });
+});
 
 router.get("/:layerKey", async (req, res) => {
   const layerKey = String(req.params.layerKey) as keyof typeof layerConfig;
@@ -63,12 +148,66 @@ router.get("/:layerKey", async (req, res) => {
   if (bbox) {
     const [west, south, east, north] = bbox;
     params.push(west, south, east, north);
+    const geometryColumn = layerKey === "primary_parcels" ? "p.geom" : "geom";
     clauses.push(
-      `geom && ST_MakeEnvelope($${params.length - 3}, $${params.length - 2}, $${params.length - 1}, $${params.length}, 4326)`,
+      `${geometryColumn} && ST_MakeEnvelope($${params.length - 3}, $${params.length - 2}, $${params.length - 1}, $${params.length}, 4326)`,
     );
   }
 
   const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+
+  if (layerKey === "primary_parcels") {
+    const result = await query<{ id: number; properties: Record<string, unknown>; geometry: object }>(
+      `
+        SELECT
+          p.id,
+          p.raw_properties || jsonb_build_object('questionAreaCode', qa.code) AS properties,
+          ST_AsGeoJSON(p.geom, 5)::jsonb AS geometry
+        FROM parcel_features p
+        LEFT JOIN LATERAL (
+          SELECT qa.code
+          FROM question_areas qa
+          WHERE (
+            p.parcel_number IS NOT NULL
+            AND qa.primary_parcel_number = p.parcel_number
+            AND COALESCE(qa.county, '') = COALESCE(p.county, '')
+            AND COALESCE(qa.state, '') = COALESCE(p.state, '')
+          ) OR (
+            p.ptv_parcel IS NOT NULL
+            AND qa.primary_parcel_code = p.ptv_parcel
+            AND COALESCE(qa.county, '') = COALESCE(p.county, '')
+            AND COALESCE(qa.state, '') = COALESCE(p.state, '')
+          )
+          ORDER BY
+            CASE
+              WHEN p.parcel_number IS NOT NULL AND qa.primary_parcel_number = p.parcel_number THEN 0
+              ELSE 1
+            END,
+            qa.code
+          LIMIT 1
+        ) qa ON true
+        ${whereClause}
+        ORDER BY ${layer.orderBy}
+        LIMIT ${layer.limit}
+      `,
+      params,
+    );
+
+    res.json(
+      featureCollection(
+        result.rows.map((row) => ({
+          type: "Feature",
+          geometry: row.geometry as never,
+          properties: {
+            id: row.id,
+            ...row.properties,
+          },
+        })),
+      ),
+    );
+    return;
+  }
+
   const result = await query<{ id: number; properties: Record<string, unknown>; geometry: object }>(
     `
       SELECT id, raw_properties AS properties, ${layer.geometryExpression} AS geometry

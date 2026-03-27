@@ -64,19 +64,48 @@ router.get("/search", async (req, res) => {
     ),
     query<{
       id: number;
-      parcel_code: string | null;
+      parcel_number: string | null;
       owner_name: string | null;
       county: string | null;
       state: string | null;
+      question_area_code: string | null;
     }>(
       `
-        SELECT id, parcel_code, owner_name, county, state
-        FROM parcel_points
-        WHERE COALESCE(parcel_code, '') ILIKE $1
-           OR COALESCE(owner_name, '') ILIKE $1
-           OR COALESCE(county, '') ILIKE $1
-           OR COALESCE(state, '') ILIKE $1
-        ORDER BY parcel_code NULLS LAST
+        SELECT
+          p.id,
+          p.parcel_number,
+          p.owner_name,
+          p.county,
+          p.state,
+          qa.code AS question_area_code
+        FROM parcel_features p
+        LEFT JOIN LATERAL (
+          SELECT qa.code
+          FROM question_areas qa
+          WHERE (
+            p.parcel_number IS NOT NULL
+            AND qa.primary_parcel_number = p.parcel_number
+            AND COALESCE(qa.county, '') = COALESCE(p.county, '')
+            AND COALESCE(qa.state, '') = COALESCE(p.state, '')
+          ) OR (
+            p.ptv_parcel IS NOT NULL
+            AND qa.primary_parcel_code = p.ptv_parcel
+            AND COALESCE(qa.county, '') = COALESCE(p.county, '')
+            AND COALESCE(qa.state, '') = COALESCE(p.state, '')
+          )
+          ORDER BY
+            CASE
+              WHEN p.parcel_number IS NOT NULL AND qa.primary_parcel_number = p.parcel_number THEN 0
+              ELSE 1
+            END,
+            qa.code
+          LIMIT 1
+        ) qa ON true
+        WHERE COALESCE(p.parcel_number, '') ILIKE $1
+           OR COALESCE(p.owner_name, '') ILIKE $1
+           OR COALESCE(p.county, '') ILIKE $1
+           OR COALESCE(p.state, '') ILIKE $1
+        ORDER BY p.parcel_number NULLS LAST
         LIMIT 8
       `,
       [searchValue],
@@ -95,8 +124,9 @@ router.get("/search", async (req, res) => {
       ...parcels.rows.map((row) => ({
         type: "parcel",
         id: String(row.id),
-        label: row.parcel_code ?? "Unnamed parcel",
+        label: row.parcel_number ?? "Unnamed parcel",
         subtitle: [row.owner_name, row.county, row.state].filter(Boolean).join(" | "),
+        questionAreaCode: row.question_area_code,
       })),
     ].slice(0, 10),
   });

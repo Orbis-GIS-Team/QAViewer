@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 
 export async function ensureSchema(client: PoolClient): Promise<void> {
   await client.query(`CREATE EXTENSION IF NOT EXISTS postgis`);
+  await client.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -9,9 +10,25 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin', 'client')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  await client.query(`
+    UPDATE users
+    SET role = 'client'
+    WHERE role = 'reviewer'
+  `);
+
+  await client.query(`
+    ALTER TABLE users
+    DROP CONSTRAINT IF EXISTS users_role_check
+  `);
+
+  await client.query(`
+    ALTER TABLE users
+    ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'client'))
   `);
 
   await client.query(`
@@ -20,8 +37,8 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       code TEXT NOT NULL UNIQUE,
       source_layer TEXT NOT NULL,
       source_group TEXT NOT NULL,
-      status TEXT NOT NULL,
-      severity TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('review', 'active', 'resolved', 'hold')),
+      severity TEXT NOT NULL CHECK (severity IN ('high', 'medium', 'low')),
       title TEXT NOT NULL,
       summary TEXT NOT NULL,
       description TEXT,
@@ -63,6 +80,31 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       raw_properties JSONB NOT NULL DEFAULT '{}'::jsonb,
       geom geometry(MultiPolygon, 4326) NOT NULL
     )
+  `);
+
+  await client.query(`
+    ALTER TABLE parcel_features
+    ADD COLUMN IF NOT EXISTS review_status TEXT
+  `);
+
+  await client.query(`
+    UPDATE parcel_features
+    SET review_status = CASE
+      WHEN COALESCE(LOWER(qa_status), '') LIKE '%active%' THEN 'active'
+      ELSE 'review'
+    END
+    WHERE review_status IS NULL
+  `);
+
+  await client.query(`
+    ALTER TABLE parcel_features
+    DROP CONSTRAINT IF EXISTS parcel_features_review_status_check
+  `);
+
+  await client.query(`
+    ALTER TABLE parcel_features
+    ADD CONSTRAINT parcel_features_review_status_check
+    CHECK (review_status IN ('review', 'active', 'resolved', 'hold'))
   `);
 
   await client.query(`
@@ -124,6 +166,27 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
   `);
 
   await client.query(`
+    CREATE TABLE IF NOT EXISTS parcel_comments (
+      id SERIAL PRIMARY KEY,
+      parcel_id INTEGER NOT NULL REFERENCES parcel_features(id) ON DELETE CASCADE,
+      author_id INTEGER NOT NULL REFERENCES users(id),
+      body TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS parcel_status_history (
+      id SERIAL PRIMARY KEY,
+      parcel_id INTEGER NOT NULL REFERENCES parcel_features(id) ON DELETE CASCADE,
+      author_id INTEGER NOT NULL REFERENCES users(id),
+      previous_status TEXT,
+      next_status TEXT NOT NULL CHECK (next_status IN ('review', 'active', 'resolved', 'hold')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await client.query(`
     CREATE TABLE IF NOT EXISTS documents (
       id SERIAL PRIMARY KEY,
       question_area_id INTEGER NOT NULL REFERENCES question_areas(id) ON DELETE CASCADE,
@@ -143,5 +206,17 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
     CREATE INDEX IF NOT EXISTS parcel_points_geom_idx ON parcel_points USING GIST (geom);
     CREATE INDEX IF NOT EXISTS management_tracts_geom_idx ON management_tracts USING GIST (geom);
     CREATE INDEX IF NOT EXISTS county_boundaries_geom_idx ON county_boundaries USING GIST (geom);
+
+    CREATE INDEX IF NOT EXISTS question_areas_status_idx ON question_areas (status);
+    CREATE INDEX IF NOT EXISTS question_areas_severity_idx ON question_areas (severity);
+
+    CREATE INDEX IF NOT EXISTS comments_question_area_id_idx ON comments (question_area_id);
+    CREATE INDEX IF NOT EXISTS documents_question_area_id_idx ON documents (question_area_id);
+    CREATE INDEX IF NOT EXISTS parcel_comments_parcel_id_idx ON parcel_comments (parcel_id);
+    CREATE INDEX IF NOT EXISTS parcel_status_history_parcel_id_idx ON parcel_status_history (parcel_id);
+
+    CREATE INDEX IF NOT EXISTS question_areas_code_trgm_idx ON question_areas USING GIN (code gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS question_areas_title_trgm_idx ON question_areas USING GIN (title gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS question_areas_search_keywords_trgm_idx ON question_areas USING GIN (search_keywords gin_trgm_ops);
   `);
 }
