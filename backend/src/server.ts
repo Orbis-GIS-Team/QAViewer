@@ -50,8 +50,8 @@ async function bootstrap(): Promise<void> {
     res.status(500).json({ message: "Unexpected server error." });
   });
 
-  app.listen(config.apiPort, () => {
-    console.log(`API listening on http://localhost:${config.apiPort}`);
+  app.listen(config.apiPort, config.apiHost, () => {
+    console.log(`API listening on http://${config.apiHost}:${config.apiPort}`);
   });
 }
 

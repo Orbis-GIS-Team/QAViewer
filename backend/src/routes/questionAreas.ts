@@ -244,7 +244,7 @@ router.get("/:code", async (req, res) => {
   }>(
     `
       SELECT
-        id,
+        qa.id,
         code,
         source_layer,
         source_group,
