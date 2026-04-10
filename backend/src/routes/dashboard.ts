@@ -1,6 +1,11 @@
 import { Router } from "express";
 
 import { query } from "../lib/db.js";
+import {
+  buildParcelSearchClause,
+  buildQuestionAreaSearchClause,
+  parseSearchField,
+} from "../lib/search.js";
 
 const router = Router();
 
@@ -37,6 +42,7 @@ router.get("/search", async (req, res) => {
     return;
   }
 
+  const searchField = parseSearchField(req.query.field);
   const searchValue = `%${rawQuery}%`;
   const [questionAreas, parcels] = await Promise.all([
     query<{
@@ -48,16 +54,10 @@ router.get("/search", async (req, res) => {
       source_group: string;
     }>(
       `
-        SELECT code, title, county, state, primary_parcel_code, source_group
-        FROM question_areas
-        WHERE code ILIKE $1
-           OR title ILIKE $1
-           OR summary ILIKE $1
-           OR COALESCE(primary_parcel_number, '') ILIKE $1
-           OR COALESCE(primary_parcel_code, '') ILIKE $1
-           OR COALESCE(primary_owner_name, '') ILIKE $1
-           OR COALESCE(search_keywords, '') ILIKE $1
-        ORDER BY code
+        SELECT qa.code, qa.title, qa.county, qa.state, qa.primary_parcel_code, qa.source_group
+        FROM question_areas qa
+        WHERE ${buildQuestionAreaSearchClause("qa", "$1", searchField)}
+        ORDER BY qa.code
         LIMIT 8
       `,
       [searchValue],
@@ -101,10 +101,7 @@ router.get("/search", async (req, res) => {
             qa.code
           LIMIT 1
         ) qa ON true
-        WHERE COALESCE(p.parcel_number, '') ILIKE $1
-           OR COALESCE(p.owner_name, '') ILIKE $1
-           OR COALESCE(p.county, '') ILIKE $1
-           OR COALESCE(p.state, '') ILIKE $1
+        WHERE ${buildParcelSearchClause("p", "qa", "$1", searchField)}
         ORDER BY p.parcel_number NULLS LAST
         LIMIT 8
       `,

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { requireRole } from "../lib/auth.js";
 import { query } from "../lib/db.js";
+import { buildQuestionAreaSearchClause, parseSearchField } from "../lib/search.js";
 import { featureCollection, parseBbox } from "../lib/utils.js";
 
 const router = Router();
@@ -78,23 +79,11 @@ router.get("/", async (req, res) => {
   const params: unknown[] = [];
 
   const search = String(req.query.search ?? "").trim();
+  const searchField = parseSearchField(req.query.field);
   if (search) {
     params.push(`%${search}%`);
     const placeholder = `$${params.length}`;
-    clauses.push(`
-      (
-        qa.code ILIKE ${placeholder}
-        OR qa.title ILIKE ${placeholder}
-        OR qa.summary ILIKE ${placeholder}
-        OR COALESCE(qa.primary_parcel_number, '') ILIKE ${placeholder}
-        OR COALESCE(qa.primary_parcel_code, '') ILIKE ${placeholder}
-        OR COALESCE(qa.primary_owner_name, '') ILIKE ${placeholder}
-        OR COALESCE(qa.property_name, '') ILIKE ${placeholder}
-        OR COALESCE(qa.analysis_name, '') ILIKE ${placeholder}
-        OR COALESCE(qa.tract_name, '') ILIKE ${placeholder}
-        OR COALESCE(qa.search_keywords, '') ILIKE ${placeholder}
-      )
-    `);
+    clauses.push(`(${buildQuestionAreaSearchClause("qa", placeholder, searchField)})`);
   }
 
   const status = String(req.query.status ?? "").trim();

@@ -25,6 +25,8 @@ type SearchResult = {
   questionAreaCode?: string | null;
 };
 
+type SearchField = "all" | "parcelnumb" | "county" | "qa_id";
+
 type SummaryPayload = {
   questionAreas: number;
   comments: number;
@@ -196,7 +198,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [searchInput, setSearchInput] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [searchField, setSearchField] = useState("all");
+  const [searchField, setSearchField] = useState<SearchField>("all");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
   const [selectedParcelId, setSelectedParcelId] = useState<number | null>(null);
@@ -266,7 +268,9 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     }
 
     let alive = true;
-    apiRequest<{ results: SearchResult[] }>(`/dashboard/search?q=${encodeURIComponent(query)}`, {
+    const params = new URLSearchParams({ q: query, field: searchField });
+
+    apiRequest<{ results: SearchResult[] }>(`/dashboard/search?${params.toString()}`, {
       token: session.token,
     })
       .then((payload) => {
@@ -283,7 +287,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     return () => {
       alive = false;
     };
-  }, [deferredSearch, session.token]);
+  }, [deferredSearch, searchField, session.token]);
 
   useEffect(() => {
     let alive = true;
@@ -293,9 +297,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     });
     if (searchFilter) {
       params.set("search", searchFilter);
-      if (searchField !== "all") {
-        params.set("field", searchField); // In case backend adds support later
-      }
+      params.set("field", searchField);
     }
 
     apiRequest<QuestionAreaCollection>(`/question-areas?${params.toString()}`, {
@@ -780,7 +782,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 }}
               >
                 <div className="filter-row">
-                  <select value={searchField} onChange={(event) => setSearchField(event.target.value)}>
+                  <select
+                    value={searchField}
+                    onChange={(event) => setSearchField(event.target.value as SearchField)}
+                  >
                     <option value="all">Search all fields</option>
                     <option value="parcelnumb">Parcel Number</option>
                     <option value="county">County</option>
@@ -882,9 +887,16 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
           <MapContainer center={[39.5, -95]} zoom={4} className="leaflet-shell" zoomControl={false}>
             {/* ... TileLayer, ViewportWatcher, etc ... */}
             <TileLayer
-              attribution='&copy; OpenStreetMap contributors &copy; CARTO'
-              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-              subdomains={["a", "b", "c", "d"]}
+              attribution='Imagery courtesy of the <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">U.S. Geological Survey</a>'
+              url="https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}"
+            />
+            <TileLayer
+              attribution='Roads &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors'
+              url="https://services.arcgisonline.com/arcgis/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}"
+            />
+            <TileLayer
+              attribution='Labels &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors'
+              url="https://services.arcgisonline.com/arcgis/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
             />
             <MapViewportWatcher onChange={setMapBbox} />
             <MapFocus geometry={selectedGeometry} targetKey={selectedGeometryKey} />
@@ -1398,20 +1410,23 @@ function primaryParcelStyle(
 ) {
   const isSelected = feature?.properties?.id === selectedParcelId;
   const isActive = isParcelActive(feature?.properties?.QA_Status);
+  const parcelOutlineActive = "#fde047";
+  const parcelOutlineInactive = "#facc15";
+  const parcelSelection = "#38bdf8";
 
   if (isSelected) {
     return {
-      color: "#1a3646",
+      color: parcelSelection,
       weight: 3,
-      fillColor: "#fdba74",
-      fillOpacity: 0.2,
+      fillColor: parcelSelection,
+      fillOpacity: 0.18,
     };
   }
 
   return {
-    color: isActive ? "#ea580c" : "#c2410c",
-    weight: 2,
-    fillColor: "#ea580c",
+    color: isActive ? parcelOutlineActive : parcelOutlineInactive,
+    weight: 2.75,
+    fillColor: parcelOutlineActive,
     // Keep parcel interiors clickable even when they appear visually transparent.
     fillOpacity: 0.01,
   };
