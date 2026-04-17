@@ -8,6 +8,7 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { requireRole } from "../lib/auth.js";
 import { query } from "../lib/db.js";
+import { questionAreaParcelJoin } from "../lib/parcelQuestionAreaMatch.js";
 import { buildQuestionAreaSearchClause, parseSearchField } from "../lib/search.js";
 import { featureCollection, parseBbox } from "../lib/utils.js";
 
@@ -32,6 +33,8 @@ const ALLOWED_MIME_TYPES = new Set([
   "application/json",
 ]);
 
+const MIME_FALLBACK_TYPES = new Set(["", "application/octet-stream"]);
+
 const ALLOWED_EXTENSIONS = new Set([
   ".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".gif", ".webp",
   ".doc", ".docx", ".xls", ".xlsx", ".txt", ".csv", ".zip",
@@ -53,7 +56,11 @@ const upload = multer({
   },
   fileFilter: (_req, file, callback) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (!ALLOWED_EXTENSIONS.has(ext) || !ALLOWED_MIME_TYPES.has(file.mimetype)) {
+    const hasSafeExtension = ALLOWED_EXTENSIONS.has(ext);
+    const hasAllowedMime = ALLOWED_MIME_TYPES.has(file.mimetype);
+    const hasBrowserFallbackMime = MIME_FALLBACK_TYPES.has(file.mimetype);
+
+    if (!hasSafeExtension || (!hasAllowedMime && !hasBrowserFallbackMime)) {
       callback(new Error(`File type not allowed: ${ext} (${file.mimetype})`));
       return;
     }
@@ -146,28 +153,7 @@ router.get("/", async (req, res) => {
         ST_AsGeoJSON(geom, 5)::jsonb AS geometry,
         ST_AsGeoJSON(centroid, 5)::jsonb AS centroid_geom
       FROM question_areas qa
-      LEFT JOIN LATERAL (
-        SELECT p.id
-        FROM parcel_features p
-        WHERE (
-          qa.primary_parcel_number IS NOT NULL
-          AND p.parcel_number = qa.primary_parcel_number
-          AND COALESCE(p.county, '') = COALESCE(qa.county, '')
-          AND COALESCE(p.state, '') = COALESCE(qa.state, '')
-        ) OR (
-          qa.primary_parcel_code IS NOT NULL
-          AND p.ptv_parcel = qa.primary_parcel_code
-          AND COALESCE(p.county, '') = COALESCE(qa.county, '')
-          AND COALESCE(p.state, '') = COALESCE(qa.state, '')
-        )
-        ORDER BY
-          CASE
-            WHEN qa.primary_parcel_number IS NOT NULL AND p.parcel_number = qa.primary_parcel_number THEN 0
-            ELSE 1
-          END,
-          p.id
-        LIMIT 1
-      ) linked_parcel ON true
+      ${questionAreaParcelJoin("qa", "linked_parcel")}
       ${whereClause}
       ORDER BY code
       LIMIT ${limit}
@@ -258,28 +244,7 @@ router.get("/:code", async (req, res) => {
         ST_AsGeoJSON(qa.geom, 6)::jsonb AS geometry,
         ST_AsGeoJSON(qa.centroid, 6)::jsonb AS centroid
       FROM question_areas qa
-      LEFT JOIN LATERAL (
-        SELECT p.id
-        FROM parcel_features p
-        WHERE (
-          qa.primary_parcel_number IS NOT NULL
-          AND p.parcel_number = qa.primary_parcel_number
-          AND COALESCE(p.county, '') = COALESCE(qa.county, '')
-          AND COALESCE(p.state, '') = COALESCE(qa.state, '')
-        ) OR (
-          qa.primary_parcel_code IS NOT NULL
-          AND p.ptv_parcel = qa.primary_parcel_code
-          AND COALESCE(p.county, '') = COALESCE(qa.county, '')
-          AND COALESCE(p.state, '') = COALESCE(qa.state, '')
-        )
-        ORDER BY
-          CASE
-            WHEN qa.primary_parcel_number IS NOT NULL AND p.parcel_number = qa.primary_parcel_number THEN 0
-            ELSE 1
-          END,
-          p.id
-        LIMIT 1
-      ) linked_parcel ON true
+      ${questionAreaParcelJoin("qa", "linked_parcel")}
       WHERE qa.code = $1
     `,
     [req.params.code],

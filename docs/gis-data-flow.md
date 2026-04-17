@@ -43,7 +43,7 @@ The main spatial tables are:
 | `question_areas` | `geom geometry(MultiPolygon, 4326)` | Main review items |
 | `question_areas` | `centroid geometry(Point, 4326)` | Marker placement for question areas |
 | `parcel_features` | `geom geometry(MultiPolygon, 4326)` | Parcel polygons |
-| `parcel_points` | `geom geometry(Point, 4326)` | Point layer supported by API, not currently shown in main UI |
+| `parcel_points` | `geom geometry(Point, 4326)` | Toggleable parcel point context layer |
 | `management_tracts` | `geom geometry(MultiPolygon, 4326)` | Management overlay |
 
 These columns are defined in:
@@ -72,6 +72,7 @@ The frontend then uses that bbox in API requests such as:
 
 - `GET /api/question-areas?bbox=...`
 - `GET /api/layers/primary_parcels?bbox=...`
+- `GET /api/layers/parcel_points?bbox=...`
 - `GET /api/layers/management_tracts?bbox=...`
 
 So the map is not loading all GIS data at once and filtering in the browser. It is asking PostGIS for only the features that intersect the current view.

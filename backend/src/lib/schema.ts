@@ -63,6 +63,14 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
   `);
 
   await client.query(`
+    CREATE TABLE IF NOT EXISTS seed_metadata (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await client.query(`
     CREATE TABLE IF NOT EXISTS parcel_features (
       id SERIAL PRIMARY KEY,
       parcel_number TEXT,
@@ -142,20 +150,6 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
   `);
 
   await client.query(`
-    CREATE TABLE IF NOT EXISTS county_boundaries (
-      id SERIAL PRIMARY KEY,
-      layer_group TEXT NOT NULL,
-      name TEXT,
-      state_abbr TEXT,
-      county_state TEXT,
-      billed_acreage TEXT,
-      gis_acres DOUBLE PRECISION,
-      raw_properties JSONB NOT NULL DEFAULT '{}'::jsonb,
-      geom geometry(MultiPolygon, 4326) NOT NULL
-    )
-  `);
-
-  await client.query(`
     CREATE TABLE IF NOT EXISTS comments (
       id SERIAL PRIMARY KEY,
       question_area_id INTEGER NOT NULL REFERENCES question_areas(id) ON DELETE CASCADE,
@@ -171,17 +165,6 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       parcel_id INTEGER NOT NULL REFERENCES parcel_features(id) ON DELETE CASCADE,
       author_id INTEGER NOT NULL REFERENCES users(id),
       body TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS parcel_status_history (
-      id SERIAL PRIMARY KEY,
-      parcel_id INTEGER NOT NULL REFERENCES parcel_features(id) ON DELETE CASCADE,
-      author_id INTEGER NOT NULL REFERENCES users(id),
-      previous_status TEXT,
-      next_status TEXT NOT NULL CHECK (next_status IN ('review', 'active', 'resolved', 'hold')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
@@ -205,7 +188,6 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
     CREATE INDEX IF NOT EXISTS parcel_features_geom_idx ON parcel_features USING GIST (geom);
     CREATE INDEX IF NOT EXISTS parcel_points_geom_idx ON parcel_points USING GIST (geom);
     CREATE INDEX IF NOT EXISTS management_tracts_geom_idx ON management_tracts USING GIST (geom);
-    CREATE INDEX IF NOT EXISTS county_boundaries_geom_idx ON county_boundaries USING GIST (geom);
 
     CREATE INDEX IF NOT EXISTS question_areas_status_idx ON question_areas (status);
     CREATE INDEX IF NOT EXISTS question_areas_severity_idx ON question_areas (severity);
@@ -213,7 +195,6 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
     CREATE INDEX IF NOT EXISTS comments_question_area_id_idx ON comments (question_area_id);
     CREATE INDEX IF NOT EXISTS documents_question_area_id_idx ON documents (question_area_id);
     CREATE INDEX IF NOT EXISTS parcel_comments_parcel_id_idx ON parcel_comments (parcel_id);
-    CREATE INDEX IF NOT EXISTS parcel_status_history_parcel_id_idx ON parcel_status_history (parcel_id);
 
     CREATE INDEX IF NOT EXISTS question_areas_code_trgm_idx ON question_areas USING GIN (code gin_trgm_ops);
     CREATE INDEX IF NOT EXISTS question_areas_title_trgm_idx ON question_areas USING GIN (title gin_trgm_ops);

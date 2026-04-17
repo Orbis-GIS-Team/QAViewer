@@ -1,4 +1,6 @@
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
+import path from "node:path";
 
 import type { Feature, GeoJsonProperties, Geometry } from "geojson";
 import type { PoolClient } from "pg";
@@ -29,6 +31,8 @@ const SEED_TABLES = [
   "management_tracts",
 ] as const;
 
+const MANIFEST_METADATA_KEY = "generated_manifest_sha256";
+
 async function tableCounts(client: PoolClient): Promise<Record<string, number>> {
   const result = await client.query<{ tbl: string; count: string }>(`
     SELECT tbl, count FROM (
@@ -44,15 +48,61 @@ async function tableCounts(client: PoolClient): Promise<Record<string, number>> 
   return Object.fromEntries(result.rows.map((r) => [r.tbl, Number(r.count)]));
 }
 
+async function currentManifestHash(): Promise<string> {
+  const manifest = await fs.readFile(path.join(config.seedDir, "manifest.json"));
+  return crypto.createHash("sha256").update(manifest).digest("hex");
+}
+
+async function storedManifestHash(client: PoolClient): Promise<string | null> {
+  const result = await client.query<{ value: string }>(
+    `SELECT value FROM seed_metadata WHERE key = $1`,
+    [MANIFEST_METADATA_KEY],
+  );
+  return result.rows[0]?.value ?? null;
+}
+
+async function storeManifestHash(client: PoolClient, hash: string): Promise<void> {
+  await client.query(
+    `
+      INSERT INTO seed_metadata (key, value, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `,
+    [MANIFEST_METADATA_KEY, hash],
+  );
+}
+
+function seedMismatchMessage(reason: string): string {
+  return [
+    reason,
+    "The generated GIS seed assets no longer match the populated PostGIS seed metadata.",
+    "For local development, reset and reseed the database explicitly, for example: docker compose down -v && docker compose up --build.",
+  ].join(" ");
+}
+
 export async function ensureSeedData(client: PoolClient): Promise<void> {
   await fs.mkdir(config.uploadsDir, { recursive: true });
 
   await seedUsers(client);
 
+  const manifestHash = await currentManifestHash();
   const counts = await tableCounts(client);
   const allPopulated = SEED_TABLES.every((t) => (counts[t] ?? 0) > 0);
+  const somePopulated = SEED_TABLES.some((t) => (counts[t] ?? 0) > 0);
   if (allPopulated) {
+    const storedHash = await storedManifestHash(client);
+    if (!storedHash) {
+      throw new Error(seedMismatchMessage("Seed metadata is missing for an already-populated database."));
+    }
+    if (storedHash !== manifestHash) {
+      throw new Error(seedMismatchMessage("Generated seed manifest hash changed."));
+    }
     return;
+  }
+
+  if (somePopulated) {
+    throw new Error(seedMismatchMessage("Seed tables are partially populated."));
   }
 
   const questionAreas = await loadFeatureCollection("question_areas.geojson");
@@ -85,6 +135,7 @@ export async function ensureSeedData(client: PoolClient): Promise<void> {
   }
 
   await seedComments(client);
+  await storeManifestHash(client, manifestHash);
 }
 
 async function seedUsers(client: PoolClient): Promise<void> {

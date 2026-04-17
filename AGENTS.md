@@ -2,7 +2,7 @@
 
 ## Project purpose
 
-QAViewer is a Docker-first GIS review application built from the PRD in `question_area_review_web_app_prd.md` and the source geodatabase in `BTG_PTV_Implementation.gdb`.
+QAViewer is a Docker-first GIS review application built from the PRD in `question_area_review_web_app_prd.md` and a reusable normalized GIS seed schema.
 
 The app is centered on question areas derived from mismatch layers in the geodatabase:
 
@@ -28,13 +28,16 @@ Supporting GIS context comes from:
 
 ## Source of truth
 
-- The file geodatabase is the source of truth for GIS data.
+- The source dataset is the source of truth for GIS data, but the app consumes only normalized files in `data/generated/`.
+- Keep new datasets compatible with `docs/dataset-contract.md`.
 - Do not hand-edit files in `data/generated/` unless there is a very specific reason.
 - If GIS-derived data changes, regenerate it with:
 
 ```bash
 .venv/bin/python scripts/export_seed_data.py
 ```
+
+Use `scripts/export_seed_data.py --help` for source path and layer-name overrides when exporting a compatible dataset with different physical layer names.
 
 ## Key commands
 
@@ -51,6 +54,7 @@ cd backend
 npm install
 npm run dev
 npm run build
+npm run test:smoke
 ```
 
 Frontend dev/build:
@@ -71,12 +75,12 @@ npm run build
 Demo users seeded by the backend:
 
 - `admin@qaviewer.local` / `admin123!`
-- `reviewer@qaviewer.local` / `review123!`
 - `client@qaviewer.local` / `client123!`
 
 ## Important implementation notes
 
-- The backend seeds the database automatically on first start if `question_areas` is empty.
+- The backend seeds the database automatically on first start when GIS seed tables are empty.
+- The backend stores a hash of `data/generated/manifest.json` and fails fast if generated seed assets change while PostGIS is already populated. For local development, explicitly reset with `docker compose down -v && docker compose up --build`.
 - Geometry import assumes EPSG:4326 in the generated seed files.
 - `primary_parcels.geojson` intentionally excludes null/empty geometries during export.
 - Document files are stored on disk in `backend/uploads`; metadata is stored in Postgres.

@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { requireRole } from "../lib/auth.js";
 import { query, withTransaction } from "../lib/db.js";
+import { parcelQuestionAreaJoin } from "../lib/parcelQuestionAreaMatch.js";
 
 const router = Router();
 
@@ -48,28 +49,7 @@ async function getParcelBase(parcelId: number): Promise<ParcelRow | null> {
         ST_AsGeoJSON(p.geom, 5)::jsonb AS geometry,
         p.review_status
       FROM parcel_features p
-      LEFT JOIN LATERAL (
-        SELECT qa.code
-        FROM question_areas qa
-        WHERE (
-          p.parcel_number IS NOT NULL
-          AND qa.primary_parcel_number = p.parcel_number
-          AND COALESCE(qa.county, '') = COALESCE(p.county, '')
-          AND COALESCE(qa.state, '') = COALESCE(p.state, '')
-        ) OR (
-          p.ptv_parcel IS NOT NULL
-          AND qa.primary_parcel_code = p.ptv_parcel
-          AND COALESCE(qa.county, '') = COALESCE(p.county, '')
-          AND COALESCE(qa.state, '') = COALESCE(p.state, '')
-        )
-        ORDER BY
-          CASE
-            WHEN p.parcel_number IS NOT NULL AND qa.primary_parcel_number = p.parcel_number THEN 0
-            ELSE 1
-          END,
-          qa.code
-        LIMIT 1
-      ) qa ON true
+      ${parcelQuestionAreaJoin("p", "qa")}
       WHERE p.id = $1
       LIMIT 1
     `,

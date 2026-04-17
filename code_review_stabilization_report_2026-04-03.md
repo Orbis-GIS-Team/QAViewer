@@ -15,6 +15,16 @@ Context note:
 - This review is based on the current working tree, which already contains local unstaged changes in core files.
 - Findings below are based on code that is present now, not on assumptions about earlier revisions.
 
+Implementation update, 2026-04-16:
+
+- Phase 1 stabilization work has mostly landed: admin parcel-comment delete guards, reviewer feedback rendering, first-class `review` status in the UI, misleading parcel document upload controls removed, upload MIME fallback relaxed, and parcel points wired into the main map as an optional context layer.
+- Phase 2 backend hardening has partly landed: generated manifest hash enforcement was added, an explicit local reset/reseed workflow was documented, and duplicated parcel/question-area matching SQL was centralized in `backend/src/lib/parcelQuestionAreaMatch.ts`.
+- Phase 3 GIS correction has started: `scripts/export_seed_data.py` now targets `BTG_Spatial_Fix_Primary_Erase` and `BTG_Spatial_Fix_Comparison_Erase`, validates source group output, and accepts source/layer overrides for compatible future datasets.
+- Blocked: `data/generated/` was not regenerated and PostGIS was not reseeded. A Docker/GDAL toolchain can run, but the mounted `BTG_PTV_Implementation.gdb` exposes only `BTG_Points_NoArches_12Feb26`, `BTG_Spatial_Fix_Primary_Layer`, and `BTG_MGMT_NoArches`; it does not contain the required mismatch erase layers.
+- Live smoke verification passed on 2026-04-16 with Docker/API/PostGIS running: `cd backend && npm run test:smoke`.
+- Service checks passed on 2026-04-16: `curl http://localhost:3001/api/health` returned `{"status":"ok"}` and `curl -I http://localhost:5173` returned `HTTP 200`.
+- Verified after implementation: `cd backend && npm run build`, `cd frontend && npm run build`, and `git diff --check` passed. Dependencies had to be installed first because `node_modules` was absent.
+
 ## 1. Executive Summary
 
 ### Overall Health Of The Codebase
@@ -27,20 +37,19 @@ QAViewer is organized as a simple pipeline:
 
 The codebase is workable, and both backend and frontend builds pass, but there is visible AI-churn:
 
-- the domain model has drifted from the repo instructions
-- the same SQL matching logic is copied in multiple places
-- some UI paths look complete but are effectively dead or misleading
-- there is no automated test safety net
+- the checked-in generated GIS assets still reflect the old source model until regeneration is run
+- the main review UI remains a large monolith even after behavior fixes
+- the main remaining dead data surface is stale generated county GeoJSON, which should be cleaned up by the next successful exporter run
+- smoke coverage exists as a live API entrypoint and passes against the Docker stack
 
 ### Main Risks
 
 The biggest risks are correctness and maintainability, not style:
 
-- question areas are currently generated from the wrong source layer
-- seed behavior silently accepts stale GIS data after first import
-- admin user deletion logic misses parcel-authored activity
-- workflow status handling is inconsistent between backend and frontend
-- the main review UI records error/success feedback but never renders it
+- checked-in question-area seed assets still come from the old source layer until regeneration is run
+- generated seed files are still stale until the corrected exporter is run
+- seed behavior now fails fast on manifest drift, which requires explicit local reset/reseed after regeneration
+- structural cleanup remains around the large `MapWorkspace` component
 
 ### What Is Working Well
 
@@ -54,6 +63,8 @@ The biggest risks are correctness and maintainability, not style:
 ### Critical
 
 #### 1. Question areas are generated from the wrong source layers
+
+Status, 2026-04-16: partially fixed. `scripts/export_seed_data.py` now reads the two mismatch erase layers and validates source breakdown, but `data/generated/` has not been regenerated because the mounted geodatabase does not include those layers.
 
 Why it matters:
 
@@ -83,6 +94,8 @@ Recommended fix:
 
 #### 2. Seeding is based on "non-empty table" checks, so stale GIS data is silently accepted
 
+Status, 2026-04-16: fixed in code. The backend now stores and compares a SHA-256 hash of `data/generated/manifest.json`, and startup fails with a reset/reseed message if populated seed tables do not match the current generated manifest.
+
 Why it matters:
 
 - Once tables have rows, regenerated source data will not propagate to PostGIS.
@@ -108,6 +121,8 @@ Recommended fix:
 
 #### 3. Admin deletion ignores parcel-authored activity and can still fail on foreign keys
 
+Status, 2026-04-16: fixed in code. Admin list/detail payloads include `parcelCommentCount`; frontend delete guards use it; backend deletion returns controlled `409` when parcel-authored activity exists.
+
 Why it matters:
 
 - A user can look deletable in the UI and backend checks even when `parcel_comments` still reference them.
@@ -132,6 +147,8 @@ Recommended fix:
 - Return a controlled `409` for users with authored parcel activity.
 
 #### 4. Workflow status handling is internally inconsistent
+
+Status, 2026-04-16: fixed for current behavior. `review` remains a first-class persisted state and is now selectable/labeled directly in the reviewer UI.
 
 Why it matters:
 
@@ -163,6 +180,8 @@ Recommended fix:
 
 #### 5. `MapWorkspace` records feedback but never renders it
 
+Status, 2026-04-16: fixed in code. `MapWorkspace` now renders feedback through a toast, auto-clears it, and surfaces validation/errors for save/comment/upload/download/load flows.
+
 Why it matters:
 
 - Save, comment, upload, and download failures become silent to the user.
@@ -190,6 +209,8 @@ Recommended fix:
 
 #### 6. Parcel-to-question-area matching logic is duplicated across multiple endpoints
 
+Status, 2026-04-16: fixed in code. Matching SQL now lives in `backend/src/lib/parcelQuestionAreaMatch.ts` and is used by dashboard, layers, parcels, and question-area routes.
+
 Why it matters:
 
 - A matching rule change requires edits in several files.
@@ -213,6 +234,8 @@ Recommended fix:
 - Test the matching behavior once instead of indirectly in every route.
 
 #### 7. Parcel document support is effectively a dead or contradictory feature
+
+Status, 2026-04-16: fixed for current UI. Parcel-level upload controls and copy were removed; question-area documents remain functional.
 
 Why it matters:
 
@@ -265,6 +288,8 @@ Recommended fix:
 
 #### 9. There is no application-level test coverage
 
+Status, 2026-04-16: fixed for the current live-stack scope. A live backend smoke test entrypoint was added and passed against the running Docker/API/PostGIS stack.
+
 Why it matters:
 
 - The codebase has duplicated SQL, partial refactors, and several business rules hidden in route handlers.
@@ -285,6 +310,8 @@ Recommended fix:
 - Add a small smoke suite around login, admin user CRUD, question-area update/comment/upload, and parcel status/comment flows.
 
 #### 10. File upload validation is stricter than many browsers and GIS file types tolerate
+
+Status, 2026-04-16: fixed in code. Uploads still require a safe extension and size limit, but blank MIME and `application/octet-stream` are accepted as browser fallback MIME values.
 
 Why it matters:
 
@@ -308,13 +335,15 @@ Recommended fix:
 
 #### 11. Repo instructions and runtime docs have drifted from implementation
 
+Status, 2026-04-16: partly fixed. README and AGENTS were updated for current demo users, seed manifest guard, reset/reseed workflow, smoke command, and exporter direction. Counts remain intentionally generic until regenerated seed assets are available.
+
 Why it matters:
 
 - New contributors and future agents will make bad assumptions from stale docs.
 
 Evidence:
 
-- `AGENTS.md` still lists `reviewer@qaviewer.local`
+- `AGENTS.md` previously listed `reviewer@qaviewer.local`
 - code only supports `admin` and `client`
 - `README.md` says the app centers on `157` question areas, but the generated manifest shows `557`
 - generated county files exist but are not seeded or served
@@ -336,43 +365,41 @@ Recommended fix:
 
 #### 12. There is dead or partially implemented backend surface area
 
+Status, 2026-04-16: fixed for active app surfaces. Unused `county_boundaries`, unused `parcel_status_history`, and the unused `asGeoJsonString` helper were removed from active backend schema/source. `parcel_points` remains because it is exported, seeded, exposed by the layers API, and now rendered in the main UI as a toggleable context layer.
+
 Why it matters:
 
 - Dead schema and utilities increase confusion during maintenance.
 
 Evidence:
 
-- `parcel_status_history` table exists but is not used
-- `county_boundaries` table exists but is not seeded or queried
-- `parcel_points` is seeded and exposed by API but not used in the main UI
-- `asGeoJsonString` is unused
+- `parcel_points` is seeded, exposed by API, and rendered in the main UI as an optional context layer
 
 Relevant code:
 
-- `backend/src/lib/schema.ts:145`
-- `backend/src/lib/schema.ts:179`
 - `backend/src/routes/layers.ts:16`
-- `backend/src/lib/utils.ts:33`
+- `backend/src/lib/schema.ts:119`
+- `backend/src/lib/seed.ts:110`
 
 Recommended fix:
 
-- Remove dead code if it is not planned soon, or complete the missing integrations.
+- Keep `parcel_points` as a supported context layer unless product requirements later remove it.
 
 ## 3. Refactor Opportunities
 
 ### Small Safe Refactors
 
-- Render `feedback` in `frontend/src/components/MapWorkspace.tsx`
-- Normalize login emails the same way admin create/update does
+- Render `feedback` in `frontend/src/components/MapWorkspace.tsx` - done 2026-04-16
+- Normalize login emails the same way admin create/update does, if login case-sensitivity becomes a real user issue
 - Return document download paths without the `/api` stripping workaround in the frontend
-- Count parcel comments in admin activity summaries
+- Count parcel comments in admin activity summaries - done 2026-04-16
 
 ### Medium Refactors Worth Doing Next
 
-- Centralize parcel-to-question-area matching logic
+- Centralize parcel-to-question-area matching logic - done 2026-04-16
 - Split `MapWorkspace` into smaller focused units
-- Add seed versioning and an explicit reseed path
-- Remove or fully wire orphaned features such as `parcel_points`, `county_boundaries`, `management_counties`, and `tax_counties`
+- Add seed versioning and an explicit reseed path - done in code 2026-04-16
+- Keep `parcel_points` wired as a toggleable map layer
 
 ### Areas To Avoid Touching Until Later
 
@@ -381,60 +408,79 @@ Recommended fix:
 
 ## 4. Concrete Action Plan
 
-### Fix Now
+Current status check, 2026-04-16:
 
-- Add smoke tests for current auth, admin, question-area, and parcel flows
-- Fix admin deletion and activity counting
-- Surface frontend feedback and align the `review` status model
-- Remove or hide misleading parcel document behavior
+- Most Phase 1 and Phase 2 stabilization work below is now implemented in the current tree.
+- Admin create/update email normalization is already present, so it is no longer a primary task.
+- A live backend smoke test command is present and passed against the running Docker/API/PostGIS stack on 2026-04-16.
+- GIS generated assets still need regeneration and reseeding.
 
-### Fix Soon
+### Phase 1: Stabilize Current Behavior
 
-- Centralize parcel-to-question-area matching
-- Introduce seed versioning or manifest-based reseed behavior
-- Rebuild question-area generation from the intended mismatch layers
+- [x] Fix admin user activity counts and delete guards so `parcel_comments` are included.
+- [x] Render `MapWorkspace` feedback through a shared toast or inline banner so save/comment/upload/download failures are visible.
+- [x] Align the workflow status model across backend enums, frontend controls, labels, and parcel status displays. `review` remains user-selectable.
+- [x] Remove or hide parcel document upload controls until true parcel-scoped documents exist. Keep question-area document uploads intact.
+- [x] Add focused smoke tests for login, admin user CRUD, question-area update/comment/upload, parcel comment, and parcel status update. Test entrypoint exists and passed against the live stack.
 
-### Nice To Have
+### Phase 2: Reduce Data Drift Risk
 
-- Clean up config and docs drift such as reviewer-account references and stale counts
-- Split `MapWorkspace` and share API/status constants
-- Relax or harden upload validation more deliberately
-- Add linting
+- [x] Add seed manifest/version tracking so regenerated files in `data/generated/` cannot be silently ignored by an already-populated database.
+- [x] Provide an explicit reseed/reset workflow for local development.
+- [x] Centralize parcel-to-question-area matching logic in one backend SQL helper/view or a single shared query builder.
+- [x] Add a regression check around expected question-area source groups and counts before changing the GIS export.
+
+### Phase 3: Correct GIS Source Model
+
+- [x] Rewrite `scripts/export_seed_data.py` so question areas come from `BTG_Spatial_Fix_Primary_Erase` and `BTG_Spatial_Fix_Comparison_Erase`.
+- [x] Keep `BTG_Spatial_Fix_Primary_Layer` as parcel context/enrichment, not the source of question areas.
+- [ ] Regenerate `data/generated/` from a compatible source dataset and reseed PostGIS. Blocked by the current mounted geodatabase missing `BTG_Spatial_Fix_Primary_Erase` and `BTG_Spatial_Fix_Comparison_Erase`.
+- [~] Update README/agent docs/counts after the corrected generated data is verified. Runtime docs updated; exact counts still wait on regeneration.
+
+### Phase 4: Cleanup And Maintainability
+
+- [ ] Split `MapWorkspace` into smaller focused components/hooks once the behavior is stable.
+- [x] Remove or fully wire orphaned backend/data surfaces. Unused backend schema/helper surfaces were removed; `parcel_points` is now wired into the main map.
+- [x] Relax or harden upload validation deliberately, especially MIME fallback behavior for common browser/GIS upload cases.
+- [~] Add linting and keep test/build commands documented. Smoke/build docs updated; linting not added.
 
 ## 5. Agent-Ready Tasks
 
-These tasks are intentionally narrow so another coding agent can execute them one at a time:
+These tasks are intentionally narrow so another coding agent can execute them one at a time. Execute them in order unless a later task is explicitly pulled forward.
 
-1. Add `parcel_comments` activity counts to admin list/detail queries and deletion guards.
-2. Render a reusable toast or feedback banner in `MapWorkspace` and wire the existing `feedback` state to it.
-3. Align frontend status controls and labels with backend valid statuses, including `review`.
-4. Extract the parcel-to-question-area lateral join into one reusable backend helper or SQL view.
-5. Remove parcel document upload controls until parcel-scoped documents actually exist.
-6. Add a seed manifest/version check so regenerated GIS data cannot be silently ignored.
-7. Rewrite `export_seed_data.py` question-area generation to use the mismatch layers named in the repo instructions.
-8. Add smoke tests for login, admin user CRUD, question-area update/comment/upload, and parcel status/comment flows.
+1. [x] **Admin authored-activity guard**: add `parcel_comments` counts to admin list/detail queries, serialize that count to the frontend, include it in delete-disable logic, and return a controlled `409` when parcel-authored activity exists.
+2. [x] **Reviewer feedback UI**: render the existing `feedback` state in `MapWorkspace` using a reusable toast/banner and ensure save, comment, upload, download, and load failures clear or expire consistently.
+3. [x] **Status model alignment**: choose the canonical status set, then update backend validation, frontend `STATUS_OPTIONS`, status labels, parcel detail badges, and any seed defaults to match it.
+4. [x] **Parcel document UI cleanup**: remove or hide parcel-level upload controls and copy that implies parcel documents exist. Leave question-area documents functional.
+5. [x] **Smoke test foundation**: add backend/frontend test tooling and cover login, admin user CRUD/deletion conflicts, question-area update/comment/upload, parcel comment, and parcel status update. Live backend smoke entrypoint passed against the running stack on 2026-04-16.
+6. [x] **Seed manifest/version guard**: store the generated manifest hash/version in PostGIS, compare it during startup, fail fast on mismatch, and document the explicit reseed/reset path.
+7. [x] **Shared parcel-QA matching**: extract the duplicated lateral join used by dashboard, layers, parcels, and question-area routes into one shared backend helper or SQL view.
+8. [x] **Question-area export correction**: rewrite `export_seed_data.py` so question areas are generated from `BTG_Spatial_Fix_Primary_Erase` and `BTG_Spatial_Fix_Comparison_Erase`, with primary parcels used only for context/enrichment.
+9. [ ] **Regenerate and reseed**: regenerate `data/generated/`, verify manifest source groups/counts, reseed PostGIS, and update docs to match the corrected model.
+10. [x] **Dead-surface cleanup**: unused active schema/helper surfaces were removed; `parcel_points` is rendered as a toggleable context layer, and stale county GeoJSON assets will be cleaned up by the next successful exporter run.
 
 ## 6. Top 5 Highest-Risk Issues
 
-1. Wrong source layers for question-area generation
-2. Non-versioned seeding that silently accepts stale data
-3. Admin deletion bug around parcel-authored activity
-4. Inconsistent `review` / `active` workflow model
-5. Invisible error and success feedback in the main review UI
+1. Generated seed assets still need regeneration from the corrected mismatch-layer exporter
+2. PostGIS still needs explicit reset/reseed after generated seed assets are regenerated
+3. Large `MapWorkspace` component remains a maintainability risk
+4. `MapWorkspace` remains a large component despite behavior cleanup
+5. Smoke coverage is live-stack only
 
 ## 7. Top 5 Best Cleanup Wins
 
-1. Fix admin activity and delete guards
-2. Render `MapWorkspace` feedback
-3. Align status enums and labels across backend and frontend
-4. Centralize parcel/question-area matching
-5. Add a minimal smoke suite before deeper refactors
+1. Provide the geodatabase that contains the mismatch erase layers
+2. Regenerate seed assets, then reset/reseed PostGIS
+3. Split `MapWorkspace` after regenerated seed assets and reseed verification pass
+4. Keep generated data/docs in sync after the corrected exporter can run
+5. Consider replacing live smoke-only coverage with isolated route/service tests later
 
 ## 8. Recommended Safe Fix Sequence
 
-1. Add smoke coverage for the current critical flows.
-2. Fix `MapWorkspace` feedback and admin deletion/activity counting.
-3. Align the workflow status model.
-4. Remove dead parcel document behavior and other misleading UI affordances.
-5. Centralize matching logic and add seed versioning.
-6. Rework the seed pipeline to the correct mismatch-layer model, then reseed and update docs.
+1. Provide a `BTG_PTV_Implementation.gdb` that includes `BTG_Spatial_Fix_Primary_Erase` and `BTG_Spatial_Fix_Comparison_Erase`.
+2. Run `scripts/export_seed_data.py` with Python/geopandas locally or in Docker.
+3. Inspect `data/generated/manifest.json` for nonzero `primary` and `comparison` source groups and no `BTG_Spatial_Fix_Primary_Layer` question-area sources.
+4. Reset/reseed PostGIS with `docker compose down -v && docker compose up --build`.
+5. Run `cd backend && npm run test:smoke`, then rerun backend/frontend builds after reseeding.
+6. Update exact generated counts in README/AGENTS after regeneration is verified.
+7. Split `MapWorkspace` after reseed verification is green.

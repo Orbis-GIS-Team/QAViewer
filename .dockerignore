@@ -1,5 +1,6 @@
 .git
 .gitignore
+.claude
 .venv
 BTG_PTV_Implementation.gdb
 backend/node_modules

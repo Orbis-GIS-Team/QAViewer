@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import { query } from "../lib/db.js";
+import { parcelQuestionAreaJoin } from "../lib/parcelQuestionAreaMatch.js";
 import { featureCollection, parseBbox } from "../lib/utils.js";
 
 const router = Router();
@@ -57,28 +58,7 @@ router.get("/:layerKey/:id", async (req, res) => {
             || jsonb_build_object('questionAreaCode', qa.code) AS properties,
           ST_AsGeoJSON(p.geom, 5)::jsonb AS geometry
         FROM parcel_features p
-        LEFT JOIN LATERAL (
-          SELECT qa.code
-          FROM question_areas qa
-          WHERE (
-            p.parcel_number IS NOT NULL
-            AND qa.primary_parcel_number = p.parcel_number
-            AND COALESCE(qa.county, '') = COALESCE(p.county, '')
-            AND COALESCE(qa.state, '') = COALESCE(p.state, '')
-          ) OR (
-            p.ptv_parcel IS NOT NULL
-            AND qa.primary_parcel_code = p.ptv_parcel
-            AND COALESCE(qa.county, '') = COALESCE(p.county, '')
-            AND COALESCE(qa.state, '') = COALESCE(p.state, '')
-          )
-          ORDER BY
-            CASE
-              WHEN p.parcel_number IS NOT NULL AND qa.primary_parcel_number = p.parcel_number THEN 0
-              ELSE 1
-            END,
-            qa.code
-          LIMIT 1
-        ) qa ON true
+        ${parcelQuestionAreaJoin("p", "qa")}
         WHERE p.id = $1
         LIMIT 1
       `,
@@ -164,28 +144,7 @@ router.get("/:layerKey", async (req, res) => {
           p.raw_properties || jsonb_build_object('questionAreaCode', qa.code) AS properties,
           ST_AsGeoJSON(p.geom, 5)::jsonb AS geometry
         FROM parcel_features p
-        LEFT JOIN LATERAL (
-          SELECT qa.code
-          FROM question_areas qa
-          WHERE (
-            p.parcel_number IS NOT NULL
-            AND qa.primary_parcel_number = p.parcel_number
-            AND COALESCE(qa.county, '') = COALESCE(p.county, '')
-            AND COALESCE(qa.state, '') = COALESCE(p.state, '')
-          ) OR (
-            p.ptv_parcel IS NOT NULL
-            AND qa.primary_parcel_code = p.ptv_parcel
-            AND COALESCE(qa.county, '') = COALESCE(p.county, '')
-            AND COALESCE(qa.state, '') = COALESCE(p.state, '')
-          )
-          ORDER BY
-            CASE
-              WHEN p.parcel_number IS NOT NULL AND qa.primary_parcel_number = p.parcel_number THEN 0
-              ELSE 1
-            END,
-            qa.code
-          LIMIT 1
-        ) qa ON true
+        ${parcelQuestionAreaJoin("p", "qa")}
         ${whereClause}
         ORDER BY ${layer.orderBy}
         LIMIT ${layer.limit}

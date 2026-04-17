@@ -80,7 +80,7 @@ For **point** layers rendered via `circleMarker`, the options are:
 
 ### Panes
 
-A **Pane** controls the draw order (z-order) of layers. Layers in a higher `zIndex` pane are drawn on top of layers in a lower `zIndex` pane. This is how you ensure question area polygons always appear above parcel boundaries, which always appear above county outlines.
+A **Pane** controls the draw order (z-order) of layers. Layers in a higher `zIndex` pane are drawn on top of layers in a lower `zIndex` pane. This is how you ensure question-area markers appear above parcel and management context layers.
 
 ---
 
@@ -117,7 +117,6 @@ The layers are drawn in this order from bottom to top:
 
 | Pane name | `zIndex` | What it contains |
 |---|---|---|
-| `counties` | 350 | Management county outlines, Tax county outlines |
 | `management` | 370 | Management tracts |
 | `parcels` | 390 | Primary parcels |
 | `points` | 410 | Parcel points |
@@ -125,79 +124,47 @@ The layers are drawn in this order from bottom to top:
 
 A higher `zIndex` = drawn on top of everything below it. Question areas are always on top because they are the primary focus of the application.
 
-### The Five Data Layers
+### The Current Data Layers
 
 Each layer is fetched from the backend API and conditionally rendered based on the layer visibility toggles in the left panel.
 
-#### 1. Management Counties (`management_counties`)
-County boundaries from the management dataset.
-```tsx
-style={{ color: "#2ab7a9", weight: 1.3, fillOpacity: 0 }}
-```
-- Teal outline only, no fill. Shows the boundary shape.
-
-#### 2. Tax Counties (`tax_counties`)
-County boundaries from the tax parcel dataset.
-```tsx
-style={{ color: "#94a3b8", weight: 1.1, fillOpacity: 0 }}
-```
-- Slate gray outline only, no fill. Thinner and more subtle than management counties.
-
-#### 3. Management Tracts (`management_tracts`)
+#### 1. Management Tracts (`management_tracts`)
 Management tract polygons.
 ```tsx
-style={{ color: "#38bdf8", weight: 1.2, fillOpacity: 0.04, fillColor: "#7dd3fc" }}
+style={{ color: "#39ff14", weight: 2.5, fillColor: "url(#management-pattern)", fillOpacity: 1 }}
 ```
-- Light blue outline with a very faint blue fill (4% opacity). Barely visible — used as context only.
+- Bright green patterned fill used as management context.
 
-#### 4. Primary Parcels (`primary_parcels`)
+#### 2. Primary Parcels (`primary_parcels`)
 The primary parcel polygons from the geodatabase.
 ```tsx
-style={{ color: "#1a3646", weight: 1.1, fillOpacity: 0.03, fillColor: "#334155" }}
+style={primaryParcelStyle}
 ```
-- Dark navy outline with an almost invisible fill (3% opacity). Very subtle — used as reference boundaries.
+- Yellow parcel outlines used as reference boundaries, with a blue highlight when selected.
 
-#### 5. Parcel Points (`parcel_points`)
+#### 3. Parcel Points (`parcel_points`)
 Point features rendered as circle markers.
 ```tsx
 L.circleMarker(latlng, {
   radius: 4,
-  color: "#2ab7a9",
+  color: "#0f766e",
   weight: 1,
   fillColor: "#5eead4",
   fillOpacity: 0.9,
 })
 ```
-- Small 4px teal circles with a lighter teal fill. This layer uses `pointToLayer` because GeoJSON points are rendered as invisible by default — `pointToLayer` replaces the default marker with a styled circle.
+- Small 4px teal circles with a lighter teal fill. This layer uses `pointToLayer` so GeoJSON points render as styled circle markers.
 
-#### 6. Question Areas (`question_areas`)
-These are the core data layer. Style is computed dynamically per feature via the `questionAreaStyle` function:
+#### 4. Question Areas (`question_areas`)
+These are the core review records. The current UI renders transparent question-area geometry for map fitting and click isolation, then draws clickable question-area centroid markers above the context layers.
 
 ```tsx
-function questionAreaStyle(feature, selectedCode) {
-  const severity = feature?.properties?.severity ?? "medium";
-  const active = feature?.properties?.code === selectedCode;
-
-  const palette =
-    severity === "high"
-      ? { color: "#ef4444", fillColor: "#f87171" }   // Red
-      : severity === "low"
-        ? { color: "#eab308", fillColor: "#fde047" } // Yellow
-        : { color: "#f97316", fillColor: "#fb923c" }; // Orange (medium)
-
-  return {
-    color: active ? "#1a3646" : palette.color,  // Navy outline when selected
-    weight: active ? 3 : 2,                     // Thicker border when selected
-    fillColor: palette.fillColor,
-    fillOpacity: active ? 0.5 : 0.3,            // More opaque when selected
-  };
-}
+<GeoJSON data={questionAreas} interactive={false} style={{ color: "transparent", weight: 0 }} />
+<QAMarkerLayer questionAreas={questionAreas} selectedCode={selectedCode} onSelect={selectQuestionArea} />
 ```
 
-- **High severity** = red
-- **Medium severity** = orange (default)
-- **Low severity** = yellow
-- **Selected** = the active outline color switches to dark navy, the border gets thicker (3px vs 2px), and the fill becomes more opaque (50% vs 30%).
+- Question areas are selected through the `?` centroid marker.
+- Selected markers pulse so the active review record is visible above parcels and management context.
 
 ### Viewport Tracking (`MapViewportWatcher`)
 
@@ -276,7 +243,6 @@ Every map-visible table in this project has a `geom` column of this type. From `
 | `parcel_features` | `geometry(MultiPolygon, 4326)` |
 | `parcel_points` | `geometry(Point, 4326)` |
 | `management_tracts` | `geometry(MultiPolygon, 4326)` |
-| `county_boundaries` | `geometry(MultiPolygon, 4326)` |
 
 The `4326` is the SRID (Spatial Reference ID) — it means all coordinates are stored in **WGS 84 longitude/latitude**, which is the same coordinate system Leaflet uses. No reprojection is needed.
 
@@ -301,15 +267,6 @@ WHERE ...
 ```
 
 The `5` argument is the number of decimal places of precision in the output coordinates. `::jsonb` casts the result from a text string into a native PostgreSQL JSON object, which the `pg` Node.js driver then delivers directly as a JavaScript object — no `JSON.parse()` needed.
-
-For the county layers, an additional function wraps the geometry first:
-
-```sql
-ST_AsGeoJSON(ST_SimplifyPreserveTopology(geom, 0.002), 5)::jsonb AS geometry
-```
-
-`ST_SimplifyPreserveTopology` reduces the number of coordinate points in each polygon according to a tolerance value (`0.002` degrees, roughly 200 meters). County boundaries have many fine-grained vertices that would be invisible at the zoom levels they're typically viewed. Simplifying them significantly reduces the size of the HTTP response without affecting how they look on screen.
-
 ---
 
 ### Step 3 — The bounding box filter (`ST_MakeEnvelope`)
@@ -377,14 +334,14 @@ useEffect(() => {
     bbox: mapBbox,
     limit: "600",
   });
-  if (statusFilter !== "all") params.set("status", statusFilter);
+  if (searchFilter) params.set("search", searchFilter);
 
   apiRequest<QuestionAreaCollection>(`/question-areas?${params.toString()}`, {
     token: session.token,
   }).then((payload) => {
     setQuestionAreas(payload); // stores the FeatureCollection in React state
   });
-}, [mapBbox, statusFilter, session.token]);
+}, [mapBbox, searchFilter, searchField, session.token]);
 ```
 
 The `payload` variable is now a standard JavaScript object matching the GeoJSON `FeatureCollection` structure. It is stored in React state via `setQuestionAreas`.
@@ -393,23 +350,16 @@ The `payload` variable is now a standard JavaScript object matching the GeoJSON 
 
 ### Step 6 — Leaflet renders the GeoJSON
 
-The stored FeatureCollection is passed directly to the `<GeoJSON>` react-leaflet component:
+Question area geometry is passed to a transparent `<GeoJSON>` layer, while visible selection happens through centroid markers:
 
 ```tsx
-<GeoJSON
-  data={questionAreas}
-  style={(feature) => questionAreaStyle(feature as QuestionAreaFeature, selectedCode)}
-  onEachFeature={(feature, layer) => {
-    layer.on("click", () => {
-      setSelectedCode(feature.properties?.code ?? null);
-    });
-  }}
-/>
+<GeoJSON data={questionAreas} interactive={false} style={{ color: "transparent", weight: 0 }} />
+<QAMarkerLayer questionAreas={questionAreas} selectedCode={selectedCode} onSelect={selectQuestionArea} />
 ```
 
-- **`data`** — the FeatureCollection from PostGIS/API. Leaflet reads the `geometry` of each Feature and draws the polygon(s) on screen.
-- **`style`** — a function called per feature. It reads properties from the GeoJSON (like `severity`) to decide what color and weight to use.
-- **`onEachFeature`** — a hook called per feature. Here it attaches a click listener so clicking a polygon sets `selectedCode` in React state, which triggers the detail panel to load.
+- **`GeoJSON`** keeps geometry available to Leaflet without drawing a visible polygon fill.
+- **`QAMarkerLayer`** renders the clickable `?` markers from question-area centroids.
+- **Selection** sets the active question-area code and loads the detail panel.
 
 ---
 
@@ -424,7 +374,6 @@ CREATE INDEX IF NOT EXISTS question_areas_geom_idx    ON question_areas    USING
 CREATE INDEX IF NOT EXISTS parcel_features_geom_idx   ON parcel_features   USING GIST (geom);
 CREATE INDEX IF NOT EXISTS parcel_points_geom_idx     ON parcel_points     USING GIST (geom);
 CREATE INDEX IF NOT EXISTS management_tracts_geom_idx ON management_tracts USING GIST (geom);
-CREATE INDEX IF NOT EXISTS county_boundaries_geom_idx ON county_boundaries USING GIST (geom);
 ```
 
 Without these indexes, every bounding box query would do a full table scan, which would be very slow at scale.
@@ -436,7 +385,6 @@ Without these indexes, every bounding box query would do a full table scan, whic
 | Function | Where used | What it does |
 |---|---|---|
 | `ST_AsGeoJSON(geom, precision)` | All layer and question area queries | Converts a PostGIS geometry into a GeoJSON string |
-| `ST_SimplifyPreserveTopology(geom, tolerance)` | County layer queries | Reduces vertex count while keeping polygons topologically valid |
 | `ST_MakeEnvelope(west, south, east, north, srid)` | All bbox-filtered queries | Creates a rectangular polygon from four coordinates |
 | `&&` operator | All bbox-filtered queries | Fast bounding box intersection test (uses GIST index) |
 | `ST_AsGeoJSON(centroid, precision)` | Question area detail query | Exports the pre-computed centroid point as GeoJSON |
@@ -452,8 +400,6 @@ Each API endpoint enforces a maximum number of features returned per request. Th
 | `primary_parcels` | 6,000 |
 | `parcel_points` | 6,000 |
 | `management_tracts` | 3,000 |
-| `tax_counties` | 500 |
-| `management_counties` | 500 |
 | Question areas | 1,000 (user-configurable up to 1,000) |
 
 If you are zoomed out far enough that more features than the limit exist in the viewport, only the first N rows (ordered by `id`) will be returned. Zooming in reduces the viewport and therefore reduces the number of matching features, eventually showing all of them.
@@ -464,10 +410,7 @@ If you are zoomed out far enough that more features than the limit exist in the 
 
 | What you want to change | Where to find it in `MapWorkspace.tsx` |
 |---|---|
-| Question area colors by severity | `questionAreaStyle()` function (~line 940) |
-| Question area selected state styling | `questionAreaStyle()` function — `active` branch |
-| Management county outline color/weight | `<Pane name="counties">` — first `GeoJSON` `style` prop |
-| Tax county outline color/weight | `<Pane name="counties">` — second `GeoJSON` `style` prop |
+| Question area selected marker styling | `createQAMarker()` function |
 | Management tract fill/outline | `<Pane name="management">` — `GeoJSON` `style` prop |
 | Primary parcel fill/outline | `<Pane name="parcels">` — `GeoJSON` `style` prop |
 | Parcel point size/color | `<Pane name="points">` — `circleMarker` options inside `pointToLayer` |

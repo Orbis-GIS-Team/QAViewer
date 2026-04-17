@@ -37,6 +37,7 @@ type SummaryPayload = {
 
 type LayerKey =
   | "primary_parcels"
+  | "parcel_points"
   | "management_tracts";
 
 type QuestionAreaFeature = Feature<
@@ -162,16 +163,22 @@ type EditDraft = {
   assignedReviewer: string;
 };
 
+type FeedbackState = {
+  message: string;
+  type: "success" | "error";
+};
+
 type MapWorkspaceProps = {
   session: Session;
   onLogout: () => void;
   onOpenAdmin?: () => void;
 };
 
-const STATUS_OPTIONS = ["active", "resolved", "hold"];
+const STATUS_OPTIONS = ["review", "active", "resolved", "hold"];
 
 const initialLayers: Record<LayerKey, boolean> = {
   primary_parcels: true,
+  parcel_points: false,
   management_tracts: true,
 };
 
@@ -185,6 +192,7 @@ type LegendItem = {
 
 const LEGEND_ITEMS: LegendItem[] = [
   { key: "primary_parcels", label: "Primary Parcels", swatch: "parcels", toggleable: true },
+  { key: "parcel_points", label: "Parcel Points", swatch: "parcel-points", toggleable: true },
   { key: "qa_active", label: "Question Area", swatch: "qa-marker", toggleable: false, indented: true },
   { key: "management_tracts", label: "Management", swatch: "management", toggleable: true },
 ];
@@ -206,17 +214,17 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [editDraft, setEditDraft] = useState<EditDraft>({
-    status: "active",
+    status: "review",
     summary: "",
     description: "",
     assignedReviewer: "",
   });
   const [commentDraft, setCommentDraft] = useState("");
   const [parcelCommentDraft, setParcelCommentDraft] = useState("");
-  const [parcelStatusDraft, setParcelStatusDraft] = useState("active");
+  const [parcelStatusDraft, setParcelStatusDraft] = useState("review");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadInputKey, setUploadInputKey] = useState(0);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [busy, setBusy] = useState({
     summary: false,
     detail: false,
@@ -228,11 +236,19 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     uploading: false,
   });
   const deferredSearch = useDeferredValue(searchInput);
-  const selectedParcelQuestionAreaCode =
-    typeof selectedParcelDetail?.properties.questionAreaCode === "string" &&
-    selectedParcelDetail.properties.questionAreaCode.trim()
-      ? selectedParcelDetail.properties.questionAreaCode.trim()
-      : null;
+
+  function showFeedback(message: string, type: FeedbackState["type"] = "error") {
+    setFeedback({ message, type });
+  }
+
+  useEffect(() => {
+    if (!feedback) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setFeedback(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
 
   useEffect(() => {
     let alive = true;
@@ -246,7 +262,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       })
       .catch((error) => {
         if (alive) {
-          setFeedback(error instanceof Error ? error.message : "Failed to load summary.");
+          showFeedback(error instanceof Error ? error.message : "Failed to load summary.");
         }
       })
       .finally(() => {
@@ -317,7 +333,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       })
       .catch((error) => {
         if (alive) {
-          setFeedback(error instanceof Error ? error.message : "Failed to load question areas.");
+          showFeedback(error instanceof Error ? error.message : "Failed to load question areas.");
         }
       });
 
@@ -356,7 +372,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       })
       .catch((error) => {
         if (alive) {
-          setFeedback(error instanceof Error ? error.message : "Failed to load map layers.");
+          showFeedback(error instanceof Error ? error.message : "Failed to load map layers.");
         }
       });
 
@@ -390,7 +406,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       })
       .catch((error) => {
         if (alive) {
-          setFeedback(error instanceof Error ? error.message : "Failed to load details.");
+          showFeedback(error instanceof Error ? error.message : "Failed to load details.");
         }
       })
       .finally(() => {
@@ -437,7 +453,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       })
       .catch((error) => {
         if (alive) {
-          setFeedback(error instanceof Error ? error.message : "Failed to load parcel details.");
+          showFeedback(error instanceof Error ? error.message : "Failed to load parcel details.");
         }
       })
       .finally(() => {
@@ -486,6 +502,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     if (!selectedCode) {
       return;
     }
+    if (!editDraft.summary.trim()) {
+      showFeedback("Summary is required.");
+      return;
+    }
 
     setBusy((current) => ({ ...current, saving: true }));
     setFeedback(null);
@@ -496,15 +516,15 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         token: session.token,
         body: {
           status: editDraft.status,
-          summary: editDraft.summary,
+          summary: editDraft.summary.trim(),
           description: editDraft.description || null,
           assignedReviewer: editDraft.assignedReviewer || null,
         },
       });
       await Promise.all([reloadDetail(), refreshSummary()]);
-      setFeedback("Question area updated.");
+      showFeedback("Question area updated.", "success");
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Update failed.");
+      showFeedback(error instanceof Error ? error.message : "Update failed.");
     } finally {
       setBusy((current) => ({ ...current, saving: false }));
     }
@@ -512,7 +532,11 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
   async function handleCommentSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedCode || !commentDraft.trim()) {
+    if (!selectedCode) {
+      return;
+    }
+    if (!commentDraft.trim()) {
+      showFeedback("Comment text is required.");
       return;
     }
 
@@ -527,8 +551,9 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       });
       setCommentDraft("");
       await Promise.all([reloadDetail(), refreshSummary()]);
+      showFeedback("Comment posted.", "success");
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Comment failed.");
+      showFeedback(error instanceof Error ? error.message : "Comment failed.");
     } finally {
       setBusy((current) => ({ ...current, commenting: false }));
     }
@@ -548,7 +573,11 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
   async function handleParcelCommentSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedParcelId || !parcelCommentDraft.trim()) {
+    if (!selectedParcelId) {
+      return;
+    }
+    if (!parcelCommentDraft.trim()) {
+      showFeedback("Comment text is required.");
       return;
     }
 
@@ -563,8 +592,9 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       });
       setParcelCommentDraft("");
       await reloadParcelDetail();
+      showFeedback("Parcel comment posted.", "success");
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Parcel comment failed.");
+      showFeedback(error instanceof Error ? error.message : "Parcel comment failed.");
     } finally {
       setBusy((current) => ({ ...current, parcelCommenting: false }));
     }
@@ -585,9 +615,9 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         body: { status: parcelStatusDraft },
       });
       await reloadParcelDetail();
-      setFeedback("QA status updated.");
+      showFeedback("QA status updated.", "success");
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "QA status update failed.");
+      showFeedback(error instanceof Error ? error.message : "QA status update failed.");
     } finally {
       setBusy((current) => ({ ...current, parcelStatusSaving: false }));
     }
@@ -616,8 +646,9 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       setSelectedFile(null);
       setUploadInputKey((current) => current + 1);
       await Promise.all([reload(), refreshSummary()]);
+      showFeedback("Document uploaded.", "success");
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Upload failed.");
+      showFeedback(error instanceof Error ? error.message : "Upload failed.");
     } finally {
       setBusy((current) => ({ ...current, uploading: false }));
     }
@@ -631,15 +662,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     await uploadDocumentForQuestionArea(selectedCode, reloadDetail);
   }
 
-  async function handleParcelUploadDocument() {
-    if (!selectedParcelQuestionAreaCode) {
-      setFeedback("This parcel is not linked to a question area.");
-      return;
-    }
-
-    await uploadDocumentForQuestionArea(selectedParcelQuestionAreaCode, reloadParcelDetail);
-  }
-
   async function handleDownloadDocument(fileRecord: QuestionAreaDetail["documents"][number]) {
     try {
       const blob = await apiDownload(fileRecord.downloadUrl.replace("/api", ""), session.token);
@@ -650,7 +672,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       link.click();
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Download failed.");
+      showFeedback(error instanceof Error ? error.message : "Download failed.");
     }
   }
 
@@ -716,7 +738,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     }
   }
 
-  const activeCount = summary?.statuses.active ?? 0;
+  const openCount = (summary?.statuses.review ?? 0) + (summary?.statuses.active ?? 0);
   const selectedGeometry = selectedDetail?.geometry ?? null;
   const selectedGeometryKey = selectedDetail?.code ?? null;
 
@@ -744,6 +766,12 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         </div>
       </header>
 
+      {feedback ? (
+        <div className={`toast toast-${feedback.type}`} role="status">
+          {feedback.message}
+        </div>
+      ) : null}
+
       <section
         className={`workspace-grid ${leftPanelCollapsed ? "left-collapsed" : ""} ${
           rightPanelCollapsed ? "right-collapsed" : ""
@@ -762,9 +790,9 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
             <section className="panel-section stats-section">
               <div className="stat-card">
                 <div className="stat-content">
-                  <span>Active Question Areas</span>
+                  <span>Open Question Areas</span>
                   <strong>
-                    {busy.summary ? "..." : activeCount}
+                    {busy.summary ? "..." : openCount}
                   </strong>
                 </div>
               </div>
@@ -935,6 +963,23 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
               ) : null}
             </Pane>
 
+            <Pane name="points" style={{ zIndex: 410 }}>
+              {layerVisibility.parcel_points && layerData.parcel_points ? (
+                <GeoJSON
+                  data={layerData.parcel_points}
+                  pointToLayer={(_feature, latlng) =>
+                    L.circleMarker(latlng, {
+                      radius: 4,
+                      color: "#0f766e",
+                      weight: 1,
+                      fillColor: "#5eead4",
+                      fillOpacity: 0.9,
+                    })
+                  }
+                />
+              ) : null}
+            </Pane>
+
             <Pane name="question-areas" style={{ zIndex: 430 }}>
               {questionAreas ? (
                 <GeoJSON
@@ -988,13 +1033,9 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                   </div>
                   <div className="badge-row">
                     <span
-                      className={`badge ${
-                        selectedDetail.status.toLowerCase() === "active"
-                          ? "severity-medium"
-                          : "neutral"
-                      }`}
+                      className={`badge ${workflowBadgeClass(selectedDetail.status)}`}
                     >
-                      {selectedDetail.status.toLowerCase() === "review" ? "Active" : selectedDetail.status}
+                      {workflowLabel(selectedDetail.status)}
                     </span>
                   </div>
                   <dl className="detail-grid">
@@ -1029,7 +1070,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                       >
                         {STATUS_OPTIONS.map((status) => (
                           <option key={status} value={status}>
-                            {status}
+                            {workflowLabel(status)}
                           </option>
                         ))}
                       </select>
@@ -1155,21 +1196,15 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                         : "Parcel record"}
                     </h2>
                   </div>
-                  {isParcelActive(selectedParcelDetail.properties.QA_Status) ? (
-                    <div className="badge-row">
-                      <span
-                        className={`badge ${
-                          isWorkflowActive(selectedParcelDetail.properties.reviewStatus)
-                            ? "severity-medium"
-                            : "neutral"
-                        }`}
-                      >
-                        {selectedParcelDetail.properties.reviewStatus?.toLowerCase() === "review"
-                          ? "Active"
-                          : humanize(selectedParcelDetail.properties.reviewStatus ?? "active")}
-                      </span>
-                    </div>
-                  ) : null}
+                  <div className="badge-row">
+                    <span
+                      className={`badge ${workflowBadgeClass(
+                        selectedParcelDetail.properties.reviewStatus,
+                      )}`}
+                    >
+                      {workflowLabel(selectedParcelDetail.properties.reviewStatus ?? "review")}
+                    </span>
+                  </div>
                   <dl className="detail-grid">
                     <DetailItem label="Parcel Code" mono>
                       {selectedParcelDetail.properties.PTVParcel ?? "None"}
@@ -1196,8 +1231,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                       {formatMetric(selectedParcelDetail.properties.GIS_Acres)}
                     </DetailItem>
                   </dl>
-                  {isParcelActive(selectedParcelDetail.properties.QA_Status) &&
-                  selectedParcelDetail.properties.SpatialOverlayNotes ? (
+                  {selectedParcelDetail.properties.SpatialOverlayNotes ? (
                     <div className="qa-reason">
                       <dt>Question Area Reason</dt>
                       <dd>{selectedParcelDetail.properties.SpatialOverlayNotes}</dd>
@@ -1237,53 +1271,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 </section>
 
                 <section className="panel-section">
-                  <div className="section-heading">
-                    <h2>Documents</h2>
-                    <span>{selectedParcelDetail.documents.length} attached</span>
-                  </div>
-                  <div className="document-list">
-                    {selectedParcelDetail.documents.map((document) => (
-                      <article key={document.id} className="document-card">
-                        <div>
-                          <strong>{document.originalName}</strong>
-                          <small>{formatFileSize(document.sizeBytes)}</small>
-                        </div>
-                        <button
-                          className="ghost-button"
-                          onClick={() => handleDownloadDocument(document)}
-                          type="button"
-                        >
-                          Download
-                        </button>
-                      </article>
-                    ))}
-                  </div>
-                  <div className="upload-row">
-                    <input
-                      key={`parcel-upload-${uploadInputKey}`}
-                      disabled={!selectedParcelQuestionAreaCode || busy.uploading}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        setSelectedFile(event.target.files?.[0] ?? null)
-                      }
-                      type="file"
-                    />
-                    <button
-                      className="primary-button"
-                      disabled={!selectedParcelQuestionAreaCode || !selectedFile || busy.uploading}
-                      onClick={handleParcelUploadDocument}
-                      type="button"
-                    >
-                      {busy.uploading ? "Uploading..." : "Upload"}
-                    </button>
-                  </div>
-                  <p className="field-hint">
-                    {selectedParcelQuestionAreaCode
-                      ? `Uploads are attached to question area ${selectedParcelQuestionAreaCode}.`
-                      : "Documents can be uploaded after this parcel is linked to a question area."}
-                  </p>
-                </section>
-
-                <section className="panel-section">
                   <div className="form-stack">
                     <label>
                       Update QA Status
@@ -1293,7 +1280,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                       >
                         {STATUS_OPTIONS.map((status) => (
                           <option key={status} value={status}>
-                            {humanize(status)}
+                            {workflowLabel(status)}
                           </option>
                         ))}
                       </select>
@@ -1501,14 +1488,23 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function workflowLabel(value: string | null | undefined) {
+  return humanize(value ?? "review");
+}
+
+function workflowBadgeClass(value: string | null | undefined) {
+  return isWorkflowOpen(value) ? "severity-medium" : "neutral";
+}
+
+function isWorkflowOpen(value: string | null | undefined) {
+  const status = value?.toLowerCase();
+  return status === "review" || status === "active";
+}
+
 function isParcelActive(value: string | null | undefined) {
   return value?.toLowerCase().includes("active") ?? false;
 }
 
-function isWorkflowActive(value: string | null | undefined) {
-  return value?.toLowerCase() === "active";
-}
-
 function deriveInitialParcelStatus(value: string | null | undefined) {
-  return isParcelActive(value) ? "active" : "hold";
+  return isParcelActive(value) ? "active" : "review";
 }

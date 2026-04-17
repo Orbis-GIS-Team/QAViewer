@@ -11,6 +11,7 @@ type ManagedUser = {
   role: UserRole;
   createdAt: string;
   commentCount: number;
+  parcelCommentCount: number;
   documentCount: number;
 };
 
@@ -63,6 +64,9 @@ function summarizeActivity(user: ManagedUser): string {
 
   if (user.commentCount > 0) {
     parts.push(`${user.commentCount} comments`);
+  }
+  if (user.parcelCommentCount > 0) {
+    parts.push(`${user.parcelCommentCount} parcel comments`);
   }
   if (user.documentCount > 0) {
     parts.push(`${user.documentCount} documents`);
@@ -277,6 +281,7 @@ export function AdminWorkspace({
     !selectedUser ||
     selectedUser.id === session.user.id ||
     selectedUser.commentCount > 0 ||
+    selectedUser.parcelCommentCount > 0 ||
     selectedUser.documentCount > 0 ||
     (selectedUser.role === "admin" && adminCount <= 1);
 

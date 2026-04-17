@@ -30,10 +30,6 @@ export function parseBoolean(value: unknown): boolean | null {
   return null;
 }
 
-export function asGeoJsonString(feature: Feature<Geometry, GeoJsonProperties>): string {
-  return JSON.stringify(feature.geometry);
-}
-
 export function parseBbox(value?: string): [number, number, number, number] | null {
   if (!value) {
     return null;
