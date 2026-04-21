@@ -26,9 +26,8 @@ const DEMO_USERS = [
 
 const SEED_TABLES = [
   "question_areas",
-  "parcel_features",
-  "parcel_points",
-  "management_tracts",
+  "land_records",
+  "management_areas",
 ] as const;
 
 const MANIFEST_METADATA_KEY = "generated_manifest_sha256";
@@ -38,11 +37,9 @@ async function tableCounts(client: PoolClient): Promise<Record<string, number>> 
     SELECT tbl, count FROM (
       SELECT 'question_areas' AS tbl, COUNT(*)::text AS count FROM question_areas
       UNION ALL
-      SELECT 'parcel_features', COUNT(*)::text FROM parcel_features
+      SELECT 'land_records', COUNT(*)::text FROM land_records
       UNION ALL
-      SELECT 'parcel_points', COUNT(*)::text FROM parcel_points
-      UNION ALL
-      SELECT 'management_tracts', COUNT(*)::text FROM management_tracts
+      SELECT 'management_areas', COUNT(*)::text FROM management_areas
     ) sub
   `);
   return Object.fromEntries(result.rows.map((r) => [r.tbl, Number(r.count)]));
@@ -76,9 +73,27 @@ async function storeManifestHash(client: PoolClient, hash: string): Promise<void
 function seedMismatchMessage(reason: string): string {
   return [
     reason,
-    "The generated GIS seed assets no longer match the populated PostGIS seed metadata.",
+    "The standardized GIS seed assets no longer match the populated PostGIS seed metadata.",
     "For local development, reset and reseed the database explicitly, for example: docker compose down -v && docker compose up --build.",
   ].join(" ");
+}
+
+function parseNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  const normalized = String(value).trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export async function ensureSeedData(client: PoolClient): Promise<void> {
@@ -96,7 +111,7 @@ export async function ensureSeedData(client: PoolClient): Promise<void> {
       throw new Error(seedMismatchMessage("Seed metadata is missing for an already-populated database."));
     }
     if (storedHash !== manifestHash) {
-      throw new Error(seedMismatchMessage("Generated seed manifest hash changed."));
+      throw new Error(seedMismatchMessage("Standardized seed manifest hash changed."));
     }
     return;
   }
@@ -106,9 +121,8 @@ export async function ensureSeedData(client: PoolClient): Promise<void> {
   }
 
   const questionAreas = await loadFeatureCollection("question_areas.geojson");
-  const parcelFeatures = await loadFeatureCollection("primary_parcels.geojson");
-  const parcelPoints = await loadFeatureCollection("parcel_points.geojson");
-  const managementTracts = await loadFeatureCollection("management_tracts.geojson");
+  const landRecords = await loadFeatureCollection("land_records.geojson");
+  const managementAreas = await loadFeatureCollection("management_areas.geojson");
 
   if ((counts["question_areas"] ?? 0) === 0) {
     for (const feature of questionAreas.features) {
@@ -116,21 +130,15 @@ export async function ensureSeedData(client: PoolClient): Promise<void> {
     }
   }
 
-  if ((counts["parcel_features"] ?? 0) === 0) {
-    for (const feature of parcelFeatures.features) {
-      await insertParcelFeature(client, feature);
+  if ((counts["land_records"] ?? 0) === 0) {
+    for (const feature of landRecords.features) {
+      await insertLandRecord(client, feature);
     }
   }
 
-  if ((counts["parcel_points"] ?? 0) === 0) {
-    for (const feature of parcelPoints.features) {
-      await insertParcelPoint(client, feature);
-    }
-  }
-
-  if ((counts["management_tracts"] ?? 0) === 0) {
-    for (const feature of managementTracts.features) {
-      await insertManagementTract(client, feature);
+  if ((counts["management_areas"] ?? 0) === 0) {
+    for (const feature of managementAreas.features) {
+      await insertManagementArea(client, feature);
     }
   }
 
@@ -169,7 +177,6 @@ async function insertQuestionArea(
       INSERT INTO question_areas (
         code,
         source_layer,
-        source_group,
         status,
         severity,
         title,
@@ -177,31 +184,31 @@ async function insertQuestionArea(
         description,
         county,
         state,
-        primary_parcel_number,
-        primary_parcel_code,
-        primary_owner_name,
+        parcel_code,
+        owner_name,
         property_name,
-        analysis_name,
         tract_name,
+        fund_name,
+        land_services,
+        tax_bill_acres,
+        gis_acres,
+        exists_in_legal_layer,
+        exists_in_management_layer,
+        exists_in_client_tabular_bill_data,
         assigned_reviewer,
         search_keywords,
-        source_layers,
-        related_parcels,
-        metrics,
-        geom,
-        centroid
+        raw_properties,
+        geom
       )
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-        $17, $18, $19::jsonb, $20::jsonb, $21::jsonb,
-        ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($22), 4326)),
-        ST_SetSRID(ST_MakePoint($23, $24), 4326)
+        $17, $18, $19, $20, $21, $22, $23::jsonb,
+        ST_Force2D(ST_SetSRID(ST_GeomFromGeoJSON($24), 4326))
       )
     `,
     [
-      properties.question_area_code,
+      properties.code,
       properties.source_layer,
-      properties.source_group,
       properties.status,
       properties.severity,
       properties.title,
@@ -209,25 +216,26 @@ async function insertQuestionArea(
       properties.description,
       properties.county,
       properties.state,
-      properties.primary_parcel_number,
-      properties.primary_parcel_code,
-      properties.primary_owner_name,
+      properties.parcel_code,
+      properties.owner_name,
       properties.property_name,
-      properties.analysis_name,
       properties.tract_name,
+      properties.fund_name,
+      properties.land_services,
+      parseNullableNumber(properties.tax_bill_acres),
+      parseNullableNumber(properties.gis_acres),
+      parseBoolean(properties.exists_in_legal_layer),
+      parseBoolean(properties.exists_in_management_layer),
+      parseBoolean(properties.exists_in_client_tabular_bill_data),
       properties.assigned_reviewer,
       properties.search_keywords,
-      JSON.stringify(properties.source_layers ?? []),
-      JSON.stringify(properties.related_parcels ?? []),
-      JSON.stringify(properties.metrics ?? {}),
+      JSON.stringify(properties),
       JSON.stringify(feature.geometry),
-      properties.centroid_lng,
-      properties.centroid_lat,
     ],
   );
 }
 
-async function insertParcelFeature(
+async function insertLandRecord(
   client: PoolClient,
   feature: Feature<Geometry, GeoJsonProperties>,
 ): Promise<void> {
@@ -237,93 +245,84 @@ async function insertParcelFeature(
   const properties = feature.properties ?? {};
   await client.query(
     `
-      INSERT INTO parcel_features (
+      INSERT INTO land_records (
+        state,
+        county,
         parcel_number,
-        county,
-        state,
-        owner_name,
-        property_name,
-        analysis_name,
-        tract_name,
-        qa_status,
-        ptv_parcel,
-        exists_in_mgt,
-        exists_in_ptv,
+        deed_acres,
         gis_acres,
-        raw_properties,
-        geom
-      )
-      VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb,
-        ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($14), 4326))
-      )
-    `,
-    [
-      properties.parcelnumb,
-      properties.County,
-      properties.State,
-      properties.RegridOwner,
-      properties.PropertyName,
-      properties.AnalysisName,
-      properties.TractName,
-      properties.QA_Status,
-      properties.PTVParcel,
-      parseBoolean(properties.Exists_in_Mgt),
-      parseBoolean(properties.Exists_in_PTV),
-      properties.GIS_Acres,
-      JSON.stringify(properties),
-      JSON.stringify(feature.geometry),
-    ],
-  );
-}
-
-async function insertParcelPoint(
-  client: PoolClient,
-  feature: Feature<Geometry, GeoJsonProperties>,
-): Promise<void> {
-  if (!feature.geometry) {
-    return;
-  }
-  const properties = feature.properties ?? {};
-  await client.query(
-    `
-      INSERT INTO parcel_points (
-        parcel_id,
-        parcel_code,
-        owner_name,
-        county,
-        state,
+        fips,
         description,
-        tract_name,
-        land_use_type,
-        latitude,
-        longitude,
+        record_type,
+        tract_key,
+        record_number,
+        document_number,
+        source_name,
+        source_page_number,
+        document_type,
+        record_status,
+        current_owner,
+        previous_owner,
+        acquisition_date,
+        description_type,
+        remark,
+        keyword,
+        document_name,
+        trs,
+        record_specs,
+        tax_confirmed,
+        merge_source,
+        old_record_number,
+        property_name,
+        fund_name,
+        region_name,
         raw_properties,
         geom
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb,
-        ST_SetSRID(ST_GeomFromGeoJSON($12), 4326)
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+        $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
+        $31::jsonb, ST_Multi(ST_Force2D(ST_SetSRID(ST_GeomFromGeoJSON($32), 4326)))
       )
     `,
     [
-      properties.ParcelID,
-      properties.ParcelCode,
-      properties.OwnerName,
-      properties.County,
-      properties.State,
-      properties.Descriptio,
-      properties.TractName,
-      properties.LandUseTyp,
-      properties.Latitude,
-      properties.Longitude,
+      properties.state,
+      properties.county,
+      properties.parcel_number,
+      parseNullableNumber(properties.deed_acres),
+      parseNullableNumber(properties.gis_acres),
+      properties.fips,
+      properties.description,
+      properties.record_type,
+      properties.tract_key,
+      properties.record_number,
+      properties.document_number,
+      properties.source_name,
+      properties.source_page_number,
+      properties.document_type,
+      properties.record_status,
+      properties.current_owner,
+      properties.previous_owner,
+      properties.acquisition_date,
+      properties.description_type,
+      properties.remark,
+      properties.keyword,
+      properties.document_name,
+      properties.trs,
+      properties.record_specs,
+      parseBoolean(properties.tax_confirmed),
+      properties.merge_source,
+      properties.old_record_number,
+      properties.property_name,
+      properties.fund_name,
+      properties.region_name,
       JSON.stringify(properties),
       JSON.stringify(feature.geometry),
     ],
   );
 }
 
-async function insertManagementTract(
+async function insertManagementArea(
   client: PoolClient,
   feature: Feature<Geometry, GeoJsonProperties>,
 ): Promise<void> {
@@ -333,32 +332,63 @@ async function insertManagementTract(
   const properties = feature.properties ?? {};
   await client.query(
     `
-      INSERT INTO management_tracts (
-        fund,
-        pu_number,
-        pu,
-        tract_number,
-        tract_name,
-        ownership,
-        comment,
-        book_area,
+      INSERT INTO management_areas (
+        effective_date,
+        status,
+        property_code,
+        property_name,
+        portfolio,
+        fund_name,
+        original_acquisition_date,
+        full_disposition_date,
+        management_type,
+        country,
+        investment_manager,
+        property_coordinates,
+        region,
+        state,
+        county,
+        business_unit,
+        crops,
+        tillable_acres,
+        gross_acres,
+        arable_hectares,
+        gross_hectares,
+        gis_acres,
+        gis_hectares,
         raw_properties,
         geom
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb,
-        ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($10), 4326))
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+        $17, $18, $19, $20, $21, $22, $23, $24::jsonb,
+        ST_Multi(ST_Force2D(ST_SetSRID(ST_GeomFromGeoJSON($25), 4326)))
       )
     `,
     [
-      properties.Fund,
-      properties.PU_Number,
-      properties.PU,
-      properties.Tract_Numb,
-      properties.Tract_Name,
-      properties.Ownership,
-      properties.Comment,
-      properties.Book_Area,
+      properties.effective_date,
+      properties.status,
+      properties.property_code,
+      properties.property_name,
+      properties.portfolio,
+      properties.fund_name,
+      properties.original_acquisition_date,
+      properties.full_disposition_date,
+      properties.management_type,
+      properties.country,
+      properties.investment_manager,
+      properties.property_coordinates,
+      properties.region,
+      properties.state,
+      properties.county,
+      properties.business_unit,
+      properties.crops,
+      parseNullableNumber(properties.tillable_acres),
+      parseNullableNumber(properties.gross_acres),
+      parseNullableNumber(properties.arable_hectares),
+      parseNullableNumber(properties.gross_hectares),
+      parseNullableNumber(properties.gis_acres),
+      parseNullableNumber(properties.gis_hectares),
       JSON.stringify(properties),
       JSON.stringify(feature.geometry),
     ],

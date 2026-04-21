@@ -1,4 +1,4 @@
-export const SEARCH_FIELDS = ["all", "parcelnumb", "county", "qa_id"] as const;
+export const SEARCH_FIELDS = ["all", "parcel_code", "county", "qa_id"] as const;
 
 export type SearchField = (typeof SEARCH_FIELDS)[number];
 
@@ -18,11 +18,11 @@ export function buildQuestionAreaSearchClause(
   switch (field) {
     case "qa_id":
       return `${alias}.code ILIKE ${placeholder}`;
-    case "parcelnumb":
+    case "parcel_code":
       return `
-        COALESCE(${alias}.primary_parcel_number, '') ILIKE ${placeholder}
-        OR COALESCE(${alias}.primary_parcel_code, '') ILIKE ${placeholder}
-        OR COALESCE(${alias}.related_parcels::text, '') ILIKE ${placeholder}
+        COALESCE(${alias}.parcel_code, '') ILIKE ${placeholder}
+        OR COALESCE(${alias}.property_name, '') ILIKE ${placeholder}
+        OR COALESCE(${alias}.owner_name, '') ILIKE ${placeholder}
       `;
     case "county":
       return `
@@ -37,49 +37,12 @@ export function buildQuestionAreaSearchClause(
         OR ${alias}.summary ILIKE ${placeholder}
         OR COALESCE(${alias}.county, '') ILIKE ${placeholder}
         OR COALESCE(${alias}.state, '') ILIKE ${placeholder}
-        OR COALESCE(${alias}.primary_parcel_number, '') ILIKE ${placeholder}
-        OR COALESCE(${alias}.primary_parcel_code, '') ILIKE ${placeholder}
-        OR COALESCE(${alias}.primary_owner_name, '') ILIKE ${placeholder}
+        OR COALESCE(${alias}.parcel_code, '') ILIKE ${placeholder}
+        OR COALESCE(${alias}.owner_name, '') ILIKE ${placeholder}
         OR COALESCE(${alias}.property_name, '') ILIKE ${placeholder}
-        OR COALESCE(${alias}.analysis_name, '') ILIKE ${placeholder}
         OR COALESCE(${alias}.tract_name, '') ILIKE ${placeholder}
+        OR COALESCE(${alias}.fund_name, '') ILIKE ${placeholder}
         OR COALESCE(${alias}.search_keywords, '') ILIKE ${placeholder}
-        OR COALESCE(${alias}.related_parcels::text, '') ILIKE ${placeholder}
-      `;
-  }
-}
-
-export function buildParcelSearchClause(
-  parcelAlias: string,
-  questionAreaAlias: string,
-  placeholder: string,
-  field: SearchField,
-): string {
-  switch (field) {
-    case "qa_id":
-      return `COALESCE(${questionAreaAlias}.code, '') ILIKE ${placeholder}`;
-    case "parcelnumb":
-      return `
-        COALESCE(${parcelAlias}.parcel_number, '') ILIKE ${placeholder}
-        OR COALESCE(${parcelAlias}.ptv_parcel, '') ILIKE ${placeholder}
-      `;
-    case "county":
-      return `
-        COALESCE(${parcelAlias}.county, '') ILIKE ${placeholder}
-        OR COALESCE(${parcelAlias}.state, '') ILIKE ${placeholder}
-      `;
-    case "all":
-    default:
-      return `
-        COALESCE(${parcelAlias}.parcel_number, '') ILIKE ${placeholder}
-        OR COALESCE(${parcelAlias}.ptv_parcel, '') ILIKE ${placeholder}
-        OR COALESCE(${parcelAlias}.owner_name, '') ILIKE ${placeholder}
-        OR COALESCE(${parcelAlias}.property_name, '') ILIKE ${placeholder}
-        OR COALESCE(${parcelAlias}.analysis_name, '') ILIKE ${placeholder}
-        OR COALESCE(${parcelAlias}.tract_name, '') ILIKE ${placeholder}
-        OR COALESCE(${parcelAlias}.county, '') ILIKE ${placeholder}
-        OR COALESCE(${parcelAlias}.state, '') ILIKE ${placeholder}
-        OR COALESCE(${questionAreaAlias}.code, '') ILIKE ${placeholder}
       `;
   }
 }

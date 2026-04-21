@@ -31,7 +31,7 @@ services:
       - "3001:3001"
     volumes:
       - ./backend:/workspace/backend
-      - ./data/generated:/workspace/data/generated:ro
+      - ./data/standardized:/workspace/data/standardized:ro
       - ./backend/uploads:/workspace/backend/uploads
       - backend_node_modules:/workspace/backend/node_modules
 

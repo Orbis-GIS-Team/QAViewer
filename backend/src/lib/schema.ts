@@ -36,7 +36,6 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       id SERIAL PRIMARY KEY,
       code TEXT NOT NULL UNIQUE,
       source_layer TEXT NOT NULL,
-      source_group TEXT NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('review', 'active', 'resolved', 'hold')),
       severity TEXT NOT NULL CHECK (severity IN ('high', 'medium', 'low')),
       title TEXT NOT NULL,
@@ -44,19 +43,21 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       description TEXT,
       county TEXT,
       state TEXT,
-      primary_parcel_number TEXT,
-      primary_parcel_code TEXT,
-      primary_owner_name TEXT,
+      parcel_code TEXT,
+      owner_name TEXT,
       property_name TEXT,
-      analysis_name TEXT,
       tract_name TEXT,
+      fund_name TEXT,
+      land_services TEXT,
+      tax_bill_acres DOUBLE PRECISION,
+      gis_acres DOUBLE PRECISION,
+      exists_in_legal_layer BOOLEAN,
+      exists_in_management_layer BOOLEAN,
+      exists_in_client_tabular_bill_data BOOLEAN,
       assigned_reviewer TEXT,
       search_keywords TEXT,
-      source_layers JSONB NOT NULL DEFAULT '[]'::jsonb,
-      related_parcels JSONB NOT NULL DEFAULT '[]'::jsonb,
-      metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
-      geom geometry(MultiPolygon, 4326) NOT NULL,
-      centroid geometry(Point, 4326) NOT NULL,
+      raw_properties JSONB NOT NULL DEFAULT '{}'::jsonb,
+      geom geometry(Point, 4326) NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -71,79 +72,69 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
   `);
 
   await client.query(`
-    CREATE TABLE IF NOT EXISTS parcel_features (
+    CREATE TABLE IF NOT EXISTS land_records (
       id SERIAL PRIMARY KEY,
-      parcel_number TEXT,
-      county TEXT,
       state TEXT,
-      owner_name TEXT,
-      property_name TEXT,
-      analysis_name TEXT,
-      tract_name TEXT,
-      qa_status TEXT,
-      ptv_parcel TEXT,
-      exists_in_mgt BOOLEAN,
-      exists_in_ptv BOOLEAN,
+      county TEXT,
+      parcel_number TEXT,
+      deed_acres DOUBLE PRECISION,
       gis_acres DOUBLE PRECISION,
+      fips TEXT,
+      description TEXT,
+      record_type TEXT,
+      tract_key TEXT,
+      record_number TEXT,
+      document_number TEXT,
+      source_name TEXT,
+      source_page_number TEXT,
+      document_type TEXT,
+      record_status TEXT,
+      current_owner TEXT,
+      previous_owner TEXT,
+      acquisition_date TEXT,
+      description_type TEXT,
+      remark TEXT,
+      keyword TEXT,
+      document_name TEXT,
+      trs TEXT,
+      record_specs TEXT,
+      tax_confirmed BOOLEAN,
+      merge_source TEXT,
+      old_record_number TEXT,
+      property_name TEXT,
+      fund_name TEXT,
+      region_name TEXT,
       raw_properties JSONB NOT NULL DEFAULT '{}'::jsonb,
       geom geometry(MultiPolygon, 4326) NOT NULL
     )
   `);
 
   await client.query(`
-    ALTER TABLE parcel_features
-    ADD COLUMN IF NOT EXISTS review_status TEXT
-  `);
-
-  await client.query(`
-    UPDATE parcel_features
-    SET review_status = CASE
-      WHEN COALESCE(LOWER(qa_status), '') LIKE '%active%' THEN 'active'
-      ELSE 'review'
-    END
-    WHERE review_status IS NULL
-  `);
-
-  await client.query(`
-    ALTER TABLE parcel_features
-    DROP CONSTRAINT IF EXISTS parcel_features_review_status_check
-  `);
-
-  await client.query(`
-    ALTER TABLE parcel_features
-    ADD CONSTRAINT parcel_features_review_status_check
-    CHECK (review_status IN ('review', 'active', 'resolved', 'hold'))
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS parcel_points (
+    CREATE TABLE IF NOT EXISTS management_areas (
       id SERIAL PRIMARY KEY,
-      parcel_id INTEGER,
-      parcel_code TEXT,
-      owner_name TEXT,
-      county TEXT,
+      effective_date TEXT,
+      status TEXT,
+      property_code TEXT,
+      property_name TEXT,
+      portfolio TEXT,
+      fund_name TEXT,
+      original_acquisition_date TEXT,
+      full_disposition_date TEXT,
+      management_type TEXT,
+      country TEXT,
+      investment_manager TEXT,
+      property_coordinates TEXT,
+      region TEXT,
       state TEXT,
-      description TEXT,
-      tract_name TEXT,
-      land_use_type TEXT,
-      latitude DOUBLE PRECISION,
-      longitude DOUBLE PRECISION,
-      raw_properties JSONB NOT NULL DEFAULT '{}'::jsonb,
-      geom geometry(Point, 4326) NOT NULL
-    )
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS management_tracts (
-      id SERIAL PRIMARY KEY,
-      fund TEXT,
-      pu_number DOUBLE PRECISION,
-      pu TEXT,
-      tract_number TEXT,
-      tract_name TEXT,
-      ownership TEXT,
-      comment TEXT,
-      book_area DOUBLE PRECISION,
+      county TEXT,
+      business_unit TEXT,
+      crops TEXT,
+      tillable_acres DOUBLE PRECISION,
+      gross_acres DOUBLE PRECISION,
+      arable_hectares DOUBLE PRECISION,
+      gross_hectares DOUBLE PRECISION,
+      gis_acres DOUBLE PRECISION,
+      gis_hectares DOUBLE PRECISION,
       raw_properties JSONB NOT NULL DEFAULT '{}'::jsonb,
       geom geometry(MultiPolygon, 4326) NOT NULL
     )
@@ -153,16 +144,6 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
     CREATE TABLE IF NOT EXISTS comments (
       id SERIAL PRIMARY KEY,
       question_area_id INTEGER NOT NULL REFERENCES question_areas(id) ON DELETE CASCADE,
-      author_id INTEGER NOT NULL REFERENCES users(id),
-      body TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS parcel_comments (
-      id SERIAL PRIMARY KEY,
-      parcel_id INTEGER NOT NULL REFERENCES parcel_features(id) ON DELETE CASCADE,
       author_id INTEGER NOT NULL REFERENCES users(id),
       body TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -184,20 +165,18 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
 
   await client.query(`
     CREATE INDEX IF NOT EXISTS question_areas_geom_idx ON question_areas USING GIST (geom);
-    CREATE INDEX IF NOT EXISTS question_areas_centroid_idx ON question_areas USING GIST (centroid);
-    CREATE INDEX IF NOT EXISTS parcel_features_geom_idx ON parcel_features USING GIST (geom);
-    CREATE INDEX IF NOT EXISTS parcel_points_geom_idx ON parcel_points USING GIST (geom);
-    CREATE INDEX IF NOT EXISTS management_tracts_geom_idx ON management_tracts USING GIST (geom);
+    CREATE INDEX IF NOT EXISTS land_records_geom_idx ON land_records USING GIST (geom);
+    CREATE INDEX IF NOT EXISTS management_areas_geom_idx ON management_areas USING GIST (geom);
 
     CREATE INDEX IF NOT EXISTS question_areas_status_idx ON question_areas (status);
     CREATE INDEX IF NOT EXISTS question_areas_severity_idx ON question_areas (severity);
 
     CREATE INDEX IF NOT EXISTS comments_question_area_id_idx ON comments (question_area_id);
     CREATE INDEX IF NOT EXISTS documents_question_area_id_idx ON documents (question_area_id);
-    CREATE INDEX IF NOT EXISTS parcel_comments_parcel_id_idx ON parcel_comments (parcel_id);
 
     CREATE INDEX IF NOT EXISTS question_areas_code_trgm_idx ON question_areas USING GIN (code gin_trgm_ops);
     CREATE INDEX IF NOT EXISTS question_areas_title_trgm_idx ON question_areas USING GIN (title gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS question_areas_parcel_code_trgm_idx ON question_areas USING GIN (parcel_code gin_trgm_ops);
     CREATE INDEX IF NOT EXISTS question_areas_search_keywords_trgm_idx ON question_areas USING GIN (search_keywords gin_trgm_ops);
   `);
 }

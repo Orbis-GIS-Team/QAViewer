@@ -1,24 +1,25 @@
 # QAViewer
 
-QAViewer is a Docker-first GIS review app built from the provided PRD and reusable GIS seed schema. The app centers on question areas derived from mismatch layers, with supporting parcel, point, and management layers exported into normalized seed assets.
+QAViewer is a Docker-first GIS review app built around the NNC cutover dataset in `data/standardized/`. The application is question-area-first: reviewers work from point-based `question_areas` with `land_records` and `management_areas` available as supporting overlays.
 
 ## Stack
 
 - Frontend: React + Vite + Leaflet
 - Backend: Express + TypeScript
 - Database: PostgreSQL + PostGIS
-- Seed pipeline: Python (`geopandas` / `pyogrio`) export from a source `.gdb` or compatible vector dataset
+- Seed dataset: repo-owned GeoJSON files in `data/standardized/`
 
 ## Project structure
 
-- `scripts/export_seed_data.py`: reads a source dataset and writes normalized GeoJSON seed assets into `data/generated`
-- `backend/`: API, auth, PostGIS schema, seed loader, comments, and document upload/download endpoints
-- `frontend/`: Leaflet review workspace with search, layer toggles, details, comments, and document management
-- `data/generated/`: exported GIS seed layers used by the backend on first start
+- `data/standardized/`: canonical seed dataset loaded into PostGIS on first start
+- `backend/`: API, auth, PostGIS schema, seed loader, comments, and document endpoints
+- `frontend/`: review workspace and admin UI
+- `backend/uploads/`: uploaded document storage
+- `docs/nnc-cutover-plan.md`: phased NNC cutover record and remaining cleanup tasks
 
 ## Run with Docker
 
-1. Copy `.env.example` to `.env` if you want to override the defaults.
+1. Copy `.env.example` to `.env` if you need to override runtime defaults.
 2. Start the stack:
 
 ```bash
@@ -55,29 +56,24 @@ npm run dev
 
 You still need a PostGIS database available at `DATABASE_URL`.
 
-## Regenerate GIS seed data
+## Seed dataset
 
-The app consumes normalized files from `data/generated/`; source datasets should be exported into that same schema. See `docs/dataset-contract.md` for the required logical layers and fields.
+The active app architecture reads from `data/standardized/`, not `data/generated/`.
 
-To rebuild with the default source path and layer names:
+Current canonical files:
 
-```bash
-.venv/bin/python scripts/export_seed_data.py
-```
+- `question_areas.geojson`
+- `land_records.geojson`
+- `management_areas.geojson`
+- `manifest.json`
 
-To use a different dataset or layer names:
+See `docs/dataset-contract.md` for the standardized file contract and expected properties.
 
-```bash
-.venv/bin/python scripts/export_seed_data.py \
-  --source path/to/source.gdb \
-  --primary-mismatch-layer Primary_Mismatch \
-  --comparison-mismatch-layer Comparison_Mismatch \
-  --primary-parcels-layer Primary_Parcels \
-  --parcel-points-layer Parcel_Points \
-  --management-tracts-layer Management_Tracts
-```
+## Reset and reseed workflow
 
-The backend stores a hash of `data/generated/manifest.json` after seeding. If generated seed assets change while PostGIS is already populated, startup fails with a reseed message instead of silently serving stale GIS data. For local development, reset and reseed explicitly:
+The current cutover is a schema break, not an in-place migration. If the standardized seed assets change after the database has already been populated, the backend will refuse to start until you explicitly reset local PostGIS.
+
+Reset locally with:
 
 ```bash
 docker compose down -v
@@ -98,19 +94,17 @@ Set `QA_SMOKE_API_URL` to target a non-default API base URL.
 ## Implemented MVP scope
 
 - Basic login/access control
-- Leaflet map viewer
-- Question area layer and supporting GIS overlays
-- Search and selection
-- Details/review panel
-- Comments
-- Document upload/list/download
+- Question-area-first Leaflet review workspace
+- Search and filter controls for question areas
+- `land_records` and `management_areas` overlay toggles
+- Question-area detail, status, comments, and document handling
 - Basic status tracking
 - Admin console for user creation, role management, and guarded account deletion
 
 ## Notes
 
-- The backend imports the seed layers automatically on first start if the database is empty.
-- The backend refuses to start against changed generated seed assets until the database is explicitly reset/reseeded.
+- The backend imports the standardized seed layers automatically on first start if the database is empty.
+- The backend refuses to start against changed standardized seed assets until the database is explicitly reset and reseeded.
 - Documents are stored in `backend/uploads`.
 - Admin users can switch between the review workspace and the administration console from the header.
-- The question-area exporter defaults to `BTG_Spatial_Fix_Primary_Erase` and `BTG_Spatial_Fix_Comparison_Erase`, but source path and layer names can be overridden for compatible datasets.
+- Older parcel-centered architecture notes are retained only as archived reference documents and should not be treated as the current implementation source of truth.

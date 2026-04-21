@@ -2,48 +2,44 @@
 
 ## Project purpose
 
-QAViewer is a Docker-first GIS review application built from the PRD in `question_area_review_web_app_prd.md` and a reusable normalized GIS seed schema.
+QAViewer is a Docker-first GIS review application built from the PRD in `question_area_review_web_app_prd.md` and the NNC cutover dataset stored in `data/standardized/`.
 
-The app is centered on question areas derived from mismatch layers in the geodatabase:
+The active app is centered on:
 
-- `BTG_Spatial_Fix_Primary_Erase`
-- `BTG_Spatial_Fix_Comparison_Erase`
+- `question_areas` as point-based review items
+- `land_records` as a supporting overlay/data layer
+- `management_areas` as a supporting overlay/data layer
 
-Supporting GIS context comes from:
-
-- `BTG_Spatial_Fix_Primary_Layer`
-- `BTG_Points_NoArches_12Feb26`
-- `BTG_MGMT_NoArches`
-- `TaxParcels_CountySplits_Combined`
-- `Management_CountySplits_Combined`
+The older BTG/generated-seed/parcel-centered architecture is no longer the active runtime model.
 
 ## Repo layout
 
-- `scripts/export_seed_data.py`: reads the `.gdb` and writes normalized seed assets.
-- `data/generated/`: generated GeoJSON + manifest used by the backend seed loader.
-- `backend/`: Express/TypeScript API, PostGIS schema bootstrap, auth, comments, documents.
-- `frontend/`: React/Vite/Leaflet reviewer UI.
-- `backend/uploads/`: uploaded documents stored by the API.
-- `docker-compose.yml`: local dev stack for PostGIS, API, and frontend.
+- `data/standardized/`: canonical seed GeoJSON + manifest used by the backend seed loader
+- `backend/`: Express/TypeScript API, PostGIS schema bootstrap, auth, comments, documents
+- `frontend/`: React/Vite/Leaflet reviewer UI
+- `backend/uploads/`: uploaded documents stored by the API
+- `docker-compose.yml`: local dev stack for PostGIS, API, and frontend
+- `docs/nnc-cutover-plan.md`: cutover status and remaining cleanup tasks
 
 ## Source of truth
 
-- The source dataset is the source of truth for GIS data, but the app consumes only normalized files in `data/generated/`.
-- Keep new datasets compatible with `docs/dataset-contract.md`.
-- Do not hand-edit files in `data/generated/` unless there is a very specific reason.
-- If GIS-derived data changes, regenerate it with:
-
-```bash
-.venv/bin/python scripts/export_seed_data.py
-```
-
-Use `scripts/export_seed_data.py --help` for source path and layer-name overrides when exporting a compatible dataset with different physical layer names.
+- The app consumes only the standardized files in `data/standardized/`.
+- Keep new GIS-derived seed datasets compatible with `docs/dataset-contract.md`.
+- Do not hand-edit files in `data/standardized/` unless there is a very specific reason.
+- If the standardized seed assets change, local PostGIS must be reset and reseeded before the app will start successfully.
 
 ## Key commands
 
 Start the full stack:
 
 ```bash
+docker compose up --build
+```
+
+Reset local PostGIS after a schema or seed break:
+
+```bash
+docker compose down -v
 docker compose up --build
 ```
 
@@ -79,19 +75,18 @@ Demo users seeded by the backend:
 
 ## Important implementation notes
 
-- The backend seeds the database automatically on first start when GIS seed tables are empty.
-- The backend stores a hash of `data/generated/manifest.json` and fails fast if generated seed assets change while PostGIS is already populated. For local development, explicitly reset with `docker compose down -v && docker compose up --build`.
-- Geometry import assumes EPSG:4326 in the generated seed files.
-- `primary_parcels.geojson` intentionally excludes null/empty geometries during export.
+- The backend seeds the database automatically on first start when the standardized seed tables are empty.
+- The backend stores a hash of `data/standardized/manifest.json` and fails fast if the standardized seed assets change while PostGIS is already populated. For local development, explicitly reset with `docker compose down -v && docker compose up --build`.
+- Geometry import assumes EPSG:4326 in the standardized seed files.
 - Document files are stored on disk in `backend/uploads`; metadata is stored in Postgres.
 - The frontend is designed around an authenticated single-screen review workspace:
   map, search/filter rail, and question-area details rail.
 
 ## When changing the app
 
-- If you change the GIS normalization logic, update `scripts/export_seed_data.py` first.
 - If you change persisted backend fields, update both the PostGIS schema and the seed loader.
 - If you change question-area payloads, update both backend route responses and frontend types.
+- If you change the standardized seed contract, update `docs/dataset-contract.md` in the same pass.
 - Prefer keeping the browser decoupled from PostGIS; all data access should stay behind the API.
 
 ## Verification

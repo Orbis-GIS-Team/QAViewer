@@ -6,7 +6,7 @@ COPY backend/package*.json ./backend/
 RUN cd backend && npm install
 
 COPY backend ./backend
-COPY data/generated ./data/generated
+COPY data/standardized ./data/standardized
 
 WORKDIR /workspace/backend
 

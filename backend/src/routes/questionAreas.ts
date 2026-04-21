@@ -8,7 +8,6 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { requireRole } from "../lib/auth.js";
 import { query } from "../lib/db.js";
-import { questionAreaParcelJoin } from "../lib/parcelQuestionAreaMatch.js";
 import { buildQuestionAreaSearchClause, parseSearchField } from "../lib/search.js";
 import { featureCollection, parseBbox } from "../lib/utils.js";
 
@@ -114,46 +113,37 @@ router.get("/", async (req, res) => {
 
   const result = await query<{
     code: string;
-    source_group: string;
     status: string;
     severity: string;
     title: string;
     summary: string;
     county: string | null;
     state: string | null;
-    primary_parcel_number: string | null;
-    primary_parcel_code: string | null;
-    primary_owner_name: string | null;
+    parcel_code: string | null;
+    owner_name: string | null;
     property_name: string | null;
-    analysis_name: string | null;
     tract_name: string | null;
+    fund_name: string | null;
     assigned_reviewer: string | null;
-    linked_parcel_id: number | null;
     geometry: object;
-    centroid_geom: object;
   }>(
     `
       SELECT
         code,
-        source_group,
         status,
         severity,
         title,
         summary,
         county,
         state,
-        primary_parcel_number,
-        primary_parcel_code,
-        primary_owner_name,
+        parcel_code,
+        owner_name,
         property_name,
-        analysis_name,
         tract_name,
+        fund_name,
         assigned_reviewer,
-        linked_parcel.id AS linked_parcel_id,
-        ST_AsGeoJSON(geom, 5)::jsonb AS geometry,
-        ST_AsGeoJSON(centroid, 5)::jsonb AS centroid_geom
+        ST_AsGeoJSON(geom, 6)::jsonb AS geometry
       FROM question_areas qa
-      ${questionAreaParcelJoin("qa", "linked_parcel")}
       ${whereClause}
       ORDER BY code
       LIMIT ${limit}
@@ -168,22 +158,18 @@ router.get("/", async (req, res) => {
         geometry: row.geometry as never,
         properties: {
           code: row.code,
-          sourceGroup: row.source_group,
           status: row.status,
           severity: row.severity,
           title: row.title,
           summary: row.summary,
           county: row.county,
           state: row.state,
-          primaryParcelNumber: row.primary_parcel_number,
-          primaryParcelCode: row.primary_parcel_code,
-          primaryOwnerName: row.primary_owner_name,
+          parcelCode: row.parcel_code,
+          ownerName: row.owner_name,
           propertyName: row.property_name,
-          analysisName: row.analysis_name,
           tractName: row.tract_name,
+          fundName: row.fund_name,
           assignedReviewer: row.assigned_reviewer,
-          linkedParcelId: row.linked_parcel_id,
-          centroid: row.centroid_geom,
         },
       })),
     ),
@@ -195,7 +181,6 @@ router.get("/:code", async (req, res) => {
     id: number;
     code: string;
     source_layer: string;
-    source_group: string;
     status: string;
     severity: string;
     title: string;
@@ -203,26 +188,26 @@ router.get("/:code", async (req, res) => {
     description: string | null;
     county: string | null;
     state: string | null;
-    primary_parcel_number: string | null;
-    primary_parcel_code: string | null;
-    primary_owner_name: string | null;
+    parcel_code: string | null;
+    owner_name: string | null;
     property_name: string | null;
-    analysis_name: string | null;
     tract_name: string | null;
+    fund_name: string | null;
+    land_services: string | null;
+    tax_bill_acres: number | null;
+    gis_acres: number | null;
+    exists_in_legal_layer: boolean | null;
+    exists_in_management_layer: boolean | null;
+    exists_in_client_tabular_bill_data: boolean | null;
     assigned_reviewer: string | null;
-    source_layers: unknown;
-    related_parcels: unknown;
-    metrics: unknown;
-    linked_parcel_id: number | null;
+    raw_properties: unknown;
     geometry: object;
-    centroid: object;
   }>(
     `
       SELECT
         qa.id,
         code,
         source_layer,
-        source_group,
         status,
         severity,
         title,
@@ -230,21 +215,21 @@ router.get("/:code", async (req, res) => {
         description,
         county,
         state,
-        primary_parcel_number,
-        primary_parcel_code,
-        primary_owner_name,
+        parcel_code,
+        owner_name,
         property_name,
-        analysis_name,
         tract_name,
+        fund_name,
+        land_services,
+        tax_bill_acres,
+        gis_acres,
+        exists_in_legal_layer,
+        exists_in_management_layer,
+        exists_in_client_tabular_bill_data,
         assigned_reviewer,
-        source_layers,
-        related_parcels,
-        metrics,
-        linked_parcel.id AS linked_parcel_id,
-        ST_AsGeoJSON(qa.geom, 6)::jsonb AS geometry,
-        ST_AsGeoJSON(qa.centroid, 6)::jsonb AS centroid
+        raw_properties,
+        ST_AsGeoJSON(qa.geom, 6)::jsonb AS geometry
       FROM question_areas qa
-      ${questionAreaParcelJoin("qa", "linked_parcel")}
       WHERE qa.code = $1
     `,
     [req.params.code],
@@ -294,7 +279,6 @@ router.get("/:code", async (req, res) => {
     id: row.id,
     code: row.code,
     sourceLayer: row.source_layer,
-    sourceGroup: row.source_group,
     status: row.status,
     severity: row.severity,
     title: row.title,
@@ -302,19 +286,20 @@ router.get("/:code", async (req, res) => {
     description: row.description,
     county: row.county,
     state: row.state,
-    primaryParcelNumber: row.primary_parcel_number,
-    primaryParcelCode: row.primary_parcel_code,
-    primaryOwnerName: row.primary_owner_name,
+    parcelCode: row.parcel_code,
+    ownerName: row.owner_name,
     propertyName: row.property_name,
-    analysisName: row.analysis_name,
     tractName: row.tract_name,
+    fundName: row.fund_name,
+    landServices: row.land_services,
+    taxBillAcres: row.tax_bill_acres,
+    gisAcres: row.gis_acres,
+    existsInLegalLayer: row.exists_in_legal_layer,
+    existsInManagementLayer: row.exists_in_management_layer,
+    existsInClientTabularBillData: row.exists_in_client_tabular_bill_data,
     assignedReviewer: row.assigned_reviewer,
-    sourceLayers: row.source_layers,
-    relatedParcels: row.related_parcels,
-    metrics: row.metrics,
-    linkedParcelId: row.linked_parcel_id,
+    rawProperties: row.raw_properties,
     geometry: row.geometry,
-    centroid: row.centroid,
     comments: comments.rows.map((comment) => ({
       id: comment.id,
       body: comment.body,

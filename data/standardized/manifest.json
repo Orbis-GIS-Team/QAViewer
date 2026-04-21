@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "sourceDatabase": "Data.gdb",
+  "layers": {
+    "question_areas": {
+      "sourceLayer": "QuestionAreas",
+      "featureCount": 75,
+      "geometryType": "Point",
+      "bounds": {
+        "minLng": -124.59612,
+        "minLat": 32.854276,
+        "maxLng": -77.935952,
+        "maxLat": 48.14467
+      }
+    },
+    "land_records": {
+      "sourceLayer": "LandRecords",
+      "featureCount": 1316,
+      "geometryType": "MultiPolygon",
+      "bounds": {
+        "minLng": -124.016289,
+        "minLat": 32.687895,
+        "maxLng": -77.804691,
+        "maxLat": 46.520043
+      }
+    },
+    "management_areas": {
+      "sourceLayer": "Management",
+      "featureCount": 340,
+      "geometryType": "MultiPolygon",
+      "bounds": {
+        "minLng": -124.689882,
+        "minLat": 26.259193,
+        "maxLng": -77.367283,
+        "maxLat": 48.351479
+      }
+    }
+  }
+}

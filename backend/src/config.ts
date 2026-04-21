@@ -24,6 +24,6 @@ export const config = {
   frontendOrigin: process.env.FRONTEND_ORIGIN ?? "http://localhost:5173",
   backendDir,
   repoRoot,
-  seedDir: path.join(repoRoot, "data", "generated"),
+  seedDir: path.join(repoRoot, "data", "standardized"),
   uploadsDir: path.join(backendDir, "uploads"),
 };

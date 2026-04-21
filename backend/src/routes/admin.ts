@@ -32,7 +32,6 @@ type ManagedUserRow = {
   role: Role;
   created_at: string;
   comment_count: number;
-  parcel_comment_count: number;
   document_count: number;
 };
 
@@ -50,7 +49,6 @@ function serializeUser(row: ManagedUserRow) {
     role: row.role,
     createdAt: row.created_at,
     commentCount: Number(row.comment_count ?? 0),
-    parcelCommentCount: Number(row.parcel_comment_count ?? 0),
     documentCount: Number(row.document_count ?? 0),
   };
 }
@@ -79,7 +77,6 @@ async function getManagedUser(id: number): Promise<ManagedUserRow | null> {
         u.role,
         u.created_at,
         COALESCE(comment_stats.comment_count, 0)::int AS comment_count,
-        COALESCE(parcel_comment_stats.parcel_comment_count, 0)::int AS parcel_comment_count,
         COALESCE(document_stats.document_count, 0)::int AS document_count
       FROM users u
       LEFT JOIN (
@@ -87,11 +84,6 @@ async function getManagedUser(id: number): Promise<ManagedUserRow | null> {
         FROM comments
         GROUP BY author_id
       ) AS comment_stats ON comment_stats.author_id = u.id
-      LEFT JOIN (
-        SELECT author_id, COUNT(*)::int AS parcel_comment_count
-        FROM parcel_comments
-        GROUP BY author_id
-      ) AS parcel_comment_stats ON parcel_comment_stats.author_id = u.id
       LEFT JOIN (
         SELECT uploaded_by, COUNT(*)::int AS document_count
         FROM documents
@@ -115,7 +107,6 @@ router.get("/users", async (_req, res) => {
         u.role,
         u.created_at,
         COALESCE(comment_stats.comment_count, 0)::int AS comment_count,
-        COALESCE(parcel_comment_stats.parcel_comment_count, 0)::int AS parcel_comment_count,
         COALESCE(document_stats.document_count, 0)::int AS document_count
       FROM users u
       LEFT JOIN (
@@ -123,11 +114,6 @@ router.get("/users", async (_req, res) => {
         FROM comments
         GROUP BY author_id
       ) AS comment_stats ON comment_stats.author_id = u.id
-      LEFT JOIN (
-        SELECT author_id, COUNT(*)::int AS parcel_comment_count
-        FROM parcel_comments
-        GROUP BY author_id
-      ) AS parcel_comment_stats ON parcel_comment_stats.author_id = u.id
       LEFT JOIN (
         SELECT uploaded_by, COUNT(*)::int AS document_count
         FROM documents
@@ -169,7 +155,6 @@ router.post("/users", async (req, res) => {
           role,
           created_at,
           0::int AS comment_count,
-          0::int AS parcel_comment_count,
           0::int AS document_count
       `,
       [parsed.data.name, parsed.data.email, passwordHash, parsed.data.role],
@@ -301,9 +286,9 @@ router.delete("/users/:id", async (req, res) => {
     }
   }
 
-  if (existing.comment_count > 0 || existing.parcel_comment_count > 0 || existing.document_count > 0) {
+  if (existing.comment_count > 0 || existing.document_count > 0) {
     res.status(409).json({
-      message: "Users with comments, parcel comments, or uploaded documents cannot be deleted yet.",
+      message: "Users with comments or uploaded documents cannot be deleted yet.",
     });
     return;
   }

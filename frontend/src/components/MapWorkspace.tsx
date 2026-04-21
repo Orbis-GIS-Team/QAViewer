@@ -1,31 +1,22 @@
 import { startTransition, useDeferredValue, useEffect, useState } from "react";
-import type { ChangeEvent, FormEvent } from "react";
+import type { ChangeEvent, FormEvent, ReactNode } from "react";
 
-import type { Feature, FeatureCollection, Geometry } from "geojson";
+import type { Feature, FeatureCollection, Geometry, Point } from "geojson";
 import L from "leaflet";
-import {
-  GeoJSON,
-  MapContainer,
-  Marker,
-  Pane,
-  TileLayer,
-  useMap,
-  useMapEvents,
-} from "react-leaflet";
+import type { PathOptions } from "leaflet";
+import { GeoJSON, MapContainer, Marker, Pane, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
 import type { Session } from "../App";
 import { apiDownload, apiRequest } from "../lib/api";
 
 type SearchResult = {
-  type: "question_area" | "parcel";
+  type: "question_area";
   id: string;
   label: string;
   subtitle: string;
-  sourceGroup?: string;
-  questionAreaCode?: string | null;
 };
 
-type SearchField = "all" | "parcelnumb" | "county" | "qa_id";
+type SearchField = "all" | "parcel_code" | "county" | "qa_id";
 
 type SummaryPayload = {
   questionAreas: number;
@@ -35,80 +26,38 @@ type SummaryPayload = {
   severities: Record<string, number>;
 };
 
-type LayerKey =
-  | "primary_parcels"
-  | "parcel_points"
-  | "management_tracts";
+type LayerKey = "land_records" | "management_areas";
 
-type QuestionAreaFeature = Feature<
-  Geometry,
-  {
-    code: string;
-    sourceGroup: string;
-    status: string;
-    severity: string;
-    title: string;
-    summary: string;
-    county: string | null;
-    state: string | null;
-    primaryParcelNumber: string | null;
-    primaryParcelCode: string | null;
-    primaryOwnerName: string | null;
-    propertyName: string | null;
-    analysisName: string | null;
-    tractName: string | null;
-    assignedReviewer: string | null;
-    linkedParcelId?: number | null;
-    centroid?: { type: string; coordinates: number[] };
-  }
->;
+type QuestionAreaProperties = {
+  code: string;
+  status: string;
+  severity: string;
+  title: string;
+  summary: string;
+  county: string | null;
+  state: string | null;
+  parcelCode: string | null;
+  ownerName: string | null;
+  propertyName: string | null;
+  tractName: string | null;
+  fundName: string | null;
+  assignedReviewer: string | null;
+};
 
-type QuestionAreaCollection = FeatureCollection<Geometry, QuestionAreaFeature["properties"]>;
+type QuestionAreaFeature = Feature<Geometry, QuestionAreaProperties>;
+type QuestionAreaCollection = FeatureCollection<Geometry, QuestionAreaProperties>;
 
-type ParcelFeatureProperties = {
+type LayerFeatureProperties = {
   id: number;
-  parcelnumb: string | null;
-  County: string | null;
-  State: string | null;
-  RegridOwner: string | null;
-  PropertyName: string | null;
-  AnalysisName: string | null;
-  TractName: string | null;
-  QA_Status: string | null;
-  GIS_Acres: number | null;
-  SpatialOverlayNotes: string | null;
-  PTVParcel: string | null;
-  Exists_in_Mgt: string | boolean | null;
-  Exists_in_PTV: string | boolean | null;
-  questionAreaCode?: string | null;
-  reviewStatus?: string | null;
+  [key: string]: unknown;
 };
 
-type ParcelFeature = Feature<Geometry, ParcelFeatureProperties>;
-
-type ParcelDetail = ParcelFeature & {
-  comments: Array<{
-    id: number;
-    body: string;
-    createdAt: string;
-    authorName: string;
-    authorRole: string;
-  }>;
-  documents: Array<{
-    id: number;
-    originalName: string;
-    mimeType: string | null;
-    sizeBytes: number;
-    createdAt: string;
-    downloadUrl: string;
-  }>;
-};
+type LayerCollection = FeatureCollection<Geometry, LayerFeatureProperties>;
 
 type QuestionAreaDetail = {
   id: number;
   code: string;
   sourceLayer: string;
-  sourceGroup: string;
   status: string;
   severity: string;
   title: string;
@@ -116,29 +65,20 @@ type QuestionAreaDetail = {
   description: string | null;
   county: string | null;
   state: string | null;
-  primaryParcelNumber: string | null;
-  primaryParcelCode: string | null;
-  primaryOwnerName: string | null;
+  parcelCode: string | null;
+  ownerName: string | null;
   propertyName: string | null;
-  analysisName: string | null;
   tractName: string | null;
+  fundName: string | null;
+  landServices: string | null;
+  taxBillAcres: number | null;
+  gisAcres: number | null;
+  existsInLegalLayer: boolean | null;
+  existsInManagementLayer: boolean | null;
+  existsInClientTabularBillData: boolean | null;
   assignedReviewer: string | null;
-  linkedParcelId: number | null;
-  sourceLayers: string[];
-  relatedParcels: Array<{
-    parcelNumber: string | null;
-    parcelCode: string | null;
-    ownerName: string | null;
-    county: string | null;
-    state: string | null;
-    propertyName: string | null;
-    analysisName: string | null;
-    tractName: string | null;
-    source: string;
-  }>;
-  metrics: Record<string, number | null>;
+  rawProperties: Record<string, unknown> | null;
   geometry: Geometry;
-  centroid: Geometry;
   comments: Array<{
     id: number;
     body: string;
@@ -174,43 +114,59 @@ type MapWorkspaceProps = {
   onOpenAdmin?: () => void;
 };
 
-const STATUS_OPTIONS = ["review", "active", "resolved", "hold"];
-
-const initialLayers: Record<LayerKey, boolean> = {
-  primary_parcels: true,
-  parcel_points: false,
-  management_tracts: true,
-};
-
 type LegendItem = {
-  key: string;
+  key: LayerKey | "qa_markers";
   label: string;
   swatch: string;
   toggleable: boolean;
-  indented?: boolean;
+};
+
+const STATUS_OPTIONS = ["review", "active", "resolved", "hold"];
+const SEARCH_FIELD_OPTIONS: Array<{ value: SearchField; label: string }> = [
+  { value: "all", label: "All fields" },
+  { value: "qa_id", label: "Question Area ID" },
+  { value: "parcel_code", label: "Parcel / Owner" },
+  { value: "county", label: "County / State" },
+];
+
+const initialLayers: Record<LayerKey, boolean> = {
+  land_records: true,
+  management_areas: true,
 };
 
 const LEGEND_ITEMS: LegendItem[] = [
-  { key: "primary_parcels", label: "Primary Parcels", swatch: "parcels", toggleable: true },
-  { key: "parcel_points", label: "Parcel Points", swatch: "parcel-points", toggleable: true },
-  { key: "qa_active", label: "Question Area", swatch: "qa-marker", toggleable: false, indented: true },
-  { key: "management_tracts", label: "Management", swatch: "management", toggleable: true },
+  { key: "qa_markers", label: "Question Areas", swatch: "qa-marker", toggleable: false },
+  { key: "land_records", label: "Land Records", swatch: "land-records", toggleable: true },
+  { key: "management_areas", label: "Management Areas", swatch: "management", toggleable: true },
 ];
+
+const landRecordStyle: PathOptions = {
+  color: "#0f766e",
+  weight: 2,
+  fillColor: "#5eead4",
+  fillOpacity: 0.08,
+};
+
+const managementAreaStyle: PathOptions = {
+  color: "#39ff14",
+  weight: 2,
+  fillColor: "#39ff14",
+  fillOpacity: 0.06,
+};
 
 export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspaceProps) {
   const [summary, setSummary] = useState<SummaryPayload | null>(null);
   const [questionAreas, setQuestionAreas] = useState<QuestionAreaCollection | null>(null);
   const [mapBbox, setMapBbox] = useState("-126,24,-66,49");
   const [layerVisibility, setLayerVisibility] = useState(initialLayers);
-  const [layerData, setLayerData] = useState<Partial<Record<LayerKey, FeatureCollection>>>({});
+  const [layerData, setLayerData] = useState<Partial<Record<LayerKey, LayerCollection>>>({});
   const [searchInput, setSearchInput] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchField, setSearchField] = useState<SearchField>("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
-  const [selectedParcelId, setSelectedParcelId] = useState<number | null>(null);
-  const [selectedParcelDetail, setSelectedParcelDetail] = useState<ParcelDetail | null>(null);
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [editDraft, setEditDraft] = useState<EditDraft>({
@@ -220,21 +176,17 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     assignedReviewer: "",
   });
   const [commentDraft, setCommentDraft] = useState("");
-  const [parcelCommentDraft, setParcelCommentDraft] = useState("");
-  const [parcelStatusDraft, setParcelStatusDraft] = useState("review");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadInputKey, setUploadInputKey] = useState(0);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [busy, setBusy] = useState({
     summary: false,
     detail: false,
-    parcel: false,
     saving: false,
     commenting: false,
-    parcelCommenting: false,
-    parcelStatusSaving: false,
     uploading: false,
   });
+
   const deferredSearch = useDeferredValue(searchInput);
 
   function showFeedback(message: string, type: FeedbackState["type"] = "error") {
@@ -311,24 +263,27 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       bbox: mapBbox,
       limit: "600",
     });
+
     if (searchFilter) {
       params.set("search", searchFilter);
       params.set("field", searchField);
+    }
+
+    if (statusFilter !== "all") {
+      params.set("status", statusFilter);
     }
 
     apiRequest<QuestionAreaCollection>(`/question-areas?${params.toString()}`, {
       token: session.token,
     })
       .then((payload) => {
-        if (alive) {
-          setQuestionAreas(payload);
-          if (
-            searchFilter &&
-            payload.features.length === 1 &&
-            payload.features[0].properties?.code !== selectedCode
-          ) {
-            setSelectedCode(payload.features[0].properties?.code ?? null);
-          }
+        if (!alive) {
+          return;
+        }
+
+        setQuestionAreas(payload);
+        if (payload.features.length === 1) {
+          setSelectedCode(payload.features[0]?.properties?.code ?? null);
         }
       })
       .catch((error) => {
@@ -340,33 +295,37 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     return () => {
       alive = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedCode intentionally excluded to avoid redundant refetch on selection
-  }, [mapBbox, searchFilter, searchField, session.token]);
+  }, [mapBbox, searchField, searchFilter, session.token, statusFilter]);
 
   useEffect(() => {
     const visibleLayers = (Object.keys(layerVisibility) as LayerKey[]).filter(
-      (layer) => layerVisibility[layer],
+      (layerKey) => layerVisibility[layerKey],
     );
+
+    if (visibleLayers.length === 0) {
+      setLayerData({});
+      return;
+    }
+
     let alive = true;
 
     Promise.all(
-      visibleLayers.map(async (layer) => {
-        const payload = await apiRequest<FeatureCollection>(
-          `/layers/${layer}?bbox=${encodeURIComponent(mapBbox)}`,
-          {
-            token: session.token,
-          },
+      visibleLayers.map(async (layerKey) => {
+        const payload = await apiRequest<LayerCollection>(
+          `/layers/${layerKey}?bbox=${encodeURIComponent(mapBbox)}`,
+          { token: session.token },
         );
-        return [layer, payload] as const;
+        return [layerKey, payload] as const;
       }),
     )
       .then((entries) => {
         if (!alive) {
           return;
         }
-        const nextLayerData: Partial<Record<LayerKey, FeatureCollection>> = {};
-        entries.forEach(([layer, payload]) => {
-          nextLayerData[layer] = payload;
+
+        const nextLayerData: Partial<Record<LayerKey, LayerCollection>> = {};
+        entries.forEach(([layerKey, payload]) => {
+          nextLayerData[layerKey] = payload;
         });
         setLayerData(nextLayerData);
       })
@@ -395,8 +354,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         if (!alive) {
           return;
         }
+
         setSelectedDetail(payload);
-        setSelectedParcelId(payload.linkedParcelId ?? null);
         setEditDraft({
           status: payload.status,
           summary: payload.summary,
@@ -421,60 +380,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   }, [selectedCode, session.token]);
 
   useEffect(() => {
-    if (!selectedParcelId || selectedCode) {
-      setSelectedParcelDetail(null);
-      return;
-    }
-
-    let alive = true;
-    setBusy((current) => ({ ...current, parcel: true }));
-
-    apiRequest<ParcelDetail>(`/parcels/${selectedParcelId}`, { token: session.token })
-      .then((payload) => {
-        if (!alive) {
-          return;
-        }
-        const questionAreaCode =
-          typeof payload.properties.questionAreaCode === "string" &&
-          payload.properties.questionAreaCode.trim()
-            ? payload.properties.questionAreaCode.trim()
-            : null;
-
-        if (questionAreaCode) {
-          setSelectedParcelDetail(null);
-          setSelectedCode(questionAreaCode);
-          return;
-        }
-
-        setSelectedParcelDetail(payload);
-        setParcelStatusDraft(
-          payload.properties.reviewStatus ?? deriveInitialParcelStatus(payload.properties.QA_Status),
-        );
-      })
-      .catch((error) => {
-        if (alive) {
-          showFeedback(error instanceof Error ? error.message : "Failed to load parcel details.");
-        }
-      })
-      .finally(() => {
-        if (alive) {
-          setBusy((current) => ({ ...current, parcel: false }));
-        }
-      });
-
-    return () => {
-      alive = false;
-    };
-  }, [selectedCode, selectedParcelId, session.token]);
-
-  useEffect(() => {
-    setParcelCommentDraft("");
-  }, [selectedParcelId]);
-
-  useEffect(() => {
+    setCommentDraft("");
     setSelectedFile(null);
     setUploadInputKey((current) => current + 1);
-  }, [selectedCode, selectedParcelId]);
+  }, [selectedCode]);
 
   async function refreshSummary() {
     const payload = await apiRequest<SummaryPayload>("/dashboard/summary", { token: session.token });
@@ -485,11 +394,12 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     if (!selectedCode) {
       return;
     }
+
     const payload = await apiRequest<QuestionAreaDetail>(`/question-areas/${selectedCode}`, {
       token: session.token,
     });
+
     setSelectedDetail(payload);
-    setSelectedParcelId(payload.linkedParcelId ?? null);
     setEditDraft({
       status: payload.status,
       summary: payload.summary,
@@ -517,8 +427,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         body: {
           status: editDraft.status,
           summary: editDraft.summary.trim(),
-          description: editDraft.description || null,
-          assignedReviewer: editDraft.assignedReviewer || null,
+          description: editDraft.description.trim() || null,
+          assignedReviewer: editDraft.assignedReviewer.trim() || null,
         },
       });
       await Promise.all([reloadDetail(), refreshSummary()]);
@@ -559,75 +469,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     }
   }
 
-  async function reloadParcelDetail() {
-    if (!selectedParcelId) {
-      return;
-    }
-
-    const payload = await apiRequest<ParcelDetail>(`/parcels/${selectedParcelId}`, {
-      token: session.token,
-    });
-    setSelectedParcelDetail(payload);
-    setParcelStatusDraft(payload.properties.reviewStatus ?? deriveInitialParcelStatus(payload.properties.QA_Status));
-  }
-
-  async function handleParcelCommentSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedParcelId) {
-      return;
-    }
-    if (!parcelCommentDraft.trim()) {
-      showFeedback("Comment text is required.");
-      return;
-    }
-
-    setBusy((current) => ({ ...current, parcelCommenting: true }));
-    setFeedback(null);
-
-    try {
-      await apiRequest(`/parcels/${selectedParcelId}/comments`, {
-        method: "POST",
-        token: session.token,
-        body: { body: parcelCommentDraft.trim() },
-      });
-      setParcelCommentDraft("");
-      await reloadParcelDetail();
-      showFeedback("Parcel comment posted.", "success");
-    } catch (error) {
-      showFeedback(error instanceof Error ? error.message : "Parcel comment failed.");
-    } finally {
-      setBusy((current) => ({ ...current, parcelCommenting: false }));
-    }
-  }
-
-  async function handleParcelStatusSave() {
-    if (!selectedParcelId) {
-      return;
-    }
-
-    setBusy((current) => ({ ...current, parcelStatusSaving: true }));
-    setFeedback(null);
-
-    try {
-      await apiRequest(`/parcels/${selectedParcelId}/status`, {
-        method: "PATCH",
-        token: session.token,
-        body: { status: parcelStatusDraft },
-      });
-      await reloadParcelDetail();
-      showFeedback("QA status updated.", "success");
-    } catch (error) {
-      showFeedback(error instanceof Error ? error.message : "QA status update failed.");
-    } finally {
-      setBusy((current) => ({ ...current, parcelStatusSaving: false }));
-    }
-  }
-
-  async function uploadDocumentForQuestionArea(
-    questionAreaCode: string,
-    reload: () => Promise<void>,
-  ) {
-    if (!selectedFile) {
+  async function handleUploadDocument() {
+    if (!selectedCode || !selectedFile) {
       return;
     }
 
@@ -638,28 +481,20 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     setFeedback(null);
 
     try {
-      await apiRequest(`/question-areas/${questionAreaCode}/documents`, {
+      await apiRequest(`/question-areas/${selectedCode}/documents`, {
         method: "POST",
         token: session.token,
         formData,
       });
       setSelectedFile(null);
       setUploadInputKey((current) => current + 1);
-      await Promise.all([reload(), refreshSummary()]);
+      await Promise.all([reloadDetail(), refreshSummary()]);
       showFeedback("Document uploaded.", "success");
     } catch (error) {
       showFeedback(error instanceof Error ? error.message : "Upload failed.");
     } finally {
       setBusy((current) => ({ ...current, uploading: false }));
     }
-  }
-
-  async function handleUploadDocument() {
-    if (!selectedCode) {
-      return;
-    }
-
-    await uploadDocumentForQuestionArea(selectedCode, reloadDetail);
   }
 
   async function handleDownloadDocument(fileRecord: QuestionAreaDetail["documents"][number]) {
@@ -676,85 +511,45 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     }
   }
 
-  function selectQuestionArea(code: string | null, linkedParcelId?: number | null) {
-    setSelectedParcelDetail(null);
-    setSelectedParcelId(linkedParcelId ?? null);
+  function selectQuestionArea(code: string | null) {
     setSelectedCode(code);
-  }
-
-  function selectParcel(parcelId: number | null, parcelFeature?: ParcelFeature | null) {
-    const questionAreaCode =
-      typeof parcelFeature?.properties?.questionAreaCode === "string" &&
-      parcelFeature.properties.questionAreaCode.trim()
-        ? parcelFeature.properties.questionAreaCode.trim()
-        : null;
-
-    if (questionAreaCode && parcelId) {
-      selectQuestionArea(questionAreaCode, parcelId);
-      return;
-    }
-
-    setSelectedDetail(null);
-    setSelectedCode(null);
-    if (parcelFeature) {
-      setSelectedParcelDetail({
-        ...parcelFeature,
-        properties: {
-          ...parcelFeature.properties,
-          reviewStatus:
-            parcelFeature.properties.reviewStatus ??
-            deriveInitialParcelStatus(parcelFeature.properties.QA_Status),
-        },
-        comments: [],
-        documents: [],
-      });
-      setParcelStatusDraft(
-        parcelFeature.properties.reviewStatus ??
-          deriveInitialParcelStatus(parcelFeature.properties.QA_Status),
-      );
-    } else if (!parcelId) {
-      setSelectedParcelDetail(null);
-    }
-    setSelectedParcelId(parcelId);
-  }
-
-  function handleSearchSelection(result: SearchResult) {
-    setSearchInput(result.label);
     setSearchResults([]);
-
-    if (result.type === "question_area") {
-      selectQuestionArea(result.id);
-      return;
-    }
-
-    const parcelId = Number(result.id);
-    if (Number.isInteger(parcelId) && parcelId > 0) {
-      setSearchFilter("");
-      if (typeof result.questionAreaCode === "string" && result.questionAreaCode.trim()) {
-        selectQuestionArea(result.questionAreaCode.trim(), parcelId);
-        return;
-      }
-      selectParcel(parcelId);
-    }
   }
 
-  const openCount = (summary?.statuses.review ?? 0) + (summary?.statuses.active ?? 0);
-  const selectedGeometry = selectedDetail?.geometry ?? null;
-  const selectedGeometryKey = selectedDetail?.code ?? null;
+  function toggleLayer(layerKey: LayerKey) {
+    setLayerVisibility((current) => ({
+      ...current,
+      [layerKey]: !current[layerKey],
+    }));
+  }
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSearchFilter(searchInput.trim());
+  }
+
+  function clearSearch() {
+    setSearchInput("");
+    setSearchFilter("");
+    setSearchResults([]);
+  }
+
+  const filteredAreaCount = questionAreas?.features.length ?? 0;
+  const openQuestionAreas = (summary?.statuses.review ?? 0) + (summary?.statuses.active ?? 0);
 
   return (
     <main className="workspace-shell">
       <header className="workspace-header">
         <div className="header-brand">
           <p className="eyebrow">QAViewer</p>
-          <h1>Question area review console</h1>
+          <h1>NNC Review Workspace</h1>
         </div>
         <div className="header-actions">
           <div className="header-actions-layout">
             <div className="header-button-row">
               {onOpenAdmin ? (
                 <button className="ghost-button" onClick={onOpenAdmin} type="button">
-                  Admin console
+                  Admin
                 </button>
               ) : null}
               <button className="ghost-button" onClick={onLogout} type="button">
@@ -766,142 +561,193 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         </div>
       </header>
 
-      {feedback ? (
-        <div className={`toast toast-${feedback.type}`} role="status">
-          {feedback.message}
-        </div>
-      ) : null}
+      {feedback ? <div className={`toast toast-${feedback.type}`}>{feedback.message}</div> : null}
 
       <section
-        className={`workspace-grid ${leftPanelCollapsed ? "left-collapsed" : ""} ${
-          rightPanelCollapsed ? "right-collapsed" : ""
-        } ${leftPanelCollapsed && rightPanelCollapsed ? "both-collapsed" : ""}`}
+        className={[
+          "workspace-grid",
+          leftPanelCollapsed ? "left-collapsed" : "",
+          rightPanelCollapsed ? "right-collapsed" : "",
+          leftPanelCollapsed && rightPanelCollapsed ? "both-collapsed" : "",
+        ].join(" ")}
       >
         <aside className={`workspace-panel left-panel ${leftPanelCollapsed ? "collapsed" : ""}`}>
           <button
             className="collapse-toggle"
-            onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+            onClick={() => setLeftPanelCollapsed((current) => !current)}
             title={leftPanelCollapsed ? "Expand panel" : "Collapse panel"}
             type="button"
           >
-            {leftPanelCollapsed ? "→" : "←"}
+            {leftPanelCollapsed ? ">" : "<"}
           </button>
+
           <div className="panel-content">
-            <section className="panel-section stats-section">
-              <div className="stat-card">
-                <div className="stat-content">
-                  <span>Open Question Areas</span>
-                  <strong>
-                    {busy.summary ? "..." : openCount}
-                  </strong>
-                </div>
+            <section className="panel-section">
+              <div className="section-heading">
+                <h2>Portfolio Summary</h2>
+                <span>{busy.summary ? "Refreshing..." : "Live counts"}</span>
+              </div>
+              <div className="summary-grid">
+                <article className="stat-card">
+                  <div className="stat-content">
+                    <span>Question Areas</span>
+                    <strong>{summary?.questionAreas ?? "-"}</strong>
+                  </div>
+                </article>
+                <article className="stat-card">
+                  <div className="stat-content">
+                    <span>Open Review</span>
+                    <strong>{summary ? openQuestionAreas : "-"}</strong>
+                  </div>
+                </article>
+                <article className="stat-card">
+                  <div className="stat-content">
+                    <span>Comments</span>
+                    <strong>{summary?.comments ?? "-"}</strong>
+                  </div>
+                </article>
+                <article className="stat-card">
+                  <div className="stat-content">
+                    <span>Documents</span>
+                    <strong>{summary?.documents ?? "-"}</strong>
+                  </div>
+                </article>
               </div>
             </section>
 
             <section className="panel-section">
               <div className="section-heading">
                 <h2>Search</h2>
+                <span>Question areas only</span>
               </div>
-              <form
-                className="search-stack"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  setSearchFilter(searchInput.trim());
-                }}
-              >
-                <div className="filter-row">
-                  <select
-                    value={searchField}
-                    onChange={(event) => setSearchField(event.target.value as SearchField)}
-                  >
-                    <option value="all">Search all fields</option>
-                    <option value="parcelnumb">Parcel Number</option>
-                    <option value="county">County</option>
-                    <option value="qa_id">Question Area ID</option>
-                  </select>
-                  <button className="primary-button" type="submit">
-                    Search map
-                  </button>
-                </div>
-                
-                <div className="search-input-row">
+              <form className="search-stack" onSubmit={handleSearchSubmit}>
+                <div className="search-box">
                   <input
                     className="search-input"
-                    placeholder="Type search term..."
-                    value={searchInput}
                     onChange={(event) => setSearchInput(event.target.value)}
+                    placeholder="Search code, parcel, owner, county..."
+                    type="text"
+                    value={searchInput}
                   />
-                  <button
-                    className="ghost-button clear-button"
-                    type="button"
-                    onClick={() => {
-                      setSearchInput("");
-                      setSearchFilter("");
-                      setSearchResults([]);
-                    }}
-                  >
+                  {searchResults.length > 0 ? (
+                    <div className="search-results">
+                      {searchResults.map((result) => (
+                        <button
+                          key={`${result.type}-${result.id}`}
+                          className="search-result"
+                          onClick={() => selectQuestionArea(result.id)}
+                          type="button"
+                        >
+                          <strong>{result.id}</strong>
+                          <span>{result.label}</span>
+                          <span>{result.subtitle || "Question area"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="filter-grid">
+                  <label>
+                    Search field
+                    <select
+                      value={searchField}
+                      onChange={(event) => setSearchField(event.target.value as SearchField)}
+                    >
+                      {SEARCH_FIELD_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Status
+                    <select
+                      value={statusFilter}
+                      onChange={(event) => setStatusFilter(event.target.value)}
+                    >
+                      <option value="all">All statuses</option>
+                      {STATUS_OPTIONS.map((status) => (
+                        <option key={status} value={status}>
+                          {workflowLabel(status)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="search-input-row">
+                  <button className="primary-button" type="submit">
+                    Apply filter
+                  </button>
+                  <button className="ghost-button" onClick={clearSearch} type="button">
                     Clear
                   </button>
                 </div>
-
-                {searchResults.length > 0 ? (
-                  <div className="search-results glass">
-                    {searchResults.map((result) => (
-                      <button
-                        key={`${result.type}-${result.id}`}
-                        className="search-result"
-                        type="button"
-                        onClick={() => handleSearchSelection(result)}
-                      >
-                        <strong>{result.label}</strong>
-                        <span className="mono">{result.subtitle || result.type}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
               </form>
             </section>
 
             <section className="panel-section">
               <div className="section-heading">
-                <h2>Legend</h2>
+                <h2>Visible Results</h2>
+                <span>{filteredAreaCount} in map extent</span>
+              </div>
+              <div className="result-list">
+                {questionAreas?.features.map((feature) => {
+                  const properties = feature.properties;
+                  const subtitle = [properties.parcelCode, properties.county, properties.state]
+                    .filter(Boolean)
+                    .join(" | ");
+
+                  return (
+                    <button
+                      key={properties.code}
+                      className={`list-card ${selectedCode === properties.code ? "selected" : ""}`}
+                      onClick={() => selectQuestionArea(properties.code)}
+                      type="button"
+                    >
+                      <div className="list-card-body">
+                        <div className="user-card-head">
+                          <strong>{properties.code}</strong>
+                          <span className={`badge ${severityBadgeClass(properties.severity)}`}>
+                            {humanize(properties.severity)}
+                          </span>
+                        </div>
+                        <span className="list-card-title">{properties.title}</span>
+                        <span className="list-card-subtitle">{subtitle || properties.summary}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+                {!questionAreas || questionAreas.features.length === 0 ? (
+                  <p className="empty-state">No question areas match the current map extent and filters.</p>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="panel-section">
+              <div className="section-heading">
+                <h2>Map Layers</h2>
+                <span>Question areas stay on</span>
               </div>
               <div className="legend-list">
                 {LEGEND_ITEMS.map((item) => {
-                  const isToggleable = item.toggleable;
-                  const isVisible = !isToggleable || layerVisibility[item.key as LayerKey];
+                  const visible =
+                    item.key === "qa_markers" ? true : layerVisibility[item.key as LayerKey];
+
                   return (
-                    <div key={item.key} className={`legend-item ${item.indented ? 'legend-item-indented' : ''}`}>
+                    <div key={item.key} className="legend-item">
                       <span className={`legend-swatch legend-swatch-${item.swatch}`} />
                       <span className="legend-label">{item.label}</span>
-                      {isToggleable ? (
+                      {item.toggleable ? (
                         <button
-                          className="legend-eye"
+                          className="ghost-button legend-toggle"
+                          onClick={() => toggleLayer(item.key as LayerKey)}
                           type="button"
-                          title={isVisible ? "Hide layer" : "Show layer"}
-                          onClick={() =>
-                            setLayerVisibility((current) => ({
-                              ...current,
-                              [item.key]: !current[item.key as LayerKey],
-                            }))
-                          }
                         >
-                          {isVisible ? (
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                              <circle cx="12" cy="12" r="3" />
-                            </svg>
-                          ) : (
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-                              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-                              <line x1="1" y1="1" x2="23" y2="23" />
-                              <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
-                            </svg>
-                          )}
+                          {visible ? "Hide" : "Show"}
                         </button>
                       ) : (
-                        <span className="legend-eye-spacer" />
+                        <span className="legend-static">Always visible</span>
                       )}
                     </div>
                   );
@@ -912,86 +758,29 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         </aside>
 
         <section className="map-panel">
-          <MapContainer center={[39.5, -95]} zoom={4} className="leaflet-shell" zoomControl={false}>
-            {/* ... TileLayer, ViewportWatcher, etc ... */}
+          <ManagementPatternDefs />
+          <MapContainer
+            center={[39.5, -98.35]}
+            className="leaflet-shell"
+            scrollWheelZoom
+            zoom={4}
+          >
             <TileLayer
-              attribution='Imagery courtesy of the <a href="https://www.usgs.gov/programs/national-geospatial-program/national-map">U.S. Geological Survey</a>'
-              url="https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}"
-            />
-            <TileLayer
-              attribution='Roads &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors'
-              url="https://services.arcgisonline.com/arcgis/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}"
-            />
-            <TileLayer
-              attribution='Labels &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors'
-              url="https://services.arcgisonline.com/arcgis/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
             <MapViewportWatcher onChange={setMapBbox} />
-            <MapFocus geometry={selectedGeometry} targetKey={selectedGeometryKey} />
-            <ManagementPatternDefs />
+            <MapFocus geometry={selectedDetail?.geometry ?? null} targetKey={selectedDetail?.code ?? null} />
 
-            <Pane name="management" style={{ zIndex: 370 }}>
-              {layerVisibility.management_tracts && layerData.management_tracts ? (
-                <GeoJSON
-                  data={layerData.management_tracts}
-                  style={{
-                    color: "#39ff14",
-                    weight: 2.5,
-                    fillColor: "url(#management-pattern)",
-                    fillOpacity: 1,
-                    dashArray: "none",
-                  }}
-                />
+            <Pane name="land-records" style={{ zIndex: 380 }}>
+              {layerVisibility.land_records && layerData.land_records ? (
+                <GeoJSON data={layerData.land_records} style={landRecordStyle} />
               ) : null}
             </Pane>
 
-            <Pane name="parcels" style={{ zIndex: 390 }}>
-              {layerVisibility.primary_parcels && layerData.primary_parcels ? (
-                <GeoJSON
-                  data={layerData.primary_parcels}
-                  style={(feature) =>
-                    primaryParcelStyle(feature as ParcelFeature | undefined, selectedParcelId)
-                  }
-                  onEachFeature={(feature, layer) => {
-                    layer.on("click", () => {
-                      const parcelFeature = feature as ParcelFeature;
-                      const properties = parcelFeature.properties;
-                      selectParcel(Number(properties?.id ?? 0) || null, parcelFeature);
-                    });
-                  }}
-                />
-              ) : null}
-            </Pane>
-
-            <Pane name="points" style={{ zIndex: 410 }}>
-              {layerVisibility.parcel_points && layerData.parcel_points ? (
-                <GeoJSON
-                  data={layerData.parcel_points}
-                  pointToLayer={(_feature, latlng) =>
-                    L.circleMarker(latlng, {
-                      radius: 4,
-                      color: "#0f766e",
-                      weight: 1,
-                      fillColor: "#5eead4",
-                      fillOpacity: 0.9,
-                    })
-                  }
-                />
-              ) : null}
-            </Pane>
-
-            <Pane name="question-areas" style={{ zIndex: 430 }}>
-              {questionAreas ? (
-                <GeoJSON
-                  data={questionAreas}
-                  interactive={false}
-                  style={{
-                    color: "transparent",
-                    weight: 0,
-                    fillColor: "transparent",
-                    fillOpacity: 0,
-                  }}
-                />
+            <Pane name="management-areas" style={{ zIndex: 390 }}>
+              {layerVisibility.management_areas && layerData.management_areas ? (
+                <GeoJSON data={layerData.management_areas} style={managementAreaStyle} />
               ) : null}
             </Pane>
 
@@ -1010,17 +799,18 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         <aside className={`workspace-panel right-panel ${rightPanelCollapsed ? "collapsed" : ""}`}>
           <button
             className="collapse-toggle"
-            onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+            onClick={() => setRightPanelCollapsed((current) => !current)}
             title={rightPanelCollapsed ? "Expand panel" : "Collapse panel"}
             type="button"
           >
-            {rightPanelCollapsed ? "←" : "→"}
+            {rightPanelCollapsed ? "<" : ">"}
           </button>
+
           <div className="panel-content">
-            {busy.detail || busy.parcel ? <SkeletonDetail /> : null}
-            {!busy.detail && !busy.parcel && !selectedDetail && !selectedParcelDetail ? (
+            {busy.detail ? <SkeletonDetail /> : null}
+            {!busy.detail && !selectedDetail ? (
               <p className="empty-state">
-                Select a question area or parcel from the map or the result list to open its details.
+                Select a question area from the map or the result list to open its review record.
               </p>
             ) : null}
 
@@ -1032,31 +822,58 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                     <span>{selectedDetail.code}</span>
                   </div>
                   <div className="badge-row">
-                    <span
-                      className={`badge ${workflowBadgeClass(selectedDetail.status)}`}
-                    >
+                    <span className={`badge ${workflowBadgeClass(selectedDetail.status)}`}>
                       {workflowLabel(selectedDetail.status)}
                     </span>
+                    <span className={`badge ${severityBadgeClass(selectedDetail.severity)}`}>
+                      {humanize(selectedDetail.severity)}
+                    </span>
                   </div>
+                  <p className="summary-copy">{selectedDetail.summary}</p>
                   <dl className="detail-grid">
-                    <DetailItem label="Parcel #" mono>{selectedDetail.primaryParcelNumber ?? "None"}</DetailItem>
-                    <DetailItem label="Parcel Code" mono>{selectedDetail.primaryParcelCode ?? "None"}</DetailItem>
-                    <DetailItem label="Owner">{selectedDetail.primaryOwnerName ?? "Unknown"}</DetailItem>
+                    <DetailItem label="Parcel Code" mono>{selectedDetail.parcelCode ?? "None"}</DetailItem>
+                    <DetailItem label="Owner">{selectedDetail.ownerName ?? "Unknown"}</DetailItem>
                     <DetailItem label="County">{selectedDetail.county ?? "Unknown"}</DetailItem>
                     <DetailItem label="State">{selectedDetail.state ?? "Unknown"}</DetailItem>
                     <DetailItem label="Property">{selectedDetail.propertyName ?? "None"}</DetailItem>
+                    <DetailItem label="Tract">{selectedDetail.tractName ?? "None"}</DetailItem>
+                    <DetailItem label="Fund">{selectedDetail.fundName ?? "None"}</DetailItem>
+                    <DetailItem label="Source Layer">{selectedDetail.sourceLayer}</DetailItem>
                   </dl>
-                  {selectedDetail.description ? (
+                  {selectedDetail.landServices ? (
                     <div className="qa-reason">
-                      <dt>QA Reason (Spatial Overlay Notes)</dt>
-                      <dd>{selectedDetail.description}</dd>
+                      <dt>Land Services Note</dt>
+                      <dd>{selectedDetail.landServices}</dd>
                     </div>
                   ) : null}
                 </section>
 
                 <section className="panel-section">
                   <div className="section-heading">
-                    <h2>Workflow controls</h2>
+                    <h2>Data Signals</h2>
+                    <span>Read-only source context</span>
+                  </div>
+                  <dl className="detail-grid">
+                    <DetailItem label="Tax Bill Acres" mono>{formatMetric(selectedDetail.taxBillAcres)}</DetailItem>
+                    <DetailItem label="GIS Acres" mono>{formatMetric(selectedDetail.gisAcres)}</DetailItem>
+                    <DetailItem label="In Legal Layer">
+                      {formatBoolean(selectedDetail.existsInLegalLayer)}
+                    </DetailItem>
+                    <DetailItem label="In Management Layer">
+                      {formatBoolean(selectedDetail.existsInManagementLayer)}
+                    </DetailItem>
+                    <DetailItem label="In Client Bill Data">
+                      {formatBoolean(selectedDetail.existsInClientTabularBillData)}
+                    </DetailItem>
+                    <DetailItem label="Assigned Reviewer">
+                      {selectedDetail.assignedReviewer ?? "Unassigned"}
+                    </DetailItem>
+                  </dl>
+                </section>
+
+                <section className="panel-section">
+                  <div className="section-heading">
+                    <h2>Workflow Controls</h2>
                     <span>Editable</span>
                   </div>
                   <div className="form-stack">
@@ -1076,7 +893,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                       </select>
                     </label>
                     <label>
-                      Assigned user
+                      Assigned reviewer
                       <input
                         value={editDraft.assignedReviewer}
                         onChange={(event) =>
@@ -1100,14 +917,19 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                     <label>
                       Notes
                       <textarea
-                        rows={4}
+                        rows={5}
                         value={editDraft.description}
                         onChange={(event) =>
                           setEditDraft((current) => ({ ...current, description: event.target.value }))
                         }
                       />
                     </label>
-                    <button className="primary-button" disabled={busy.saving} onClick={handleSaveDetail} type="button">
+                    <button
+                      className="primary-button"
+                      disabled={busy.saving}
+                      onClick={handleSaveDetail}
+                      type="button"
+                    >
                       {busy.saving ? "Saving..." : "Save review state"}
                     </button>
                   </div>
@@ -1115,22 +937,28 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
                 <section className="panel-section">
                   <div className="section-heading">
-                    <h2>Comment window</h2>
+                    <h2>Comments</h2>
+                    <span>{selectedDetail.comments.length} entries</span>
                   </div>
                   <div className="comment-list">
-                    {selectedDetail.comments.map((comment) => (
-                      <article key={comment.id} className="comment-card">
-                        <div>
-                          <strong>{comment.authorName}</strong>
-                          <small>{comment.authorRole}</small>
-                        </div>
-                        <p>{comment.body}</p>
-                        <span>{new Date(comment.createdAt).toLocaleString()}</span>
-                      </article>
-                    ))}
+                    {selectedDetail.comments.length > 0 ? (
+                      selectedDetail.comments.map((comment) => (
+                        <article key={comment.id} className="comment-card">
+                          <div>
+                            <strong>{comment.authorName}</strong>
+                            <small>{comment.authorRole}</small>
+                          </div>
+                          <p>{comment.body}</p>
+                          <span>{new Date(comment.createdAt).toLocaleString()}</span>
+                        </article>
+                      ))
+                    ) : (
+                      <p className="panel-note">No comments have been added yet.</p>
+                    )}
                   </div>
                   <form className="form-stack" onSubmit={handleCommentSubmit}>
                     <label>
+                      Add comment
                       <textarea
                         rows={3}
                         value={commentDraft}
@@ -1149,21 +977,25 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                     <span>{selectedDetail.documents.length} attached</span>
                   </div>
                   <div className="document-list">
-                    {selectedDetail.documents.map((document) => (
-                      <article key={document.id} className="document-card">
-                        <div>
-                          <strong>{document.originalName}</strong>
-                          <small>{formatFileSize(document.sizeBytes)}</small>
-                        </div>
-                        <button
-                          className="ghost-button"
-                          onClick={() => handleDownloadDocument(document)}
-                          type="button"
-                        >
-                          Download
-                        </button>
-                      </article>
-                    ))}
+                    {selectedDetail.documents.length > 0 ? (
+                      selectedDetail.documents.map((document) => (
+                        <article key={document.id} className="document-card">
+                          <div>
+                            <strong>{document.originalName}</strong>
+                            <small>{formatFileSize(document.sizeBytes)}</small>
+                          </div>
+                          <button
+                            className="ghost-button"
+                            onClick={() => handleDownloadDocument(document)}
+                            type="button"
+                          >
+                            Download
+                          </button>
+                        </article>
+                      ))
+                    ) : (
+                      <p className="panel-note">No documents have been uploaded yet.</p>
+                    )}
                   </div>
                   <div className="upload-row">
                     <input
@@ -1180,118 +1012,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                       type="button"
                     >
                       {busy.uploading ? "Uploading..." : "Upload"}
-                    </button>
-                  </div>
-                </section>
-              </>
-            ) : null}
-
-            {!selectedDetail && selectedParcelDetail ? (
-              <>
-                <section className="panel-section">
-                  <div className="section-heading primary-heading">
-                    <h2>
-                      {selectedParcelDetail.properties.parcelnumb
-                        ? `Parcel #${selectedParcelDetail.properties.parcelnumb}`
-                        : "Parcel record"}
-                    </h2>
-                  </div>
-                  <div className="badge-row">
-                    <span
-                      className={`badge ${workflowBadgeClass(
-                        selectedParcelDetail.properties.reviewStatus,
-                      )}`}
-                    >
-                      {workflowLabel(selectedParcelDetail.properties.reviewStatus ?? "review")}
-                    </span>
-                  </div>
-                  <dl className="detail-grid">
-                    <DetailItem label="Parcel Code" mono>
-                      {selectedParcelDetail.properties.PTVParcel ?? "None"}
-                    </DetailItem>
-                    <DetailItem label="QA ID" mono>
-                      {selectedParcelDetail.properties.questionAreaCode ?? "None"}
-                    </DetailItem>
-                    <DetailItem label="Owner">
-                      {selectedParcelDetail.properties.RegridOwner ?? "Unknown"}
-                    </DetailItem>
-                    <DetailItem label="County">
-                      {selectedParcelDetail.properties.County ?? "Unknown"}
-                    </DetailItem>
-                    <DetailItem label="State">
-                      {selectedParcelDetail.properties.State ?? "Unknown"}
-                    </DetailItem>
-                    <DetailItem label="Property">
-                      {selectedParcelDetail.properties.PropertyName ?? "None"}
-                    </DetailItem>
-                    <DetailItem label="Tract">
-                      {selectedParcelDetail.properties.TractName ?? "None"}
-                    </DetailItem>
-                    <DetailItem label="GIS Acres" mono>
-                      {formatMetric(selectedParcelDetail.properties.GIS_Acres)}
-                    </DetailItem>
-                  </dl>
-                  {selectedParcelDetail.properties.SpatialOverlayNotes ? (
-                    <div className="qa-reason">
-                      <dt>Question Area Reason</dt>
-                      <dd>{selectedParcelDetail.properties.SpatialOverlayNotes}</dd>
-                    </div>
-                  ) : null}
-                </section>
-
-                <section className="panel-section">
-                  <div className="section-heading">
-                    <h2>Comments</h2>
-                  </div>
-                  <div className="comment-list">
-                    {selectedParcelDetail.comments.map((comment) => (
-                      <article key={comment.id} className="comment-card">
-                        <div>
-                          <strong>{comment.authorName}</strong>
-                          <small>{comment.authorRole}</small>
-                        </div>
-                        <p>{comment.body}</p>
-                        <span>{new Date(comment.createdAt).toLocaleString()}</span>
-                      </article>
-                    ))}
-                  </div>
-                  <form className="form-stack" onSubmit={handleParcelCommentSubmit}>
-                    <label>
-                      Add comment
-                      <textarea
-                        rows={3}
-                        value={parcelCommentDraft}
-                        onChange={(event) => setParcelCommentDraft(event.target.value)}
-                      />
-                    </label>
-                    <button className="primary-button" disabled={busy.parcelCommenting} type="submit">
-                      {busy.parcelCommenting ? "Posting..." : "Post comment"}
-                    </button>
-                  </form>
-                </section>
-
-                <section className="panel-section">
-                  <div className="form-stack">
-                    <label>
-                      Update QA Status
-                      <select
-                        value={parcelStatusDraft}
-                        onChange={(event) => setParcelStatusDraft(event.target.value)}
-                      >
-                        {STATUS_OPTIONS.map((status) => (
-                          <option key={status} value={status}>
-                            {workflowLabel(status)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button
-                      className="primary-button"
-                      disabled={busy.parcelStatusSaving}
-                      onClick={handleParcelStatusSave}
-                      type="button"
-                    >
-                      {busy.parcelStatusSaving ? "Saving..." : "Save QA Status"}
                     </button>
                   </div>
                 </section>
@@ -1322,10 +1042,10 @@ function MapViewportWatcher({ onChange }: { onChange: (bbox: string) => void }) 
 
 function ManagementPatternDefs() {
   return (
-    <svg style={{ height: 0, width: 0, position: "absolute" }} aria-hidden="true">
+    <svg aria-hidden="true" style={{ height: 0, position: "absolute", width: 0 }}>
       <defs>
         <pattern id="management-pattern" width="6" height="6" patternUnits="userSpaceOnUse">
-          <circle cx="3" cy="3" r="1" fill="#39ff14" />
+          <circle cx="3" cy="3" fill="#39ff14" r="1" />
         </pattern>
       </defs>
     </svg>
@@ -1339,27 +1059,25 @@ function QAMarkerLayer({
 }: {
   questionAreas: QuestionAreaCollection;
   selectedCode: string | null;
-  onSelect: (code: string | null, linkedParcelId?: number | null) => void;
+  onSelect: (code: string | null) => void;
 }) {
   return (
     <>
       {questionAreas.features.map((feature) => {
-        const centroid = feature.properties?.centroid;
-        if (!centroid || centroid.type !== "Point") return null;
-        const [lng, lat] = centroid.coordinates;
-        const code = feature.properties?.code ?? "";
-        const linkedParcelId =
-          typeof feature.properties?.linkedParcelId === "number"
-            ? feature.properties.linkedParcelId
-            : null;
+        if (feature.geometry.type !== "Point") {
+          return null;
+        }
+
+        const point = feature.geometry as Point;
+        const [lng, lat] = point.coordinates;
+        const code = feature.properties.code;
+
         return (
           <Marker
             key={code}
+            eventHandlers={{ click: () => onSelect(code) }}
+            icon={createQAMarker(selectedCode, code)}
             position={[lat, lng]}
-            icon={createQAMarker(selectedCode, feature as QuestionAreaFeature)}
-            eventHandlers={{
-              click: () => onSelect(code, linkedParcelId),
-            }}
           />
         );
       })}
@@ -1372,7 +1090,7 @@ function MapFocus({
   targetKey,
 }: {
   geometry: Geometry | null;
-  targetKey: string | number | null;
+  targetKey: string | null;
 }) {
   const map = useMap();
 
@@ -1381,42 +1099,19 @@ function MapFocus({
       return;
     }
 
+    if (geometry.type === "Point") {
+      const point = geometry as Point;
+      map.setView([point.coordinates[1], point.coordinates[0]], Math.max(map.getZoom(), 13));
+      return;
+    }
+
     const bounds = L.geoJSON(geometry as never).getBounds();
     if (bounds.isValid()) {
       map.fitBounds(bounds.pad(0.35));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-center when a different item is selected
-  }, [map, targetKey]);
+  }, [geometry, map, targetKey]);
 
   return null;
-}
-
-function primaryParcelStyle(
-  feature: ParcelFeature | undefined,
-  selectedParcelId: number | null,
-) {
-  const isSelected = feature?.properties?.id === selectedParcelId;
-  const isActive = isParcelActive(feature?.properties?.QA_Status);
-  const parcelOutlineActive = "#fde047";
-  const parcelOutlineInactive = "#facc15";
-  const parcelSelection = "#38bdf8";
-
-  if (isSelected) {
-    return {
-      color: parcelSelection,
-      weight: 3,
-      fillColor: parcelSelection,
-      fillOpacity: 0.18,
-    };
-  }
-
-  return {
-    color: isActive ? parcelOutlineActive : parcelOutlineInactive,
-    weight: 2.75,
-    fillColor: parcelOutlineActive,
-    // Keep parcel interiors clickable even when they appear visually transparent.
-    fillOpacity: 0.01,
-  };
 }
 
 function DetailItem({
@@ -1425,7 +1120,7 @@ function DetailItem({
   mono,
 }: {
   label: string;
-  children: string;
+  children: ReactNode;
   mono?: boolean;
 }) {
   return (
@@ -1441,9 +1136,9 @@ function SkeletonDetail() {
     <section className="panel-section">
       <div className="skeleton skeleton-heading" />
       <div className="detail-grid">
-        {[...Array(6)].map((_, i) => (
-          <div key={i}>
-            <div className="skeleton" style={{ height: "0.75rem", width: "40%", marginBottom: "0.5rem" }} />
+        {[...Array(6)].map((_, index) => (
+          <div key={index}>
+            <div className="skeleton" style={{ height: "0.75rem", marginBottom: "0.5rem", width: "40%" }} />
             <div className="skeleton" style={{ height: "1.25rem", width: "80%" }} />
           </div>
         ))}
@@ -1452,13 +1147,14 @@ function SkeletonDetail() {
   );
 }
 
-function createQAMarker(selectedCode: string | null, feature: QuestionAreaFeature | undefined) {
-  const isSelected = feature?.properties?.code === selectedCode;
+function createQAMarker(selectedCode: string | null, code: string) {
+  const isSelected = selectedCode === code;
+
   return L.divIcon({
     className: "qa-marker-icon",
     html: `<div class="qa-marker-inner ${isSelected ? "selected pulse" : ""}">?</div>`,
-    iconSize: [24, 24],
     iconAnchor: [12, 12],
+    iconSize: [24, 24],
   });
 }
 
@@ -1473,9 +1169,18 @@ function formatMetric(value: number | null | undefined) {
   if (value === null || value === undefined) {
     return "None";
   }
+
   return Number(value).toLocaleString(undefined, {
     maximumFractionDigits: 2,
   });
+}
+
+function formatBoolean(value: boolean | null | undefined) {
+  if (value === null || value === undefined) {
+    return "Unknown";
+  }
+
+  return value ? "Yes" : "No";
 }
 
 function formatFileSize(bytes: number) {
@@ -1496,15 +1201,19 @@ function workflowBadgeClass(value: string | null | undefined) {
   return isWorkflowOpen(value) ? "severity-medium" : "neutral";
 }
 
+function severityBadgeClass(value: string | null | undefined) {
+  switch (value?.toLowerCase()) {
+    case "high":
+      return "severity-high";
+    case "low":
+      return "severity-low";
+    case "medium":
+    default:
+      return "severity-medium";
+  }
+}
+
 function isWorkflowOpen(value: string | null | undefined) {
   const status = value?.toLowerCase();
   return status === "review" || status === "active";
-}
-
-function isParcelActive(value: string | null | undefined) {
-  return value?.toLowerCase().includes("active") ?? false;
-}
-
-function deriveInitialParcelStatus(value: string | null | undefined) {
-  return isParcelActive(value) ? "active" : "review";
 }

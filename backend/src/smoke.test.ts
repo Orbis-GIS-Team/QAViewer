@@ -56,7 +56,7 @@ async function login(email: string, password: string): Promise<Session> {
   });
 }
 
-test("auth, admin, question-area, and parcel smoke flow", async () => {
+test("auth, admin, question-area, and layer smoke flow", async () => {
   const admin = await login("admin@qaviewer.local", "admin123!");
   assert.equal(admin.user.role, "admin");
 
@@ -122,25 +122,19 @@ test("auth, admin, question-area, and parcel smoke flow", async () => {
     expectedStatus: 201,
   });
 
-  const parcels = await request<FeatureCollection>(
-    "/layers/primary_parcels?bbox=-180,-90,180,90",
+  const landRecords = await request<FeatureCollection>(
+    "/layers/land_records?bbox=-180,-90,180,90",
     { token: admin.token },
   );
-  const parcelId = Number(parcels.features[0]?.properties.id);
-  assert.ok(Number.isInteger(parcelId) && parcelId > 0);
+  const landRecordId = Number(landRecords.features[0]?.properties.id);
+  assert.ok(Number.isInteger(landRecordId) && landRecordId > 0);
 
-  await request(`/parcels/${parcelId}/comments`, {
-    method: "POST",
-    token: smokeSession.token,
-    body: { body: `Smoke parcel comment ${RUN_ID}` },
-    expectedStatus: 201,
-  });
-
-  await request(`/parcels/${parcelId}/status`, {
-    method: "PATCH",
-    token: admin.token,
-    body: { status: "review" },
-  });
+  const managementAreas = await request<FeatureCollection>(
+    "/layers/management_areas?bbox=-180,-90,180,90",
+    { token: admin.token },
+  );
+  const managementAreaId = Number(managementAreas.features[0]?.properties.id);
+  assert.ok(Number.isInteger(managementAreaId) && managementAreaId > 0);
 
   await request(`/admin/users/${created.user.id}`, {
     method: "DELETE",

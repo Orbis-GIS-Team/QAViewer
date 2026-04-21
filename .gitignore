@@ -7,10 +7,15 @@ backend/node_modules
 frontend/node_modules
 backend/dist
 frontend/dist
+*.tsbuildinfo
 backend/uploads/*
 !backend/uploads/.gitkeep
 *.log
 
 # Exclude oversized geodatabase file and local build artifacts
 BTG_PTV_Implementation.gdb/a00000012.gdbtable
+NNC_Data/
+DataStandardiztion/node_modules/
+DataStandardiztion/outputs/
+DataStandardiztion/*.xlsx
 .vite/

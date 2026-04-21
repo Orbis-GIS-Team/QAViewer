@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QAViewer GIS Architecture Review</title>
+  <style>
+    :root {
+      --ink: #24302f;
+      --muted: #5c6966;
+      --page: #f6f8f7;
+      --paper: #ffffff;
+      --line: #d7dfdb;
+      --green: #0f7a5f;
+      --green-soft: #dff3ee;
+      --teal: #146c94;
+      --teal-soft: #dceff6;
+      --red: #b83248;
+      --red-soft: #f8e1e5;
+      --gold: #8a6d10;
+      --gold-soft: #f5edc7;
+      --gray-soft: #edf0ef;
+      --shadow: 0 12px 28px rgba(36, 48, 47, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    a {
+      color: var(--teal);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    nav {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      border-right: 1px solid var(--line);
+      background: var(--paper);
+      padding: 28px 22px;
+    }
+
+    nav h1 {
+      margin: 0 0 8px;
+      font-size: 1.1rem;
+      line-height: 1.25;
+    }
+
+    nav p {
+      margin: 0 0 24px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    nav ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 6px;
+    }
+
+    nav a {
+      display: block;
+      padding: 8px 10px;
+      border-radius: 8px;
+      color: var(--ink);
+      text-decoration: none;
+      font-size: 0.95rem;
+    }
+
+    nav a:hover,
+    nav a:focus {
+      background: var(--gray-soft);
+      outline: none;
+    }
+
+    main {
+      min-width: 0;
+    }
+
+    .band {
+      border-bottom: 1px solid var(--line);
+      background: var(--paper);
+    }
+
+    .band.alt {
+      background: var(--page);
+    }
+
+    .inner {
+      width: min(1180px, calc(100vw - 340px));
+      margin: 0 auto;
+      padding: 44px 28px;
+    }
+
+    .intro {
+      background:
+        linear-gradient(135deg, rgba(223, 243, 238, 0.92), rgba(220, 239, 246, 0.82)),
+        linear-gradient(90deg, #ffffff, #eef5f2);
+    }
+
+    .intro .inner {
+      padding-top: 56px;
+      padding-bottom: 42px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 9px;
+      border: 1px solid rgba(15, 122, 95, 0.25);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.7);
+      color: var(--green);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    h2,
+    h3 {
+      line-height: 1.2;
+    }
+
+    h2 {
+      margin: 0 0 18px;
+      font-size: clamp(1.65rem, 3vw, 2.6rem);
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 30px 0 12px;
+      font-size: 1.2rem;
+    }
+
+    .lede {
+      max-width: 860px;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 1.08rem;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 0.72fr);
+      gap: 28px;
+      align-items: start;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+      padding: 16px;
+      min-height: 116px;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 1.85rem;
+      line-height: 1;
+      color: var(--green);
+    }
+
+    .stat span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .callout {
+      border-left: 5px solid var(--red);
+      background: var(--red-soft);
+      padding: 18px 20px;
+      border-radius: 8px;
+      color: #52212a;
+    }
+
+    .callout.neutral {
+      border-left-color: var(--teal);
+      background: var(--teal-soft);
+      color: #153747;
+    }
+
+    .callout.good {
+      border-left-color: var(--green);
+      background: var(--green-soft);
+      color: #173d32;
+    }
+
+    .callout.warn {
+      border-left-color: var(--gold);
+      background: var(--gold-soft);
+      color: #4b3d10;
+    }
+
+    .callout p {
+      margin: 0;
+    }
+
+    .label {
+      display: inline-flex;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: var(--gray-soft);
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+      font-size: 0.94rem;
+    }
+
+    th,
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eef4f2;
+      color: var(--ink);
+      font-size: 0.8rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 6px;
+      background: #edf0ef;
+      color: #24302f;
+      font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 0.9em;
+    }
+
+    .diagram {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+      padding: 16px;
+      overflow-x: auto;
+      box-shadow: var(--shadow);
+    }
+
+    .diagram svg {
+      display: block;
+      width: 100%;
+      min-width: 760px;
+      height: auto;
+    }
+
+    .box {
+      fill: #ffffff;
+      stroke: #b9c6c0;
+      stroke-width: 1.4;
+      rx: 8;
+    }
+
+    .box.source {
+      fill: var(--green-soft);
+      stroke: #7ab9a6;
+    }
+
+    .box.api {
+      fill: var(--teal-soft);
+      stroke: #82b7cd;
+    }
+
+    .box.issue {
+      fill: var(--red-soft);
+      stroke: #d79aa5;
+    }
+
+    .box.review {
+      fill: var(--gold-soft);
+      stroke: #cfbc62;
+    }
+
+    .svg-title {
+      font-size: 15px;
+      font-weight: 700;
+      fill: var(--ink);
+    }
+
+    .svg-small {
+      font-size: 12px;
+      fill: var(--muted);
+    }
+
+    .svg-note {
+      font-size: 11px;
+      fill: #4f5c58;
+    }
+
+    .arrow {
+      stroke: #52605c;
+      stroke-width: 1.5;
+      fill: none;
+      marker-end: url(#arrowhead);
+    }
+
+    .arrow.red {
+      stroke: var(--red);
+    }
+
+    .arrow.green {
+      stroke: var(--green);
+    }
+
+    .list {
+      display: grid;
+      gap: 10px;
+      margin: 16px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .list li {
+      border-left: 4px solid var(--line);
+      padding: 8px 0 8px 12px;
+    }
+
+    .list li.good {
+      border-left-color: var(--green);
+    }
+
+    .list li.warn {
+      border-left-color: var(--gold);
+    }
+
+    .list li.bad {
+      border-left-color: var(--red);
+    }
+
+    .decision-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .decision {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+      padding: 18px;
+    }
+
+    .decision h3 {
+      margin-top: 0;
+    }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        display: block;
+      }
+
+      nav {
+        position: relative;
+        height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      nav ul {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .inner {
+        width: min(100%, 920px);
+      }
+
+      .two-col,
+      .three-col,
+      .stat-grid,
+      .decision-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media print {
+      body {
+        background: white;
+      }
+
+      .layout {
+        display: block;
+      }
+
+      nav {
+        display: none;
+      }
+
+      .inner {
+        width: 100%;
+        padding: 24px 0;
+      }
+
+      .band,
+      .band.alt {
+        background: white;
+      }
+
+      .diagram,
+      .table-wrap,
+      .stat,
+      .decision {
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div style="max-width: 1200px; margin: 24px auto 0; padding: 16px 20px; border: 1px solid #f0c36d; background: #fff8e6; color: #6b4f00; font: 600 14px/1.5 system-ui, sans-serif;">
+    Archived note: this review captures the pre-cutover parcel-centered architecture and is retained for historical reference only. Use <code>README.md</code>, <code>AGENTS.md</code>, <code>docs/dataset-contract.md</code>, and <code>docs/nnc-cutover-plan.md</code> for the current NNC architecture.
+  </div>
+  <div class="layout">
+    <nav aria-label="Page sections">
+      <h1>QAViewer GIS Architecture Review</h1>
+      <p>Plain-language notes and diagrams for deciding how the GIS data model should evolve.</p>
+      <ul>
+        <li><a href="#summary">Executive Summary</a></li>
+        <li><a href="#snapshot">Current Data Snapshot</a></li>
+        <li><a href="#current-flow">Current Flow</a></li>
+        <li><a href="#displayed-layers">Displayed Layers</a></li>
+        <li><a href="#database">Database Shape</a></li>
+        <li><a href="#issues">Issues Found</a></li>
+        <li><a href="#recommendation">Recommended Architecture</a></li>
+        <li><a href="#decisions">Decision Points</a></li>
+      </ul>
+    </nav>
+
+    <main>
+      <section class="band intro" id="summary">
+        <div class="inner">
+          <span class="eyebrow">Decision Brief</span>
+          <h2>How GIS data moves through QAViewer today, and where the architecture should change.</h2>
+          <p class="lede">
+            QAViewer currently works as a Dockerized GIS review prototype. It takes a prepared geodatabase,
+            exports normalized GeoJSON seed files, imports those files into PostGIS, and serves map-ready
+            GeoJSON to a Leaflet interface. That path is workable for a prototype, but it blurs the difference
+            between source GIS data, derived question areas, and review workflow state.
+          </p>
+
+          <div class="stat-grid" aria-label="Current data counts">
+            <div class="stat">
+              <strong>557</strong>
+              <span>question areas loaded into PostGIS</span>
+            </div>
+            <div class="stat">
+              <strong>3,373</strong>
+              <span>primary parcel polygons</span>
+            </div>
+            <div class="stat">
+              <strong>3,079</strong>
+              <span>parcel point features</span>
+            </div>
+            <div class="stat">
+              <strong>896</strong>
+              <span>management tract polygons</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="snapshot">
+        <div class="inner two-col">
+          <div>
+            <span class="label">Current State</span>
+            <h2>What the app is using right now</h2>
+            <p>
+              The browser does not open the geodatabase directly. It asks the API for map features.
+              The API reads PostGIS tables, converts geometry to GeoJSON, and sends that GeoJSON to Leaflet.
+            </p>
+            <p>
+              This keeps PostGIS safely behind the API, but it also means the correctness of the review
+              experience depends heavily on the seed export step.
+            </p>
+          </div>
+          <div class="callout warn">
+            <p>
+              The current loaded question areas appear to come from <code>BTG_Spatial_Fix_Primary_Layer</code>,
+              which is the primary parcel context layer. The architecture guide says question areas should come
+              from the mismatch erase layers. That is the biggest data concern found during this review.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="band alt" id="current-flow">
+        <div class="inner">
+          <span class="label">Diagram 1</span>
+          <h2>Current GIS data flow</h2>
+          <div class="diagram" role="img" aria-label="Current GIS data flow diagram">
+            <svg viewBox="0 0 1120 420" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <marker id="arrowhead" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#52605c"></path>
+                </marker>
+              </defs>
+
+              <rect class="box source" x="32" y="72" width="170" height="90"></rect>
+              <text class="svg-title" x="52" y="108">Source GDB</text>
+              <text class="svg-small" x="52" y="132">BTG_PTV_Implementation.gdb</text>
+
+              <rect class="box" x="250" y="72" width="175" height="90"></rect>
+              <text class="svg-title" x="270" y="108">Export Script</text>
+              <text class="svg-small" x="270" y="132">scripts/export_seed_data.py</text>
+
+              <rect class="box" x="475" y="48" width="180" height="138"></rect>
+              <text class="svg-title" x="495" y="84">Generated Files</text>
+              <text class="svg-small" x="495" y="110">question_areas.geojson</text>
+              <text class="svg-small" x="495" y="130">primary_parcels.geojson</text>
+              <text class="svg-small" x="495" y="150">parcel_points.geojson</text>
+              <text class="svg-small" x="495" y="170">management_tracts.geojson</text>
+
+              <rect class="box api" x="705" y="72" width="160" height="90"></rect>
+              <text class="svg-title" x="725" y="108">Seed Loader</text>
+              <text class="svg-small" x="725" y="132">backend startup</text>
+
+              <rect class="box source" x="915" y="72" width="160" height="90"></rect>
+              <text class="svg-title" x="935" y="108">PostGIS</text>
+              <text class="svg-small" x="935" y="132">runtime spatial tables</text>
+
+              <path class="arrow" d="M 202 117 L 244 117"></path>
+              <path class="arrow" d="M 425 117 L 469 117"></path>
+              <path class="arrow" d="M 655 117 L 699 117"></path>
+              <path class="arrow" d="M 865 117 L 909 117"></path>
+
+              <rect class="box api" x="275" y="270" width="175" height="86"></rect>
+              <text class="svg-title" x="295" y="306">Express API</text>
+              <text class="svg-small" x="295" y="330">bbox queries and details</text>
+
+              <rect class="box review" x="515" y="270" width="175" height="86"></rect>
+              <text class="svg-title" x="535" y="306">Leaflet UI</text>
+              <text class="svg-small" x="535" y="330">map, search, review panels</text>
+
+              <path class="arrow" d="M 995 162 C 995 230 860 313 456 313"></path>
+              <path class="arrow" d="M 450 313 L 509 313"></path>
+
+              <rect class="box issue" x="735" y="250" width="280" height="112"></rect>
+              <text class="svg-title" x="755" y="286">Current risk</text>
+              <text class="svg-small" x="755" y="312">Seed output decides what becomes</text>
+              <text class="svg-small" x="755" y="332">a question area. If export inputs are</text>
+              <text class="svg-small" x="755" y="352">wrong, the whole review layer is wrong.</text>
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="displayed-layers">
+        <div class="inner">
+          <span class="label">Map View</span>
+          <h2>What users see on the map</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Layer</th>
+                  <th>Source table</th>
+                  <th>Default visibility</th>
+                  <th>Purpose in the app</th>
+                  <th>Current concern</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>USGS imagery and Esri reference tiles</td>
+                  <td>External tile services</td>
+                  <td>On</td>
+                  <td>Background geography, roads, and labels.</td>
+                  <td>Requires network access for the basemap tiles.</td>
+                </tr>
+                <tr>
+                  <td>Primary parcels</td>
+                  <td><code>parcel_features</code></td>
+                  <td>On</td>
+                  <td>Parcel polygon context and parcel-level clicking.</td>
+                  <td>Also appears to be the source of the loaded question areas.</td>
+                </tr>
+                <tr>
+                  <td>Management tracts</td>
+                  <td><code>management_tracts</code></td>
+                  <td>On</td>
+                  <td>Management polygon overlay for comparison context.</td>
+                  <td>Rendered as context, not as a first-class source layer relationship.</td>
+                </tr>
+                <tr>
+                  <td>Parcel points</td>
+                  <td><code>parcel_points</code></td>
+                  <td>Off</td>
+                  <td>Point context layer for parcel records.</td>
+                  <td>17 loaded points are outside a normal US coordinate range.</td>
+                </tr>
+                <tr>
+                  <td>Question areas</td>
+                  <td><code>question_areas</code></td>
+                  <td>Markers on</td>
+                  <td>Main review items, selected from the map or search.</td>
+                  <td>Polygons are loaded but styled transparent; users mainly see question mark markers.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="band alt" id="database">
+        <div class="inner">
+          <span class="label">Diagram 2</span>
+          <h2>Current database shape</h2>
+          <p>
+            This is the simplified runtime shape. The source geodatabase and generated GeoJSON files are not
+            represented as versioned records inside the current schema.
+          </p>
+          <div class="diagram" role="img" aria-label="Current database table relationship diagram">
+            <svg viewBox="0 0 1120 560" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <marker id="arrowhead2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#52605c"></path>
+                </marker>
+              </defs>
+
+              <rect class="box source" x="430" y="45" width="260" height="160"></rect>
+              <text class="svg-title" x="452" y="78">question_areas</text>
+              <text class="svg-small" x="452" y="108">id, code, status, severity</text>
+              <text class="svg-small" x="452" y="130">parcel keys, owner fields</text>
+              <text class="svg-small" x="452" y="152">geom MultiPolygon</text>
+              <text class="svg-small" x="452" y="174">centroid Point</text>
+
+              <rect class="box" x="64" y="265" width="250" height="150"></rect>
+              <text class="svg-title" x="86" y="298">parcel_features</text>
+              <text class="svg-small" x="86" y="326">parcel_number, ptv_parcel</text>
+              <text class="svg-small" x="86" y="348">owner, county, state</text>
+              <text class="svg-small" x="86" y="370">review_status</text>
+              <text class="svg-small" x="86" y="392">geom MultiPolygon</text>
+
+              <rect class="box" x="435" y="285" width="250" height="112"></rect>
+              <text class="svg-title" x="457" y="318">parcel_points</text>
+              <text class="svg-small" x="457" y="346">parcel_id, parcel_code</text>
+              <text class="svg-small" x="457" y="368">geom Point</text>
+
+              <rect class="box" x="805" y="265" width="250" height="150"></rect>
+              <text class="svg-title" x="827" y="298">management_tracts</text>
+              <text class="svg-small" x="827" y="326">fund, pu, tract fields</text>
+              <text class="svg-small" x="827" y="348">ownership, comment</text>
+              <text class="svg-small" x="827" y="370">book_area</text>
+              <text class="svg-small" x="827" y="392">geom MultiPolygon</text>
+
+              <rect class="box review" x="420" y="440" width="145" height="70"></rect>
+              <text class="svg-title" x="442" y="470">comments</text>
+              <text class="svg-small" x="442" y="492">question_area_id</text>
+
+              <rect class="box review" x="590" y="440" width="145" height="70"></rect>
+              <text class="svg-title" x="612" y="470">documents</text>
+              <text class="svg-small" x="612" y="492">question_area_id</text>
+
+              <rect class="box review" x="78" y="450" width="175" height="70"></rect>
+              <text class="svg-title" x="100" y="480">parcel_comments</text>
+              <text class="svg-small" x="100" y="502">parcel_id</text>
+
+              <path class="arrow" marker-end="url(#arrowhead2)" d="M 428 145 C 310 175 230 220 190 260"></path>
+              <text class="svg-note" x="198" y="205">attribute match</text>
+              <text class="svg-note" x="198" y="222">parcel number/code + county/state</text>
+
+              <path class="arrow" marker-end="url(#arrowhead2)" d="M 545 206 L 545 279"></path>
+              <text class="svg-note" x="558" y="245">loose context only</text>
+
+              <path class="arrow" marker-end="url(#arrowhead2)" d="M 690 145 C 810 175 890 220 930 260"></path>
+              <text class="svg-note" x="795" y="205">visual overlay only</text>
+
+              <path class="arrow" marker-end="url(#arrowhead2)" d="M 500 205 L 500 434"></path>
+              <path class="arrow" marker-end="url(#arrowhead2)" d="M 620 205 L 665 434"></path>
+              <path class="arrow" marker-end="url(#arrowhead2)" d="M 190 415 L 170 444"></path>
+            </svg>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="issues">
+        <div class="inner two-col">
+          <div>
+            <span class="label">Review Findings</span>
+            <h2>What needs attention before the app becomes a dependable review system</h2>
+            <ul class="list">
+              <li class="bad">
+                <strong>Question-area source looks wrong.</strong>
+                Loaded question areas report <code>BTG_Spatial_Fix_Primary_Layer</code> as the source layer.
+                The intended source layers are the primary and comparison erase mismatch layers.
+              </li>
+              <li class="bad">
+                <strong>Comparison mismatch data is not represented in the current snapshot.</strong>
+                The manifest shows a primary breakdown only, so reviewers may be seeing one side of the problem.
+              </li>
+              <li class="warn">
+                <strong>Question-area geometry is not visually emphasized.</strong>
+                The app fetches question-area polygons but renders them transparent, leaving question mark markers as
+                the main visual signal.
+              </li>
+              <li class="warn">
+                <strong>Parcel relationships are implicit.</strong>
+                The app links question areas to parcels using matching keys at query time instead of storing a clear
+                relationship record with match type and confidence.
+              </li>
+              <li class="warn">
+                <strong>There are coordinate outliers.</strong>
+                17 parcel points fall outside a normal US coordinate envelope. That points to source data cleanup
+                or validation work.
+              </li>
+            </ul>
+          </div>
+          <div class="callout neutral">
+            <p>
+              The core application stack is still reasonable: Docker, Express, PostGIS, and Leaflet are a good fit.
+              The recommended change is not to throw away the stack. The recommended change is to formalize the
+              GIS import model and separate source data from derived review records.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="band alt" id="recommendation">
+        <div class="inner">
+          <span class="label">Diagram 3</span>
+          <h2>Recommended architecture</h2>
+          <p>
+            The strongest next architecture adds an import/staging layer, derives question areas from explicit
+            mismatch sources, and stores relationships between question areas and related GIS features.
+          </p>
+          <div class="diagram" role="img" aria-label="Recommended GIS architecture diagram">
+            <svg viewBox="0 0 1120 610" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <marker id="arrowhead3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#52605c"></path>
+                </marker>
+              </defs>
+
+              <rect class="box source" x="40" y="60" width="180" height="86"></rect>
+              <text class="svg-title" x="62" y="92">Source GIS</text>
+              <text class="svg-small" x="62" y="116">GDB, GeoPackage, etc.</text>
+
+              <rect class="box api" x="285" y="45" width="210" height="116"></rect>
+              <text class="svg-title" x="307" y="78">Import Run</text>
+              <text class="svg-small" x="307" y="104">dataset_id</text>
+              <text class="svg-small" x="307" y="126">import_run_id</text>
+              <text class="svg-small" x="307" y="148">validation report</text>
+
+              <rect class="box" x="560" y="35" width="235" height="138"></rect>
+              <text class="svg-title" x="582" y="70">Source Feature Tables</text>
+              <text class="svg-small" x="582" y="98">source_features</text>
+              <text class="svg-small" x="582" y="120">source_layer, source_id</text>
+              <text class="svg-small" x="582" y="142">raw_properties, geom</text>
+
+              <rect class="box review" x="860" y="45" width="220" height="116"></rect>
+              <text class="svg-title" x="882" y="78">Derived Review Tables</text>
+              <text class="svg-small" x="882" y="104">question_areas</text>
+              <text class="svg-small" x="882" y="126">reason_code, source_side</text>
+              <text class="svg-small" x="882" y="148">status and reviewer fields</text>
+
+              <path class="arrow green" marker-end="url(#arrowhead3)" d="M 220 103 L 279 103"></path>
+              <path class="arrow green" marker-end="url(#arrowhead3)" d="M 495 103 L 554 103"></path>
+              <path class="arrow green" marker-end="url(#arrowhead3)" d="M 795 103 L 854 103"></path>
+
+              <rect class="box" x="160" y="275" width="220" height="126"></rect>
+              <text class="svg-title" x="182" y="310">source_features</text>
+              <text class="svg-small" x="182" y="336">one row per imported feature</text>
+              <text class="svg-small" x="182" y="358">preserves source lineage</text>
+              <text class="svg-small" x="182" y="380">keeps raw attributes</text>
+
+              <rect class="box source" x="450" y="250" width="230" height="176"></rect>
+              <text class="svg-title" x="472" y="286">question_areas</text>
+              <text class="svg-small" x="472" y="314">only derived from mismatch</text>
+              <text class="svg-small" x="472" y="336">layers or reproducible overlay</text>
+              <text class="svg-small" x="472" y="358">source_side: primary/comparison</text>
+              <text class="svg-small" x="472" y="380">reason_code and reason_text</text>
+              <text class="svg-small" x="472" y="402">geom and centroid</text>
+
+              <rect class="box api" x="750" y="265" width="250" height="146"></rect>
+              <text class="svg-title" x="772" y="300">related_features</text>
+              <text class="svg-small" x="772" y="328">question_area_id</text>
+              <text class="svg-small" x="772" y="350">feature_table, feature_id</text>
+              <text class="svg-small" x="772" y="372">relationship_type</text>
+              <text class="svg-small" x="772" y="394">match_confidence</text>
+
+              <path class="arrow" marker-end="url(#arrowhead3)" d="M 380 338 L 444 338"></path>
+              <path class="arrow" marker-end="url(#arrowhead3)" d="M 680 338 L 744 338"></path>
+
+              <rect class="box review" x="325" y="490" width="190" height="74"></rect>
+              <text class="svg-title" x="347" y="522">Express API</text>
+              <text class="svg-small" x="347" y="544">map and detail responses</text>
+
+              <rect class="box review" x="610" y="490" width="190" height="74"></rect>
+              <text class="svg-title" x="632" y="522">Leaflet UI</text>
+              <text class="svg-small" x="632" y="544">visible mismatch review</text>
+
+              <path class="arrow" marker-end="url(#arrowhead3)" d="M 565 426 C 545 462 505 498 521 527 L 604 527"></path>
+              <path class="arrow" marker-end="url(#arrowhead3)" d="M 750 400 C 680 455 575 500 521 527"></path>
+            </svg>
+          </div>
+
+          <div class="three-col" style="margin-top: 18px;">
+            <div class="callout good">
+              <p><strong>Preserve lineage.</strong> Every feature should keep dataset, import run, source layer, source feature ID, and raw attributes.</p>
+            </div>
+            <div class="callout good">
+              <p><strong>Derive review objects.</strong> Question areas should be generated from explicit mismatch layers or a repeatable PostGIS process.</p>
+            </div>
+            <div class="callout good">
+              <p><strong>Store relationships.</strong> Related parcels, points, and management tracts should be recorded with relationship type and confidence.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="decisions">
+        <div class="inner">
+          <span class="label">Decision Points</span>
+          <h2>Questions worth answering before the next build</h2>
+          <div class="decision-grid">
+            <div class="decision">
+              <h3>1. What is a question area?</h3>
+              <p>
+                Decide whether a question area is strictly a geometry from the mismatch erase layers, a generated
+                geometry from runtime overlay analysis, or a manually created review object. The schema should make
+                that answer explicit.
+              </p>
+            </div>
+            <div class="decision">
+              <h3>2. Which layer is authoritative?</h3>
+              <p>
+                The app needs a clear vocabulary for primary, comparison, management, parcel, and point layers.
+                Reviewers should be able to tell which side produced the mismatch.
+              </p>
+            </div>
+            <div class="decision">
+              <h3>3. Should import be repeatable?</h3>
+              <p>
+                If the same source data is imported twice, the system should produce the same question areas or
+                explain what changed. That requires import runs, hashes, and validation reports.
+              </p>
+            </div>
+            <div class="decision">
+              <h3>4. What should users see first?</h3>
+              <p>
+                The map should highlight the actual mismatch polygon, then show related parcel and management
+                geometry as context. Markers should help navigation, not replace the spatial evidence.
+              </p>
+            </div>
+          </div>
+
+          <h3>Recommended next steps</h3>
+          <ul class="list">
+            <li class="bad">Regenerate seed data and confirm question areas come from the two mismatch erase layers.</li>
+            <li class="warn">Add importer validation for missing comparison output, wrong source layer, and coordinate outliers.</li>
+            <li class="warn">Update the map styling so question-area polygons are visible and selected mismatch geometry is prominent.</li>
+            <li class="good">Design the next database model around datasets, import runs, source features, derived question areas, and explicit relationships.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="band alt">
+        <div class="inner">
+          <p class="footer-note">
+            Prepared from the current QAViewer repository and running Docker/PostGIS data snapshot. This page is a
+            decision aid, not a replacement for a formal GIS data audit.
+          </p>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,5 +1,7 @@
 # How QAViewer Uses PostGIS
 
+> Archived note: this document describes the retired parcel-centered runtime model. It is kept for historical reference only and should not be treated as the active architecture after the NNC cutover. Use `docs/dataset-contract.md`, `docs/nnc-cutover-plan.md`, `README.md`, and `AGENTS.md` for current behavior.
+
 This document focuses on how the app works with PostGIS at runtime.
 
 Short version:

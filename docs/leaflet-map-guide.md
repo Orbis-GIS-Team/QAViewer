@@ -1,5 +1,7 @@
 # Leaflet Map Guide — QAViewer
 
+> Archived note: this guide documents the older parcel-centered Leaflet setup. It is retained only as historical reference and does not describe the active NNC review workspace. Use `frontend/src/components/MapWorkspace.tsx`, `docs/dataset-contract.md`, and `docs/nnc-cutover-plan.md` for the current implementation.
+
 This document explains how Leaflet works in general, and specifically how it is being used in this project. It is intended as a reference for making symbology and configuration changes to the map.
 
 ---

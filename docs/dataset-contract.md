@@ -1,130 +1,139 @@
 # QAViewer Dataset Contract
 
-QAViewer is reusable across datasets by keeping one normalized seed contract for the app and changing only the export configuration for each source dataset.
+This document defines the active standardized seed contract for QAViewer after the NNC cutover.
 
-## Normalized Seed Outputs
+## Canonical Seed Outputs
 
-The backend imports these files from `data/generated/`:
+The backend imports these files from `data/standardized/`:
 
 - `question_areas.geojson`
-- `primary_parcels.geojson`
-- `parcel_points.geojson`
-- `management_tracts.geojson`
+- `land_records.geojson`
+- `management_areas.geojson`
 - `manifest.json`
 
-Do not make backend or frontend code depend on a source geodatabase directly. New datasets should be exported into these files first.
+Do not make backend or frontend code depend directly on a source geodatabase. Convert source GIS data into this standardized dataset first.
 
-## Source Dataset Requirements
+## Runtime Model
 
-The source dataset must expose these logical layers. The physical layer names can vary and are passed to `scripts/export_seed_data.py`.
+The active application model is:
 
-| Logical layer | Default layer name | Purpose |
-| --- | --- | --- |
-| Primary mismatch areas | `BTG_Spatial_Fix_Primary_Erase` | Question areas from features present or authoritative on the primary side |
-| Comparison mismatch areas | `BTG_Spatial_Fix_Comparison_Erase` | Question areas from features present or authoritative on the comparison side |
-| Primary parcels | `BTG_Spatial_Fix_Primary_Layer` | Parcel polygons used for context and parcel-level review |
-| Parcel points | `BTG_Points_NoArches_12Feb26` | Point context layer |
-| Management tracts | `BTG_MGMT_NoArches` | Management polygon context layer |
+- `question_areas`: primary review records, stored as point geometry
+- `land_records`: supporting legal/land-record overlay layer
+- `management_areas`: supporting management overlay layer
 
-All geometry layers must have a defined CRS. The exporter reprojects to EPSG:4326 for browser and PostGIS import.
+All geometry is expected to be in EPSG:4326.
 
-## Required Source Fields
+## `question_areas.geojson`
 
-The source schema should remain stable across datasets. Field names are currently case-sensitive for supporting layers because the exporter validates those layers directly.
+Expected geometry:
 
-### Primary Parcels
+- `Point`
 
-- `parcelnumb`
-- `County`
-- `State`
-- `RegridOwner`
-- `PropertyName`
-- `AnalysisName`
-- `TractName`
-- `QA_Status`
-- `PTVParcel`
-- `Exists_in_Mgt`
-- `Exists_in_PTV`
-- `GIS_Acres`
-- `SpatialOverlayNotes`
-- geometry
+Expected properties used by the active app:
 
-### Parcel Points
+- `code`
+- `source_layer`
+- `status`
+- `severity`
+- `title`
+- `summary`
+- `description`
+- `county`
+- `state`
+- `parcel_code`
+- `owner_name`
+- `property_name`
+- `tract_name`
+- `fund_name`
+- `land_services`
+- `tax_bill_acres`
+- `gis_acres`
+- `exists_in_legal_layer`
+- `exists_in_management_layer`
+- `exists_in_client_tabular_bill_data`
+- `assigned_reviewer`
+- `search_keywords`
 
-- `ParcelID`
-- `ParcelCode`
-- `OwnerName`
-- `County`
-- `State`
-- `Descriptio`
-- `TractName`
-- `Latitude`
-- `Longitude`
-- `LandUseTyp`
-- geometry
+Additional source properties may be retained in the file and are stored in `raw_properties`.
 
-### Management Tracts
+## `land_records.geojson`
 
-- `Fund`
-- `PU_Number`
-- `PU`
-- `Tract_Numb`
-- `Tract_Name`
-- `Ownership`
-- `Comment`
-- `Book_Area`
-- geometry
+Expected geometry:
 
-### Mismatch Question Areas
+- `MultiPolygon` or `Polygon`
 
-Mismatch layers are read broadly because source mismatch exports can carry slightly different attribution. The exporter looks for these aliases when present:
+Expected properties used by the seed loader:
 
-- Parcel number: `parcelnumb`, `parcel_number`, `ParcelNumber`, `ParcelID`, `ParcelCode`
-- Parcel code: `PTVParcel`, `ptv_parcel`, `ParcelCode`, `parcel_code`
-- Owner: `RegridOwner`, `OwnerName`, `owner_name`, `Ownership`
-- County: `County`, `county`
-- State: `State`, `state`, `STATE`
-- Property: `PropertyName`, `property_name`, `Property`
-- Analysis: `AnalysisName`, `analysis_name`
-- Tract: `TractName`, `Tract_Name`, `tract_name`
-- Notes: `SpatialOverlayNotes`, `QA_Status`, `Comment`, `Descriptio`, `Description`
-- Acres: `GIS_Acres`, `gis_acres`, `ACRES`, `Book_Area`
+- `state`
+- `county`
+- `parcel_number`
+- `deed_acres`
+- `gis_acres`
+- `fips`
+- `description`
+- `record_type`
+- `tract_key`
+- `record_number`
+- `document_number`
+- `source_name`
+- `source_page_number`
+- `document_type`
+- `record_status`
+- `current_owner`
+- `previous_owner`
+- `acquisition_date`
+- `description_type`
+- `remark`
+- `keyword`
+- `document_name`
+- `trs`
+- `record_specs`
+- `tax_confirmed`
+- `merge_source`
+- `old_record_number`
+- `property_name`
+- `fund_name`
+- `region_name`
 
-Mismatch layers must include non-empty geometry. At least one feature must come from each mismatch layer.
+## `management_areas.geojson`
 
-## Export Configuration
+Expected geometry:
 
-Defaults match the original source names:
+- `MultiPolygon` or `Polygon`
 
-```bash
-.venv/bin/python scripts/export_seed_data.py
-```
+Expected properties used by the seed loader:
 
-Override source path and layer names with CLI args:
+- `effective_date`
+- `status`
+- `property_code`
+- `property_name`
+- `portfolio`
+- `fund_name`
+- `original_acquisition_date`
+- `full_disposition_date`
+- `management_type`
+- `country`
+- `investment_manager`
+- `property_coordinates`
+- `region`
+- `state`
+- `county`
+- `business_unit`
+- `crops`
+- `tillable_acres`
+- `gross_acres`
+- `arable_hectares`
+- `gross_hectares`
+- `gis_acres`
+- `gis_hectares`
 
-```bash
-.venv/bin/python scripts/export_seed_data.py \
-  --source path/to/source.gdb \
-  --primary-mismatch-layer Primary_Mismatch \
-  --comparison-mismatch-layer Comparison_Mismatch \
-  --primary-parcels-layer Primary_Parcels \
-  --parcel-points-layer Parcel_Points \
-  --management-tracts-layer Management_Tracts
-```
+## Manifest
 
-Or set equivalent environment variables:
+`manifest.json` is hashed by the backend after seeding. If the manifest changes while the database is already populated, the backend fails fast and requires an explicit local reset/reseed.
 
-- `QAVIEWER_SOURCE_GDB`
-- `QAVIEWER_OUTPUT_DIR`
-- `QAVIEWER_QA_PRIMARY_LAYER`
-- `QAVIEWER_QA_COMPARISON_LAYER`
-- `QAVIEWER_PRIMARY_PARCELS_LAYER`
-- `QAVIEWER_PARCEL_POINTS_LAYER`
-- `QAVIEWER_MANAGEMENT_TRACTS_LAYER`
+## Reset and reseed workflow
 
-## Reseed Workflow
-
-After generating new seed files, reset local PostGIS explicitly:
+After changing the standardized seed dataset or the schema:
 
 ```bash
 docker compose down -v
@@ -137,3 +146,7 @@ Then verify:
 cd backend
 npm run test:smoke
 ```
+
+## Historical note
+
+Older docs in this repository may describe the retired `data/generated/` and parcel-centered BTG export pipeline. Those documents are historical only and should not be used as the current contract.

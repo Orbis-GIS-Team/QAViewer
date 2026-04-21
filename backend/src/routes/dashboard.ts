@@ -1,12 +1,7 @@
 import { Router } from "express";
 
 import { query } from "../lib/db.js";
-import { parcelQuestionAreaJoin } from "../lib/parcelQuestionAreaMatch.js";
-import {
-  buildParcelSearchClause,
-  buildQuestionAreaSearchClause,
-  parseSearchField,
-} from "../lib/search.js";
+import { buildQuestionAreaSearchClause, parseSearchField } from "../lib/search.js";
 
 const router = Router();
 
@@ -45,67 +40,33 @@ router.get("/search", async (req, res) => {
 
   const searchField = parseSearchField(req.query.field);
   const searchValue = `%${rawQuery}%`;
-  const [questionAreas, parcels] = await Promise.all([
-    query<{
-      code: string;
-      title: string;
-      county: string | null;
-      state: string | null;
-      primary_parcel_code: string | null;
-      source_group: string;
-    }>(
-      `
-        SELECT qa.code, qa.title, qa.county, qa.state, qa.primary_parcel_code, qa.source_group
-        FROM question_areas qa
-        WHERE ${buildQuestionAreaSearchClause("qa", "$1", searchField)}
-        ORDER BY qa.code
-        LIMIT 8
-      `,
-      [searchValue],
-    ),
-    query<{
-      id: number;
-      parcel_number: string | null;
-      owner_name: string | null;
-      county: string | null;
-      state: string | null;
-      question_area_code: string | null;
-    }>(
-      `
-        SELECT
-          p.id,
-          p.parcel_number,
-          p.owner_name,
-          p.county,
-          p.state,
-          qa.code AS question_area_code
-        FROM parcel_features p
-        ${parcelQuestionAreaJoin("p", "qa")}
-        WHERE ${buildParcelSearchClause("p", "qa", "$1", searchField)}
-        ORDER BY p.parcel_number NULLS LAST
-        LIMIT 8
-      `,
-      [searchValue],
-    ),
-  ]);
+  const questionAreas = await query<{
+    code: string;
+    title: string;
+    county: string | null;
+    state: string | null;
+    parcel_code: string | null;
+    property_name: string | null;
+  }>(
+    `
+      SELECT qa.code, qa.title, qa.county, qa.state, qa.parcel_code, qa.property_name
+      FROM question_areas qa
+      WHERE ${buildQuestionAreaSearchClause("qa", "$1", searchField)}
+      ORDER BY qa.code
+      LIMIT 10
+    `,
+    [searchValue],
+  );
 
   res.json({
-    results: [
-      ...questionAreas.rows.map((row) => ({
-        type: "question_area",
-        id: row.code,
-        label: row.title,
-        subtitle: [row.primary_parcel_code, row.county, row.state].filter(Boolean).join(" | "),
-        sourceGroup: row.source_group,
-      })),
-      ...parcels.rows.map((row) => ({
-        type: "parcel",
-        id: String(row.id),
-        label: row.parcel_number ?? "Unnamed parcel",
-        subtitle: [row.owner_name, row.county, row.state].filter(Boolean).join(" | "),
-        questionAreaCode: row.question_area_code,
-      })),
-    ].slice(0, 10),
+    results: questionAreas.rows.map((row) => ({
+      type: "question_area",
+      id: row.code,
+      label: row.title,
+      subtitle: [row.parcel_code, row.property_name, row.county, row.state]
+        .filter(Boolean)
+        .join(" | "),
+    })),
   });
 });
 
