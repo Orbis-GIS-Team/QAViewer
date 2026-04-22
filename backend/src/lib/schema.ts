@@ -141,6 +141,78 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
   `);
 
   await client.query(`
+    CREATE TABLE IF NOT EXISTS atlas_land_records (
+      lr_number TEXT PRIMARY KEY,
+      tract_key TEXT,
+      old_lr_number TEXT,
+      primary_document_number TEXT,
+      primary_page_no TEXT,
+      property_name TEXT,
+      fund_name TEXT,
+      region_name TEXT,
+      lr_type TEXT,
+      lr_status TEXT,
+      acq_date TEXT,
+      tax_parcel_number TEXT,
+      gis_acres DOUBLE PRECISION,
+      deed_acres DOUBLE PRECISION,
+      doc_description_heading TEXT,
+      lr_specs TEXT,
+      township TEXT,
+      range TEXT,
+      section TEXT,
+      fips TEXT,
+      remark TEXT,
+      source_file TEXT,
+      geom geometry(Geometry, 4326)
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS atlas_documents (
+      document_number TEXT PRIMARY KEY,
+      doc_name TEXT,
+      doc_type TEXT,
+      recording_instrument TEXT,
+      recording_date TEXT,
+      expiration_date TEXT,
+      deed_acres DOUBLE PRECISION,
+      keywords TEXT,
+      remark TEXT,
+      source_file TEXT
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS atlas_document_links (
+      id SERIAL PRIMARY KEY,
+      lr_number TEXT NOT NULL REFERENCES atlas_land_records(lr_number) ON DELETE CASCADE,
+      document_number TEXT NOT NULL REFERENCES atlas_documents(document_number) ON DELETE CASCADE,
+      page_no TEXT
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS atlas_featureless_docs (
+      document_number TEXT PRIMARY KEY REFERENCES atlas_documents(document_number) ON DELETE CASCADE
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS atlas_document_manifest (
+      id SERIAL PRIMARY KEY,
+      property_code TEXT,
+      property_name TEXT,
+      source_folder TEXT,
+      package_relative_path TEXT NOT NULL,
+      file_name TEXT,
+      extension TEXT,
+      size_bytes BIGINT,
+      document_number TEXT
+    )
+  `);
+
+  await client.query(`
     CREATE TABLE IF NOT EXISTS comments (
       id SERIAL PRIMARY KEY,
       question_area_id INTEGER NOT NULL REFERENCES question_areas(id) ON DELETE CASCADE,
@@ -167,9 +239,16 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
     CREATE INDEX IF NOT EXISTS question_areas_geom_idx ON question_areas USING GIST (geom);
     CREATE INDEX IF NOT EXISTS land_records_geom_idx ON land_records USING GIST (geom);
     CREATE INDEX IF NOT EXISTS management_areas_geom_idx ON management_areas USING GIST (geom);
+    CREATE INDEX IF NOT EXISTS atlas_land_records_geom_idx ON atlas_land_records USING GIST (geom);
 
     CREATE INDEX IF NOT EXISTS question_areas_status_idx ON question_areas (status);
     CREATE INDEX IF NOT EXISTS question_areas_severity_idx ON question_areas (severity);
+    CREATE INDEX IF NOT EXISTS atlas_land_records_property_name_idx ON atlas_land_records (property_name);
+    CREATE INDEX IF NOT EXISTS atlas_land_records_fund_name_idx ON atlas_land_records (fund_name);
+    CREATE INDEX IF NOT EXISTS atlas_document_links_lr_number_idx ON atlas_document_links (lr_number);
+    CREATE INDEX IF NOT EXISTS atlas_document_links_document_number_idx ON atlas_document_links (document_number);
+    CREATE INDEX IF NOT EXISTS atlas_document_manifest_document_number_idx ON atlas_document_manifest (document_number);
+    CREATE INDEX IF NOT EXISTS atlas_document_manifest_package_relative_path_idx ON atlas_document_manifest (package_relative_path);
 
     CREATE INDEX IF NOT EXISTS comments_question_area_id_idx ON comments (question_area_id);
     CREATE INDEX IF NOT EXISTS documents_question_area_id_idx ON documents (question_area_id);

@@ -5,6 +5,7 @@ import { config } from "./config.js";
 import { authenticateRequest } from "./lib/auth.js";
 import { pool } from "./lib/db.js";
 import adminRoutes from "./routes/admin.js";
+import atlasRoutes from "./routes/atlas.js";
 import authRoutes from "./routes/auth.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import layerRoutes from "./routes/layers.js";
@@ -33,6 +34,7 @@ export function createApp(): express.Application {
 
   app.use("/api/auth", authRoutes);
   app.use("/api/admin", authenticateRequest, adminRoutes);
+  app.use("/api/atlas", authenticateRequest, atlasRoutes);
   app.use("/api/dashboard", authenticateRequest, dashboardRoutes);
   app.use("/api/layers", authenticateRequest, layerRoutes);
   app.use("/api/question-areas", authenticateRequest, questionAreaRoutes);

@@ -21,6 +21,9 @@ import {
 
 import type { Session } from "../App";
 import { apiDownload, apiRequest } from "../lib/api";
+import { AtlasMapOverlays } from "./AtlasMapOverlays";
+import { AtlasPanel } from "./AtlasPanel";
+import { useAtlasQuery, type AtlasBufferFeet, type AtlasTarget } from "../lib/atlas";
 
 type SearchResult = {
   type: "question_area";
@@ -212,6 +215,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
+  const [atlasBufferFeet, setAtlasBufferFeet] = useState<AtlasBufferFeet>(500);
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [editDraft, setEditDraft] = useState<EditDraft>({
@@ -233,6 +237,11 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   });
 
   const deferredSearch = useDeferredValue(searchInput);
+  const atlasState = useAtlasQuery({
+    token: session.token,
+    questionAreaCode: selectedCode,
+    bufferFeet: atlasBufferFeet,
+  });
 
   function showFeedback(message: string, type: FeedbackState["type"] = "error") {
     setFeedback({ message, type });
@@ -544,13 +553,13 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
   async function handleDownloadDocument(fileRecord: QuestionAreaDetail["documents"][number]) {
     try {
-      const blob = await apiDownload(fileRecord.downloadUrl.replace("/api", ""), session.token);
+      const blob = await apiDownload(fileRecord.downloadUrl, session.token);
       const url = window.URL.createObjectURL(blob);
       const link = window.document.createElement("a");
       link.href = url;
       link.download = fileRecord.originalName;
       link.click();
-      window.URL.revokeObjectURL(url);
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
     } catch (error) {
       showFeedback(error instanceof Error ? error.message : "Download failed.");
     }
@@ -583,6 +592,16 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const openQuestionAreas = (summary?.statuses.review ?? 0) + (summary?.statuses.active ?? 0);
   const selectedLocation = [selectedDetail?.county, selectedDetail?.state].filter(Boolean).join(", ");
   const selectedContext = [selectedDetail?.parcelCode, selectedLocation].filter(Boolean).join(" | ");
+  const selectedAtlasTarget: AtlasTarget | null = selectedDetail
+    ? {
+        code: selectedDetail.code,
+        county: selectedDetail.county,
+        parcelCode: selectedDetail.parcelCode,
+        state: selectedDetail.state,
+        summary: selectedDetail.summary,
+        title: selectedDetail.title,
+      }
+    : null;
 
   return (
     <main className="workspace-shell">
@@ -858,6 +877,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
               ) : null}
             </Pane>
 
+            <AtlasMapOverlays atlasQuery={atlasState.result} />
+
             <Pane name="management-areas" style={{ zIndex: 390 }}>
               {layerVisibility.management_areas && layerData.management_areas ? (
                 <GeoJSON data={layerData.management_areas} style={managementAreaStyle} />
@@ -887,24 +908,17 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
           </button>
 
           <div className="panel-content">
-            <section className="panel-section reserved-panel">
-              <div className="section-heading">
-                <h2>Reserved Workspace</h2>
-                <span>Future tools</span>
-              </div>
-              <p className="panel-note">
-                This panel is intentionally open for the next round of functionality. The active review
-                workflow now lives in the left rail.
-              </p>
-              <div className="reserved-panel-card">
-                <strong>{selectedDetail ? selectedDetail.code : "No active record"}</strong>
-                <span>
-                  {selectedDetail
-                    ? "Keep this space available for supporting tools tied to the selected question area."
-                    : "Select a question area to review it from the left side while this panel remains available."}
-                </span>
-              </div>
-            </section>
+            <AtlasPanel
+              atlasError={atlasState.error}
+              atlasLoading={atlasState.loading}
+              atlasQuery={atlasState.result}
+              bufferFeet={atlasBufferFeet}
+              isDetailLoading={busy.detail}
+              onBufferChange={setAtlasBufferFeet}
+              selectedCode={selectedCode}
+              selectedDetail={selectedAtlasTarget}
+              token={session.token}
+            />
           </div>
         </aside>
       </section>

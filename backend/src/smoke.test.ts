@@ -20,6 +20,26 @@ type FeatureCollection = {
   }>;
 };
 
+type AtlasQueryResult = {
+  questionAreaCode: string;
+  bufferValue: number;
+  bufferUnit: "feet";
+  bufferGeometry: object;
+  matchedRecordCount: number;
+  linkedDocumentCount: number;
+  records: Array<{
+    documents: Array<{
+      documentNumber: string;
+      hasFile: boolean;
+      isPreviewable: boolean;
+    }>;
+  }>;
+  warnings: Array<{
+    code: string;
+    message: string;
+  }>;
+};
+
 async function request<T>(
   path: string,
   options: {
@@ -28,6 +48,7 @@ async function request<T>(
     body?: unknown;
     formData?: FormData;
     expectedStatus?: number;
+    responseType?: "json" | "none";
   } = {},
 ): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -43,6 +64,10 @@ async function request<T>(
   assert.equal(response.status, expectedStatus, `${path} returned ${response.status}`);
 
   if (response.status === 204) {
+    return undefined as T;
+  }
+
+  if ((options.responseType ?? "json") === "none") {
     return undefined as T;
   }
 
@@ -91,7 +116,7 @@ test("auth, admin, question-area, and layer smoke flow", async () => {
   });
 
   const questionAreas = await request<FeatureCollection>(
-    "/question-areas?bbox=-180,-90,180,90&limit=1",
+    "/question-areas?bbox=-180,-90,180,90&limit=10",
     { token: admin.token },
   );
   const questionAreaCode = String(questionAreas.features[0]?.properties.code ?? "");
@@ -121,6 +146,54 @@ test("auth, admin, question-area, and layer smoke flow", async () => {
     formData: uploadBody,
     expectedStatus: 201,
   });
+
+  let atlasResult: AtlasQueryResult | null = null;
+  for (const feature of questionAreas.features) {
+    const atlasCode = String(feature.properties.code ?? "");
+    if (!atlasCode) {
+      continue;
+    }
+
+    const result = await request<AtlasQueryResult>(`/question-areas/${atlasCode}/atlas?buffer=500&unit=feet`, {
+      token: admin.token,
+    });
+
+    atlasResult = result;
+    if (result.linkedDocumentCount > 0 || result.matchedRecordCount > 0) {
+      break;
+    }
+  }
+
+  assert.ok(atlasResult);
+  assert.equal(atlasResult?.bufferValue, 500);
+  assert.equal(atlasResult?.bufferUnit, "feet");
+  assert.ok(Array.isArray(atlasResult?.warnings));
+
+  const atlasDocument = (atlasResult?.records ?? [])
+    .flatMap((record) => record.documents)
+    .find((document) => document.hasFile);
+
+  if (atlasDocument) {
+    await request(
+      `/atlas/documents/${encodeURIComponent(atlasDocument.documentNumber)}/download`,
+      {
+        method: "GET",
+        token: admin.token,
+        expectedStatus: 200,
+        responseType: "none",
+      },
+    );
+
+    await request(
+      `/atlas/documents/${encodeURIComponent(atlasDocument.documentNumber)}/content`,
+      {
+        method: "GET",
+        token: admin.token,
+        expectedStatus: atlasDocument.isPreviewable ? 200 : 415,
+        responseType: atlasDocument.isPreviewable ? "none" : "json",
+      },
+    );
+  }
 
   const landRecords = await request<FeatureCollection>(
     "/layers/land_records?bbox=-180,-90,180,90",

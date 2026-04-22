@@ -45,8 +45,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   return response.json() as Promise<T>;
 }
 
-export async function apiDownload(path: string, token: string): Promise<Blob> {
-  const response = await fetch(`${API_BASE}${path}`, {
+export async function apiDownload(pathOrUrl: string, token: string): Promise<Blob> {
+  const response = await fetch(new URL(pathOrUrl, API_BASE).toString(), {
     headers: {
       Authorization: `Bearer ${token}`,
     },

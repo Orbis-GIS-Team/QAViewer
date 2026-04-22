@@ -6,6 +6,7 @@ import type { Feature, GeoJsonProperties, Geometry } from "geojson";
 import type { PoolClient } from "pg";
 
 import { config } from "../config.js";
+import { ensureAtlasSeedData } from "./atlas.js";
 import { hashPassword } from "./auth.js";
 import { loadFeatureCollection, parseBoolean } from "./utils.js";
 
@@ -100,7 +101,12 @@ export async function ensureSeedData(client: PoolClient): Promise<void> {
   await fs.mkdir(config.uploadsDir, { recursive: true });
 
   await seedUsers(client);
+  await ensureStandardSeedData(client);
+  await ensureAtlasSeedData(client);
+  await seedComments(client);
+}
 
+async function ensureStandardSeedData(client: PoolClient): Promise<void> {
   const manifestHash = await currentManifestHash();
   const counts = await tableCounts(client);
   const allPopulated = SEED_TABLES.every((t) => (counts[t] ?? 0) > 0);
@@ -142,7 +148,6 @@ export async function ensureSeedData(client: PoolClient): Promise<void> {
     }
   }
 
-  await seedComments(client);
   await storeManifestHash(client, manifestHash);
 }
 
