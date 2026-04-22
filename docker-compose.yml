@@ -24,6 +24,7 @@ services:
       DEMO_MODE: ${DEMO_MODE:-true}
       API_HOST: ${API_HOST:-0.0.0.0}
       API_PORT: 3001
+      ATLAS_PACKAGE_DIR: /workspace/NNC_Data/NNC_Package
       FRONTEND_ORIGIN: http://localhost:5173
     working_dir: /workspace/backend
     command: npm run dev
@@ -32,6 +33,7 @@ services:
     volumes:
       - ./backend:/workspace/backend
       - ./data/standardized:/workspace/data/standardized:ro
+      - ./NNC_Data:/workspace/NNC_Data:ro
       - ./backend/uploads:/workspace/backend/uploads
       - backend_node_modules:/workspace/backend/node_modules
 

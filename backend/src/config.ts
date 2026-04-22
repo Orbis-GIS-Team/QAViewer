@@ -24,7 +24,7 @@ export const config = {
   frontendOrigin: process.env.FRONTEND_ORIGIN ?? "http://localhost:5173",
   backendDir,
   repoRoot,
-  atlasPackageDir: path.join(repoRoot, "NNC_Data", "NNC_Package"),
+  atlasPackageDir: process.env.ATLAS_PACKAGE_DIR ?? path.join(repoRoot, "NNC_Data", "NNC_Package"),
   seedDir: path.join(repoRoot, "data", "standardized"),
   uploadsDir: path.join(backendDir, "uploads"),
 };

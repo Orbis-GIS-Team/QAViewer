@@ -622,7 +622,7 @@ async function bulkInsertAtlasLandRecords(
       return `(${rowValues
         .slice(0, -1)
         .map((_value, index) => `$${rowStart + index + 1}`)
-        .join(", ")}, CASE WHEN ${geomPlaceholder} IS NULL THEN NULL ELSE ST_Multi(ST_Force2D(ST_SetSRID(ST_GeomFromText(${geomPlaceholder}), 4326))) END)`;
+        .join(", ")}, CASE WHEN ${geomPlaceholder}::text IS NULL THEN NULL ELSE ST_Multi(ST_Force2D(ST_SetSRID(ST_GeomFromText(${geomPlaceholder}::text), 4326))) END)`;
     });
 
     if (batch.length === 0) {
