@@ -2,9 +2,28 @@ import path from "node:path";
 
 import { Router } from "express";
 
-import { loadAtlasDocumentAsset } from "../lib/atlas.js";
+import {
+  loadAtlasDocumentAsset,
+  loadAtlasFeaturelessDocuments,
+  loadAtlasImportReport,
+} from "../lib/atlas.js";
 
 const router = Router();
+
+router.get("/featureless-docs", async (_req, res) => {
+  const documents = await loadAtlasFeaturelessDocuments();
+  res.json({
+    count: documents.length,
+    documents,
+  });
+});
+
+router.get("/import-report", async (req, res) => {
+  const rawLimit = Number(req.query.limit ?? 200);
+  const limit = Number.isFinite(rawLimit) ? rawLimit : 200;
+  const report = await loadAtlasImportReport(limit);
+  res.json(report);
+});
 
 router.get("/documents/:documentNumber/content", async (req, res) => {
   const asset = await loadAtlasDocumentAsset(req.params.documentNumber);

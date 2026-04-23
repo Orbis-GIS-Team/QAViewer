@@ -9,9 +9,11 @@ import {
   atlasDocumentMeta,
   atlasDocumentSubtitle,
   atlasDocumentTitle,
+  atlasPageLabel,
   atlasPreviewKind,
   atlasRecordSummary,
   atlasRecordSubtitle,
+  atlasTargetPdfPage,
   isAtlasPreviewableDocument,
   type AtlasBufferFeet,
   type AtlasDocument,
@@ -35,6 +37,14 @@ type PreviewState = {
   document: AtlasDocument;
   url: string;
   kind: "image" | "pdf" | "other";
+  pageReference: string | null;
+  targetPage: number | null;
+};
+
+type AtlasDocumentRequest = {
+  document: AtlasDocument;
+  pageReference: string | null;
+  relationship: "parent" | "child" | "featureless";
 };
 
 export function AtlasPanel({
@@ -48,7 +58,7 @@ export function AtlasPanel({
   bufferFeet,
   onBufferChange,
 }: AtlasPanelProps) {
-  const [previewDocument, setPreviewDocument] = useState<AtlasDocument | null>(null);
+  const [previewDocument, setPreviewDocument] = useState<AtlasDocumentRequest | null>(null);
   const [previewState, setPreviewState] = useState<PreviewState | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -69,7 +79,7 @@ export function AtlasPanel({
       return;
     }
 
-    const sourceUrl = previewDocument.contentUrl ?? previewDocument.downloadUrl;
+    const sourceUrl = previewDocument.document.contentUrl ?? previewDocument.document.downloadUrl;
     if (!sourceUrl) {
       setPreviewState(null);
       setPreviewLoading(false);
@@ -90,10 +100,14 @@ export function AtlasPanel({
         }
 
         objectUrl = window.URL.createObjectURL(blob);
+        const kind = atlasPreviewKind(previewDocument.document, blob.type);
+        const targetPage = kind === "pdf" ? resolveAtlasPageTarget(previewDocument) : null;
         setPreviewState({
-          document: previewDocument,
-          kind: atlasPreviewKind(previewDocument, blob.type),
-          url: objectUrl,
+          document: previewDocument.document,
+          kind,
+          pageReference: previewDocument.pageReference,
+          targetPage,
+          url: buildAtlasViewerUrl(objectUrl, kind, targetPage),
         });
       })
       .catch((error) => {
@@ -118,33 +132,52 @@ export function AtlasPanel({
   const matchedRecordCount = atlasQuery?.matchedRecordCount ?? atlasQuery?.records.length ?? 0;
   const linkedDocumentCount =
     atlasQuery?.linkedDocumentCount ??
-    atlasQuery?.records.reduce((total, record) => total + record.documents.length, 0) ??
+    atlasQuery?.records.reduce(
+      (total, record) => total + (record.parentDocument ? 1 : 0) + record.childDocuments.length,
+      0,
+    ) ??
     0;
+  const featurelessDocumentCount =
+    atlasQuery?.featurelessDocumentCount ?? atlasQuery?.featurelessDocuments.length ?? 0;
   const warningCount = atlasQuery?.warnings.length ?? 0;
   const hasSelection = Boolean(selectedCode);
   const records = atlasQuery?.records ?? [];
+  const featurelessDocuments = atlasQuery?.featurelessDocuments ?? [];
 
   const previewLabel = useMemo(() => {
     if (!previewState) {
       return null;
     }
 
-    return `${atlasDocumentTitle(previewState.document)} | ${previewState.kind.toUpperCase()}`;
+    const pageLabel = atlasPageLabel(previewState.pageReference);
+    return [atlasDocumentTitle(previewState.document), previewState.kind.toUpperCase(), pageLabel]
+      .filter(Boolean)
+      .join(" | ");
   }, [previewState]);
 
-  async function handleOpenDocument(document: AtlasDocument) {
+  async function handleOpenDocument(request: AtlasDocumentRequest) {
     try {
       setPanelError(null);
+      const { document, pageReference } = request;
       const sourceUrl = isAtlasPreviewableDocument(document)
         ? (document.contentUrl ?? document.downloadUrl)
         : (document.downloadUrl ?? document.contentUrl);
+      if (!document.hasFile) {
+        throw new Error("Document file is missing from Atlas package storage.");
+      }
       if (!sourceUrl) {
         throw new Error("Document cannot be opened.");
       }
 
       const blob = await apiDownload(sourceUrl, token);
       const objectUrl = window.URL.createObjectURL(blob);
-      const openedWindow = window.open(objectUrl, "_blank", "noopener,noreferrer");
+      const kind = atlasPreviewKind(document, blob.type);
+      const targetPage = kind === "pdf" ? resolveAtlasPageTarget(request) : null;
+      const openedWindow = window.open(
+        buildAtlasViewerUrl(objectUrl, kind, targetPage),
+        "_blank",
+        "noopener,noreferrer",
+      );
       window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 60_000);
 
       if (!openedWindow) {
@@ -159,6 +192,9 @@ export function AtlasPanel({
     try {
       setPanelError(null);
       const sourceUrl = document.downloadUrl ?? document.contentUrl;
+      if (!document.hasFile) {
+        throw new Error("Document file is missing from Atlas package storage.");
+      }
       if (!sourceUrl) {
         throw new Error("Document cannot be downloaded.");
       }
@@ -268,6 +304,10 @@ export function AtlasPanel({
             <span>Buffer</span>
             <strong>{atlasBufferLabel(bufferFeet)}</strong>
           </div>
+          <div className="atlas-summary-card">
+            <span>Featureless docs</span>
+            <strong>{featurelessDocumentCount.toLocaleString()}</strong>
+          </div>
         </div>
       </section>
 
@@ -304,7 +344,15 @@ export function AtlasPanel({
             <div className="atlas-preview-toolbar">
               <div className="atlas-preview-title">
                 <strong>{atlasDocumentTitle(previewState.document)}</strong>
-                <small>{atlasDocumentSubtitle(previewState.document) || atlasDocumentMeta(previewState.document)}</small>
+                <small>
+                  {[
+                    atlasDocumentSubtitle(previewState.document),
+                    atlasPageLabel(previewState.pageReference),
+                    atlasDocumentMeta(previewState.document),
+                  ]
+                    .filter(Boolean)
+                    .join(" | ") || "Atlas document preview"}
+                </small>
               </div>
               <button
                 className="ghost-button"
@@ -340,7 +388,14 @@ export function AtlasPanel({
       ) : null}
 
       {records.map((record) => {
-        const documents = record.documents ?? [];
+        const childDocuments = record.childDocuments ?? [];
+        const parentRequest = record.parentDocument
+          ? {
+              document: record.parentDocument,
+              pageReference: record.parentPageNo,
+              relationship: "parent" as const,
+            }
+          : null;
 
         return (
           <section className="panel-section atlas-record-card" key={record.lrNumber ?? atlasRecordSummary(record)}>
@@ -386,48 +441,91 @@ export function AtlasPanel({
             ) : null}
 
             <div className="section-heading atlas-doc-heading">
-              <h3>Linked documents</h3>
-              <span>{documents.length}</span>
+              <h3>Document tree</h3>
+              <span>{(record.parentDocument ? 1 : 0) + childDocuments.length}</span>
             </div>
-            <div className="atlas-document-list">
-              {documents.length > 0 ? (
-                documents.map((document, index) => (
-                  <article className="atlas-document-card" key={atlasDocumentKey(document, index)}>
-                    <div className="atlas-document-copy">
-                      <strong>{atlasDocumentTitle(document)}</strong>
-                      <span>{atlasDocumentSubtitle(document) || "Linked Atlas document"}</span>
-                      <small>{atlasDocumentMeta(document)}</small>
-                    </div>
-                    <div className="atlas-document-actions">
-                      {isAtlasPreviewableDocument(document) ? (
-                        <button
-                          className="ghost-button"
-                          onClick={() => {
-                            setPanelError(null);
-                            setPreviewDocument(document);
-                            setPreviewError(null);
-                          }}
-                          type="button"
-                        >
-                          Preview
-                        </button>
-                      ) : null}
-                      <button className="ghost-button" onClick={() => void handleOpenDocument(document)} type="button">
-                        Open
-                      </button>
-                      <button className="primary-button" onClick={() => void handleDownloadDocument(document)} type="button">
-                        Download
-                      </button>
-                    </div>
-                  </article>
-                ))
+            <div className="atlas-document-tree">
+              {parentRequest ? (
+                <AtlasDocumentNode
+                  actionTone="primary-button"
+                  onDownload={handleDownloadDocument}
+                  onOpen={handleOpenDocument}
+                  onPreview={(request) => {
+                    setPanelError(null);
+                    setPreviewDocument(request);
+                    setPreviewError(null);
+                  }}
+                  request={parentRequest}
+                  title="Parent document"
+                />
               ) : (
-                <p className="panel-note">No documents are linked to this Atlas record.</p>
+                <p className="panel-note atlas-tree-note">No parent document is available for this Atlas land record.</p>
+              )}
+
+              {childDocuments.length > 0 ? (
+                <div className="atlas-child-branch" role="list" aria-label="Child Atlas documents">
+                  {childDocuments.map((document, index) => (
+                    <AtlasDocumentNode
+                      key={atlasDocumentKey(document, index)}
+                      onDownload={handleDownloadDocument}
+                      onOpen={handleOpenDocument}
+                      onPreview={(request) => {
+                        setPanelError(null);
+                        setPreviewDocument(request);
+                        setPreviewError(null);
+                      }}
+                      request={{
+                        document,
+                        pageReference: document.pageNo,
+                        relationship: "child",
+                      }}
+                      title="Child document"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="panel-note atlas-tree-note">No child documents are linked to this Atlas land record.</p>
               )}
             </div>
           </section>
         );
       })}
+
+      {!atlasLoading ? (
+        <section className="panel-section atlas-record-card">
+          <div className="section-heading atlas-record-heading">
+            <h2>Featureless documents</h2>
+            <span>Outside matched-record trees</span>
+          </div>
+          <p className="atlas-record-subtitle">
+            Documents available from the Atlas package that are not attached to a matched land record.
+          </p>
+          <div className="atlas-document-list">
+            {featurelessDocuments.length > 0 ? (
+              featurelessDocuments.map((document, index) => (
+                <AtlasDocumentNode
+                  key={atlasDocumentKey(document, index)}
+                  onDownload={handleDownloadDocument}
+                  onOpen={handleOpenDocument}
+                  onPreview={(request) => {
+                    setPanelError(null);
+                    setPreviewDocument(request);
+                    setPreviewError(null);
+                  }}
+                  request={{
+                    document,
+                    pageReference: document.pageNo,
+                    relationship: "featureless",
+                  }}
+                  title="Featureless document"
+                />
+              ))
+            ) : (
+              <p className="panel-note">No featureless Atlas documents were returned for this selection.</p>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       {warningCount > 0 ? (
         <section className="panel-section">
@@ -452,6 +550,67 @@ export function AtlasPanel({
         </section>
       ) : null}
     </>
+  );
+}
+
+function AtlasDocumentNode({
+  actionTone,
+  onDownload,
+  onOpen,
+  onPreview,
+  request,
+  title,
+}: {
+  actionTone?: "ghost-button" | "primary-button";
+  onDownload: (document: AtlasDocument) => Promise<void>;
+  onOpen: (request: AtlasDocumentRequest) => Promise<void>;
+  onPreview: (request: AtlasDocumentRequest) => void;
+  request: AtlasDocumentRequest;
+  title: string;
+}) {
+  const pageLabel = atlasPageLabel(request.pageReference);
+  const hasFile = request.document.hasFile;
+
+  return (
+    <article
+      className={`atlas-document-card atlas-document-card-${request.relationship}`}
+      role={request.relationship === "child" ? "listitem" : undefined}
+    >
+      <div className="atlas-document-rail" aria-hidden="true">
+        <span className="atlas-document-line" />
+        <span className="atlas-document-dot" />
+      </div>
+      <div className="atlas-document-body">
+        <div className="atlas-document-copy">
+          <div className="atlas-document-badges">
+            <span className="badge neutral">{title}</span>
+            {pageLabel ? <span className="badge neutral">{pageLabel}</span> : null}
+            {!hasFile ? <span className="badge warning">Missing file</span> : null}
+          </div>
+          <strong>{atlasDocumentTitle(request.document)}</strong>
+          <span>{atlasDocumentSubtitle(request.document) || "Atlas document"}</span>
+          <small>{atlasDocumentMeta(request.document) || "No additional document metadata available."}</small>
+        </div>
+        <div className="atlas-document-actions">
+          {hasFile && isAtlasPreviewableDocument(request.document) ? (
+            <button className="ghost-button" onClick={() => onPreview(request)} type="button">
+              Preview
+            </button>
+          ) : null}
+          <button className="ghost-button" disabled={!hasFile} onClick={() => void onOpen(request)} type="button">
+            Open
+          </button>
+          <button
+            className={actionTone ?? "ghost-button"}
+            disabled={!hasFile}
+            onClick={() => void onDownload(request.document)}
+            type="button"
+          >
+            Download
+          </button>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -480,4 +639,16 @@ function formatAtlasMetric(value: number | null | undefined) {
   return Number(value).toLocaleString(undefined, {
     maximumFractionDigits: 2,
   });
+}
+
+function buildAtlasViewerUrl(url: string, kind: "image" | "pdf" | "other", targetPage: number | null) {
+  if (kind !== "pdf" || !targetPage) {
+    return url;
+  }
+
+  return `${url}#page=${targetPage}`;
+}
+
+function resolveAtlasPageTarget(request: AtlasDocumentRequest) {
+  return request.document.pageTarget ?? atlasTargetPdfPage(request.pageReference);
 }

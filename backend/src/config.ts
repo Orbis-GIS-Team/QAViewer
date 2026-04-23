@@ -24,7 +24,10 @@ export const config = {
   frontendOrigin: process.env.FRONTEND_ORIGIN ?? "http://localhost:5173",
   backendDir,
   repoRoot,
-  atlasPackageDir: process.env.ATLAS_PACKAGE_DIR ?? path.join(repoRoot, "NNC_Data", "NNC_Package"),
+  atlasWorkbookPath:
+    process.env.ATLAS_WORKBOOK_PATH ?? path.join(repoRoot, "Combined_LR_Upload_First3Tabs.xlsx"),
+  atlasDocumentRoot:
+    process.env.ATLAS_DOCUMENT_ROOT ?? path.join(repoRoot, "LR_Documents"),
   seedDir: path.join(repoRoot, "data", "standardized"),
   uploadsDir: path.join(backendDir, "uploads"),
 };

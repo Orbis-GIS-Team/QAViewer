@@ -164,6 +164,9 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       fips TEXT,
       remark TEXT,
       source_file TEXT,
+      source_workbook_path TEXT,
+      source_sheet TEXT,
+      source_row_number INTEGER,
       geom geometry(Geometry, 4326)
     )
   `);
@@ -179,7 +182,10 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       deed_acres DOUBLE PRECISION,
       keywords TEXT,
       remark TEXT,
-      source_file TEXT
+      source_file TEXT,
+      source_workbook_path TEXT,
+      source_sheet TEXT,
+      source_row_number INTEGER
     )
   `);
 
@@ -188,13 +194,19 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       id SERIAL PRIMARY KEY,
       lr_number TEXT NOT NULL REFERENCES atlas_land_records(lr_number) ON DELETE CASCADE,
       document_number TEXT NOT NULL REFERENCES atlas_documents(document_number) ON DELETE CASCADE,
-      page_no TEXT
+      page_no TEXT,
+      source_workbook_path TEXT,
+      source_sheet TEXT,
+      source_row_number INTEGER
     )
   `);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS atlas_featureless_docs (
-      document_number TEXT PRIMARY KEY REFERENCES atlas_documents(document_number) ON DELETE CASCADE
+      document_number TEXT PRIMARY KEY REFERENCES atlas_documents(document_number) ON DELETE CASCADE,
+      source_workbook_path TEXT,
+      source_sheet TEXT,
+      source_row_number INTEGER
     )
   `);
 
@@ -208,8 +220,62 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       file_name TEXT,
       extension TEXT,
       size_bytes BIGINT,
-      document_number TEXT
+      document_number TEXT,
+      source_workbook_path TEXT,
+      source_docs_root_path TEXT,
+      source_file_path TEXT
     )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS atlas_import_rejects (
+      id SERIAL PRIMARY KEY,
+      entity_type TEXT NOT NULL,
+      source_workbook_path TEXT,
+      source_docs_root_path TEXT,
+      source_sheet TEXT,
+      source_row_number INTEGER,
+      reject_reason TEXT NOT NULL,
+      raw_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await client.query(`
+    ALTER TABLE atlas_land_records
+    ADD COLUMN IF NOT EXISTS primary_page_no TEXT,
+    ADD COLUMN IF NOT EXISTS source_workbook_path TEXT,
+    ADD COLUMN IF NOT EXISTS source_sheet TEXT,
+    ADD COLUMN IF NOT EXISTS source_row_number INTEGER
+  `);
+
+  await client.query(`
+    ALTER TABLE atlas_documents
+    ADD COLUMN IF NOT EXISTS source_workbook_path TEXT,
+    ADD COLUMN IF NOT EXISTS source_sheet TEXT,
+    ADD COLUMN IF NOT EXISTS source_row_number INTEGER
+  `);
+
+  await client.query(`
+    ALTER TABLE atlas_document_links
+    ADD COLUMN IF NOT EXISTS page_no TEXT,
+    ADD COLUMN IF NOT EXISTS source_workbook_path TEXT,
+    ADD COLUMN IF NOT EXISTS source_sheet TEXT,
+    ADD COLUMN IF NOT EXISTS source_row_number INTEGER
+  `);
+
+  await client.query(`
+    ALTER TABLE atlas_featureless_docs
+    ADD COLUMN IF NOT EXISTS source_workbook_path TEXT,
+    ADD COLUMN IF NOT EXISTS source_sheet TEXT,
+    ADD COLUMN IF NOT EXISTS source_row_number INTEGER
+  `);
+
+  await client.query(`
+    ALTER TABLE atlas_document_manifest
+    ADD COLUMN IF NOT EXISTS source_workbook_path TEXT,
+    ADD COLUMN IF NOT EXISTS source_docs_root_path TEXT,
+    ADD COLUMN IF NOT EXISTS source_file_path TEXT
   `);
 
   await client.query(`
@@ -249,6 +315,8 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
     CREATE INDEX IF NOT EXISTS atlas_document_links_document_number_idx ON atlas_document_links (document_number);
     CREATE INDEX IF NOT EXISTS atlas_document_manifest_document_number_idx ON atlas_document_manifest (document_number);
     CREATE INDEX IF NOT EXISTS atlas_document_manifest_package_relative_path_idx ON atlas_document_manifest (package_relative_path);
+    CREATE INDEX IF NOT EXISTS atlas_import_rejects_entity_type_idx ON atlas_import_rejects (entity_type);
+    CREATE INDEX IF NOT EXISTS atlas_import_rejects_source_workbook_path_idx ON atlas_import_rejects (source_workbook_path);
 
     CREATE INDEX IF NOT EXISTS comments_question_area_id_idx ON comments (question_area_id);
     CREATE INDEX IF NOT EXISTS documents_question_area_id_idx ON documents (question_area_id);

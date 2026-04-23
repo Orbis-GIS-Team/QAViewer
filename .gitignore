@@ -15,7 +15,7 @@ backend/uploads/*
 # Exclude oversized geodatabase file and local build artifacts
 BTG_PTV_Implementation.gdb/a00000012.gdbtable
 NNC_Data/
-DataStandardiztion/node_modules/
-DataStandardiztion/outputs/
-DataStandardiztion/*.xlsx
+DataStandardiztion/
+LR_Documents/
+.codex-skill-build/
 .vite/

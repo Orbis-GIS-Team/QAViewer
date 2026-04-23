@@ -28,11 +28,25 @@ type AtlasQueryResult = {
   matchedRecordCount: number;
   linkedDocumentCount: number;
   records: Array<{
-    documents: Array<{
+    parentDocument: {
+      documentNumber: string;
+      hasFile: boolean;
+      isPreviewable: boolean;
+    } | null;
+    childDocuments: Array<{
       documentNumber: string;
       hasFile: boolean;
       isPreviewable: boolean;
     }>;
+  }>;
+  featurelessDocuments: Array<{
+    documentNumber: string;
+    hasFile: boolean;
+    isPreviewable: boolean;
+  }>;
+  importRejectSummary: Array<{
+    code: string;
+    count: number;
   }>;
   warnings: Array<{
     code: string;
@@ -168,9 +182,14 @@ test("auth, admin, question-area, and layer smoke flow", async () => {
   assert.equal(atlasResult?.bufferValue, 500);
   assert.equal(atlasResult?.bufferUnit, "feet");
   assert.ok(Array.isArray(atlasResult?.warnings));
+  assert.ok(Array.isArray(atlasResult?.featurelessDocuments));
+  assert.ok(Array.isArray(atlasResult?.importRejectSummary));
 
   const atlasDocument = (atlasResult?.records ?? [])
-    .flatMap((record) => record.documents)
+    .flatMap((record) => [
+      ...(record.parentDocument ? [record.parentDocument] : []),
+      ...record.childDocuments,
+    ])
     .find((document) => document.hasFile);
 
   if (atlasDocument) {

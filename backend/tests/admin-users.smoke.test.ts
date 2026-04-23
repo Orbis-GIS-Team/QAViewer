@@ -1,9 +1,9 @@
 /**
  * admin-users.smoke.test.ts
  *
- * Protects the F3 fix:
- *  - admin list users response includes commentCount, documentCount, parcelCommentCount
- *  - DELETE a user with parcel_comments returns 409
+ * Protects admin user-management behavior for the active question-area runtime:
+ *  - admin list users response includes commentCount and documentCount
+ *  - DELETE a user with QA comments or uploaded documents returns 409
  *
  * All DB calls stubbed via vi.spyOn(pool, "query"). No real DB needed.
  */
@@ -43,7 +43,7 @@ function stubQuery(...results: any[]) {
   return spy;
 }
 
-// Each authenticated request first loads the current user, then the route handler`r`n// makes its own queries.
+// Each authenticated request first loads the current user, then the route handler makes its own queries.
 const AUTH_ADMIN = {
   rows: [{ id: 1, email: "admin@test.com", name: "Admin", role: "admin" }],
 };
@@ -72,7 +72,7 @@ describe("GET /api/admin/users", () => {
     expect(res.status).toBe(403);
   });
 
-  it("returns 200 with all three activity count fields", async () => {
+  it("returns 200 with activity count fields", async () => {
     stubQuery(AUTH_ADMIN, {
       rows: [
         {
@@ -83,7 +83,6 @@ describe("GET /api/admin/users", () => {
           created_at: "2025-01-01T00:00:00Z",
           comment_count: 5,
           document_count: 3,
-          parcel_comment_count: 2,
         },
       ],
     });
@@ -97,14 +96,14 @@ describe("GET /api/admin/users", () => {
     const user = res.body.users[0];
     expect(user).toHaveProperty("commentCount", 5);
     expect(user).toHaveProperty("documentCount", 3);
-    expect(user).toHaveProperty("parcelCommentCount", 2);
+    expect(user).not.toHaveProperty("parcelCommentCount");
   });
 });
 
-describe("DELETE /api/admin/users/:id (F3 regression guard)", () => {
+describe("DELETE /api/admin/users/:id", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("returns 409 when the user has parcel_comments", async () => {
+  it("returns 409 when the user has uploaded documents", async () => {
     stubQuery(AUTH_ADMIN, {
       rows: [
         {
@@ -114,8 +113,7 @@ describe("DELETE /api/admin/users/:id (F3 regression guard)", () => {
           role: "client",
           created_at: "2025-01-01T00:00:00Z",
           comment_count: 0,
-          document_count: 0,
-          parcel_comment_count: 1, // key: must trigger 409
+          document_count: 1,
         },
       ],
     });
@@ -128,7 +126,7 @@ describe("DELETE /api/admin/users/:id (F3 regression guard)", () => {
     expect(res.body).toHaveProperty("message");
   });
 
-  it("returns 409 when the user has qa comments", async () => {
+  it("returns 409 when the user has QA comments", async () => {
     stubQuery(AUTH_ADMIN, {
       rows: [
         {
@@ -137,9 +135,8 @@ describe("DELETE /api/admin/users/:id (F3 regression guard)", () => {
           email: "other@test.com",
           role: "client",
           created_at: "2025-01-01T00:00:00Z",
-          comment_count: 3, // qa comments
+          comment_count: 3,
           document_count: 0,
-          parcel_comment_count: 0,
         },
       ],
     });

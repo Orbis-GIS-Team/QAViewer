@@ -21,7 +21,8 @@ export type AtlasDocument = {
   documentNumber: string | null;
   docName: string | null;
   docType: string | null;
-  pageNo: number | null;
+  pageNo: string | null;
+  pageTarget: number | null;
   packageRelativePath: string | null;
   fileName: string | null;
   extension: string | null;
@@ -30,6 +31,10 @@ export type AtlasDocument = {
   isPreviewable: boolean;
   contentUrl: string | null;
   downloadUrl: string | null;
+};
+
+export type AtlasLinkedDocument = AtlasDocument & {
+  pageNo: string | null;
 };
 
 export type AtlasRecord = {
@@ -51,7 +56,9 @@ export type AtlasRecord = {
   remark: string | null;
   primaryDocumentNumber: string | null;
   geometry: Geometry | null;
-  documents: AtlasDocument[];
+  parentDocument: AtlasDocument | null;
+  parentPageNo: string | null;
+  childDocuments: AtlasLinkedDocument[];
 };
 
 export type AtlasWarning = {
@@ -69,7 +76,9 @@ export type AtlasQueryResult = {
   bufferGeometry: Geometry | null;
   matchedRecordCount: number;
   linkedDocumentCount: number;
+  featurelessDocumentCount: number;
   records: AtlasRecord[];
+  featurelessDocuments: AtlasDocument[];
   warnings: AtlasWarning[];
 };
 
@@ -147,9 +156,7 @@ export function atlasDocumentTitle(document: AtlasDocument) {
 }
 
 export function atlasDocumentSubtitle(document: AtlasDocument) {
-  const pieces = [document.docType, document.documentNumber, document.pageNo ? `p.${document.pageNo}` : null].filter(
-    Boolean,
-  );
+  const pieces = [document.docType, document.documentNumber].filter(Boolean);
 
   return pieces.join(" | ");
 }
@@ -173,6 +180,37 @@ export function atlasRecordSummary(record: AtlasRecord) {
 
 export function atlasRecordSubtitle(record: AtlasRecord) {
   return [record.lrType, record.lrStatus].filter(Boolean).join(" | ");
+}
+
+export function atlasPageLabel(pageReference: string | number | null | undefined) {
+  if (pageReference === null || pageReference === undefined) {
+    return null;
+  }
+
+  const value = typeof pageReference === "number" ? String(pageReference) : pageReference.trim();
+  if (!value) {
+    return null;
+  }
+
+  return `Page ${value}`;
+}
+
+export function atlasTargetPdfPage(pageReference: string | number | null | undefined) {
+  if (pageReference === null || pageReference === undefined) {
+    return null;
+  }
+
+  const value = typeof pageReference === "number" ? String(pageReference) : pageReference.trim();
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (Number.isInteger(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  return null;
 }
 
 export function atlasPreviewKind(document: AtlasDocument, mimeType: string | null) {
@@ -204,10 +242,8 @@ function normalizeAtlasQueryResult(payload: unknown): AtlasQueryResult {
   const source = isPlainObject(root.data) ? root.data : root;
 
   const records = toAtlasRecordArray(source.records);
-  const linkedDocumentCount = toNumber(source.linkedDocumentCount) ?? records.reduce(
-    (total, record) => total + record.documents.length,
-    0,
-  );
+  const featurelessDocuments = toAtlasDocumentArray(source.featurelessDocuments ?? source.featurelessDocs);
+  const linkedDocumentCount = toNumber(source.linkedDocumentCount) ?? countLinkedDocuments(records);
 
   return {
     questionAreaCode: toStringValue(source.questionAreaCode),
@@ -216,7 +252,9 @@ function normalizeAtlasQueryResult(payload: unknown): AtlasQueryResult {
     bufferGeometry: toGeometry(source.bufferGeometry),
     matchedRecordCount: toNumber(source.matchedRecordCount) ?? records.length,
     linkedDocumentCount,
+    featurelessDocumentCount: toNumber(source.featurelessDocumentCount) ?? featurelessDocuments.length,
     records,
+    featurelessDocuments,
     warnings: toAtlasWarningArray(source.warnings),
   };
 }
@@ -231,12 +269,14 @@ function toAtlasRecordArray(value: unknown): AtlasRecord[] {
 
 function normalizeAtlasRecord(value: unknown): AtlasRecord {
   const source = isPlainObject(value) ? value : {};
-  const documentsSource =
+  const legacyDocuments =
     "documents" in source && Array.isArray(source.documents)
       ? source.documents
       : "linkedDocuments" in source && Array.isArray(source.linkedDocuments)
         ? source.linkedDocuments
         : [];
+  const parentDocument = normalizeAtlasParentDocument(source, legacyDocuments);
+  const childDocuments = normalizeAtlasChildDocuments(source, legacyDocuments, parentDocument?.documentNumber ?? null);
 
   return {
     lrNumber: toStringValue(source.lrNumber),
@@ -257,7 +297,9 @@ function normalizeAtlasRecord(value: unknown): AtlasRecord {
     remark: toStringValue(source.remark),
     primaryDocumentNumber: toStringValue(source.primaryDocumentNumber),
     geometry: toGeometry(source.geometry),
-    documents: toAtlasDocumentArray(documentsSource),
+    parentDocument,
+    parentPageNo: toStringValue(source.parentPageNo ?? source.primaryPageNo),
+    childDocuments,
   };
 }
 
@@ -276,7 +318,8 @@ function normalizeAtlasDocument(value: unknown): AtlasDocument {
     documentNumber: toStringValue(source.documentNumber),
     docName: toStringValue(source.docName),
     docType: toStringValue(source.docType),
-    pageNo: toNumber(source.pageNo),
+    pageNo: toStringValue(source.pageNo),
+    pageTarget: toNumber(source.pageTarget),
     packageRelativePath: toStringValue(source.packageRelativePath),
     fileName: toStringValue(source.fileName),
     extension: toStringValue(source.extension),
@@ -286,6 +329,70 @@ function normalizeAtlasDocument(value: unknown): AtlasDocument {
     contentUrl: toStringValue(source.contentUrl),
     downloadUrl: toStringValue(source.downloadUrl),
   };
+}
+
+function normalizeAtlasLinkedDocument(value: unknown): AtlasLinkedDocument {
+  const document = normalizeAtlasDocument(value);
+  const source = isPlainObject(value) ? value : {};
+
+  return {
+    ...document,
+    pageNo: toStringValue(source.pageNo ?? document.pageNo),
+  };
+}
+
+function normalizeAtlasParentDocument(source: Record<string, unknown>, legacyDocuments: unknown[]) {
+  const explicitParent = "parentDocument" in source ? normalizeAtlasNullableDocument(source.parentDocument) : null;
+  if (explicitParent) {
+    return explicitParent;
+  }
+
+  if (legacyDocuments.length === 0) {
+    return null;
+  }
+
+  const primaryDocumentNumber = toStringValue(source.primaryDocumentNumber);
+  const legacyParent = legacyDocuments.find((entry) => {
+    const document = normalizeAtlasDocument(entry);
+    return document.documentNumber && document.documentNumber === primaryDocumentNumber;
+  });
+
+  return normalizeAtlasDocument(legacyParent ?? legacyDocuments[0]);
+}
+
+function normalizeAtlasNullableDocument(value: unknown) {
+  if (!value) {
+    return null;
+  }
+
+  const document = normalizeAtlasDocument(value);
+  return document.documentNumber ||
+    document.docName ||
+    document.fileName ||
+    document.downloadUrl ||
+    document.contentUrl
+    ? document
+    : null;
+}
+
+function normalizeAtlasChildDocuments(
+  source: Record<string, unknown>,
+  legacyDocuments: unknown[],
+  parentDocumentNumber: string | null,
+) {
+  if ("childDocuments" in source && Array.isArray(source.childDocuments)) {
+    return source.childDocuments.map((entry) => normalizeAtlasLinkedDocument(entry));
+  }
+
+  return legacyDocuments
+    .map((entry) => normalizeAtlasLinkedDocument(entry))
+    .filter((document, index) => {
+      if (index === 0 && !parentDocumentNumber) {
+        return false;
+      }
+
+      return !parentDocumentNumber || document.documentNumber !== parentDocumentNumber;
+    });
 }
 
 function toAtlasWarningArray(value: unknown): AtlasWarning[] {
@@ -381,6 +488,10 @@ function toGeometry(value: unknown): Geometry | null {
   }
 
   return value as unknown as Geometry;
+}
+
+function countLinkedDocuments(records: AtlasRecord[]) {
+  return records.reduce((total, record) => total + (record.parentDocument ? 1 : 0) + record.childDocuments.length, 0);
 }
 
 function formatAtlasBytes(bytes: number) {
