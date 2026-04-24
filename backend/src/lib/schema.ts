@@ -242,6 +242,43 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
   `);
 
   await client.query(`
+    CREATE TABLE IF NOT EXISTS tax_parcels (
+      id SERIAL PRIMARY KEY,
+      parcel_id TEXT,
+      parcel_code TEXT,
+      account_number TEXT,
+      owner_name TEXT,
+      property_name TEXT,
+      parcel_status TEXT,
+      tax_program TEXT,
+      ownership_type TEXT,
+      county TEXT,
+      state TEXT,
+      gis_acres DOUBLE PRECISION,
+      description TEXT,
+      land_use_type TEXT,
+      tract_name TEXT,
+      notes TEXT,
+      raw_properties JSONB NOT NULL DEFAULT '{}'::jsonb,
+      geom geometry(MultiPolygon, 4326) NOT NULL
+    )
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS tax_bill_manifest (
+      bill_id TEXT PRIMARY KEY,
+      parcel_id TEXT NOT NULL,
+      bill_year INTEGER NOT NULL,
+      file_name TEXT NOT NULL,
+      extension TEXT,
+      size_bytes BIGINT,
+      bill_relative_path TEXT NOT NULL,
+      source_root_path TEXT,
+      source_file_path TEXT
+    )
+  `);
+
+  await client.query(`
     ALTER TABLE atlas_land_records
     ADD COLUMN IF NOT EXISTS primary_page_no TEXT,
     ADD COLUMN IF NOT EXISTS source_workbook_path TEXT,
@@ -306,11 +343,18 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
     CREATE INDEX IF NOT EXISTS land_records_geom_idx ON land_records USING GIST (geom);
     CREATE INDEX IF NOT EXISTS management_areas_geom_idx ON management_areas USING GIST (geom);
     CREATE INDEX IF NOT EXISTS atlas_land_records_geom_idx ON atlas_land_records USING GIST (geom);
+    CREATE INDEX IF NOT EXISTS tax_parcels_geom_idx ON tax_parcels USING GIST (geom);
 
     CREATE INDEX IF NOT EXISTS question_areas_status_idx ON question_areas (status);
     CREATE INDEX IF NOT EXISTS question_areas_severity_idx ON question_areas (severity);
     CREATE INDEX IF NOT EXISTS atlas_land_records_property_name_idx ON atlas_land_records (property_name);
     CREATE INDEX IF NOT EXISTS atlas_land_records_fund_name_idx ON atlas_land_records (fund_name);
+    CREATE INDEX IF NOT EXISTS tax_parcels_parcel_id_idx ON tax_parcels (parcel_id);
+    CREATE INDEX IF NOT EXISTS tax_parcels_parcel_code_idx ON tax_parcels (parcel_code);
+    CREATE INDEX IF NOT EXISTS tax_parcels_account_number_idx ON tax_parcels (account_number);
+    CREATE INDEX IF NOT EXISTS tax_bill_manifest_parcel_id_idx ON tax_bill_manifest (parcel_id);
+    CREATE INDEX IF NOT EXISTS tax_bill_manifest_bill_year_idx ON tax_bill_manifest (bill_year);
+    CREATE INDEX IF NOT EXISTS tax_bill_manifest_bill_relative_path_idx ON tax_bill_manifest (bill_relative_path);
     CREATE INDEX IF NOT EXISTS atlas_document_links_lr_number_idx ON atlas_document_links (lr_number);
     CREATE INDEX IF NOT EXISTS atlas_document_links_document_number_idx ON atlas_document_links (document_number);
     CREATE INDEX IF NOT EXISTS atlas_document_manifest_document_number_idx ON atlas_document_manifest (document_number);
@@ -324,6 +368,7 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
     CREATE INDEX IF NOT EXISTS question_areas_code_trgm_idx ON question_areas USING GIN (code gin_trgm_ops);
     CREATE INDEX IF NOT EXISTS question_areas_title_trgm_idx ON question_areas USING GIN (title gin_trgm_ops);
     CREATE INDEX IF NOT EXISTS question_areas_parcel_code_trgm_idx ON question_areas USING GIN (parcel_code gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS tax_parcels_parcel_code_trgm_idx ON tax_parcels USING GIN (parcel_code gin_trgm_ops);
     CREATE INDEX IF NOT EXISTS question_areas_search_keywords_trgm_idx ON question_areas USING GIN (search_keywords gin_trgm_ops);
   `);
 }

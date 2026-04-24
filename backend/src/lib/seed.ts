@@ -8,6 +8,7 @@ import type { PoolClient } from "pg";
 import { config } from "../config.js";
 import { ensureAtlasSeedData } from "./atlas.js";
 import { hashPassword } from "./auth.js";
+import { ensureTaxParcelSeedData } from "./taxParcels.js";
 import { loadFeatureCollection, parseBoolean } from "./utils.js";
 
 const DEMO_USERS = [
@@ -103,6 +104,7 @@ export async function ensureSeedData(client: PoolClient): Promise<void> {
   await seedUsers(client);
   await ensureStandardSeedData(client);
   await ensureAtlasSeedData(client);
+  await ensureTaxParcelSeedData(client);
   await seedComments(client);
 }
 

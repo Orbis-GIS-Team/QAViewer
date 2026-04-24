@@ -54,6 +54,29 @@ type AtlasQueryResult = {
   }>;
 };
 
+type TaxBillResult = {
+  billId: string;
+  hasFile: boolean;
+  isPreviewable: boolean;
+};
+
+type TaxParcelQueryResult = {
+  questionAreaCode: string;
+  bufferValue: number;
+  bufferUnit: "feet";
+  bufferGeometry: object;
+  matchedParcelCount: number;
+  matchedBillCount: number;
+  parcels: Array<{
+    parcelId: string;
+    bills: TaxBillResult[];
+  }>;
+  warnings: Array<{
+    code: string;
+    message: string;
+  }>;
+};
+
 async function request<T>(
   path: string,
   options: {
@@ -212,6 +235,36 @@ test("auth, admin, question-area, and layer smoke flow", async () => {
         responseType: atlasDocument.isPreviewable ? "none" : "json",
       },
     );
+  }
+
+  const taxParcelResult = await request<TaxParcelQueryResult>(
+    "/question-areas/QA-0073/tax-parcels?buffer=500&unit=feet",
+    { token: admin.token },
+  );
+  assert.equal(taxParcelResult.questionAreaCode, "QA-0073");
+  assert.equal(taxParcelResult.bufferValue, 500);
+  assert.equal(taxParcelResult.bufferUnit, "feet");
+  assert.ok(Array.isArray(taxParcelResult.parcels));
+  assert.ok(Array.isArray(taxParcelResult.warnings));
+
+  const taxBill = taxParcelResult.parcels
+    .flatMap((parcel) => parcel.bills)
+    .find((bill) => bill.hasFile);
+
+  if (taxBill) {
+    await request(`/tax-parcels/bills/${encodeURIComponent(taxBill.billId)}/download`, {
+      method: "GET",
+      token: admin.token,
+      expectedStatus: 200,
+      responseType: "none",
+    });
+
+    await request(`/tax-parcels/bills/${encodeURIComponent(taxBill.billId)}/content`, {
+      method: "GET",
+      token: admin.token,
+      expectedStatus: taxBill.isPreviewable ? 200 : 415,
+      responseType: taxBill.isPreviewable ? "none" : "json",
+    });
   }
 
   const landRecords = await request<FeatureCollection>(

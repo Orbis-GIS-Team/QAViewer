@@ -10,6 +10,10 @@ import { requireRole } from "../lib/auth.js";
 import { loadAtlasQuestionAreaView, normalizeAtlasBufferFeet } from "../lib/atlas.js";
 import { query } from "../lib/db.js";
 import { buildQuestionAreaSearchClause, parseSearchField } from "../lib/search.js";
+import {
+  loadTaxParcelQuestionAreaView,
+  normalizeTaxParcelBufferFeet,
+} from "../lib/taxParcels.js";
 import { featureCollection, parseBbox } from "../lib/utils.js";
 
 const router = Router();
@@ -191,6 +195,28 @@ router.get("/:code/atlas", async (req, res) => {
   }
 
   const result = await loadAtlasQuestionAreaView(req.params.code, bufferFeet);
+  if (!result) {
+    res.status(404).json({ message: "Question area not found." });
+    return;
+  }
+
+  res.json(result);
+});
+
+router.get("/:code/tax-parcels", async (req, res) => {
+  const unit = String(req.query.unit ?? "feet").trim().toLowerCase();
+  if (unit !== "feet") {
+    res.status(400).json({ message: "Tax parcel buffer unit must be feet." });
+    return;
+  }
+
+  const bufferFeet = normalizeTaxParcelBufferFeet(req.query.buffer ?? 500);
+  if (!bufferFeet) {
+    res.status(400).json({ message: "Tax parcel buffer must be one of 100, 500, 1000, or 5000 feet." });
+    return;
+  }
+
+  const result = await loadTaxParcelQuestionAreaView(req.params.code, bufferFeet);
   if (!result) {
     res.status(404).json({ message: "Question area not found." });
     return;

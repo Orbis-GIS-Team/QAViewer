@@ -24,6 +24,13 @@ import { apiDownload, apiRequest } from "../lib/api";
 import { AtlasMapOverlays } from "./AtlasMapOverlays";
 import { AtlasPanel } from "./AtlasPanel";
 import { useAtlasQuery, type AtlasBufferFeet, type AtlasTarget } from "../lib/atlas";
+import { TaxParcelMapOverlays } from "./TaxParcelMapOverlays";
+import { TaxParcelPanel } from "./TaxParcelPanel";
+import {
+  useTaxParcelQuery,
+  type TaxParcelBufferFeet,
+  type TaxParcelTarget,
+} from "../lib/taxParcels";
 
 type SearchResult = {
   type: "question_area";
@@ -45,6 +52,7 @@ type SummaryPayload = {
 type LayerKey = "land_records" | "management_areas";
 type MeasureMode = "distance" | "area";
 type ControlPosition = "topleft" | "topright" | "bottomleft" | "bottomright";
+type SupportWorkspaceTab = "atlas" | "tax-parcels";
 
 type QuestionAreaProperties = {
   code: string;
@@ -215,7 +223,9 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
+  const [supportWorkspaceTab, setSupportWorkspaceTab] = useState<SupportWorkspaceTab>("atlas");
   const [atlasBufferFeet, setAtlasBufferFeet] = useState<AtlasBufferFeet>(500);
+  const [taxParcelBufferFeet, setTaxParcelBufferFeet] = useState<TaxParcelBufferFeet>(500);
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [editDraft, setEditDraft] = useState<EditDraft>({
@@ -241,6 +251,13 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     token: session.token,
     questionAreaCode: selectedCode,
     bufferFeet: atlasBufferFeet,
+    enabled: supportWorkspaceTab === "atlas",
+  });
+  const taxParcelState = useTaxParcelQuery({
+    token: session.token,
+    questionAreaCode: selectedCode,
+    bufferFeet: taxParcelBufferFeet,
+    enabled: supportWorkspaceTab === "tax-parcels",
   });
 
   function showFeedback(message: string, type: FeedbackState["type"] = "error") {
@@ -592,7 +609,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const openQuestionAreas = (summary?.statuses.review ?? 0) + (summary?.statuses.active ?? 0);
   const selectedLocation = [selectedDetail?.county, selectedDetail?.state].filter(Boolean).join(", ");
   const selectedContext = [selectedDetail?.parcelCode, selectedLocation].filter(Boolean).join(" | ");
-  const selectedAtlasTarget: AtlasTarget | null = selectedDetail
+  const selectedSupportTarget: AtlasTarget & TaxParcelTarget | null = selectedDetail
     ? {
         code: selectedDetail.code,
         county: selectedDetail.county,
@@ -877,7 +894,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
               ) : null}
             </Pane>
 
-            <AtlasMapOverlays atlasQuery={atlasState.result} />
+            {supportWorkspaceTab === "atlas" ? <AtlasMapOverlays atlasQuery={atlasState.result} /> : null}
+            {supportWorkspaceTab === "tax-parcels" ? (
+              <TaxParcelMapOverlays taxParcelQuery={taxParcelState.result} />
+            ) : null}
 
             <Pane name="management-areas" style={{ zIndex: 390 }}>
               {layerVisibility.management_areas && layerData.management_areas ? (
@@ -907,18 +927,53 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
             {rightPanelCollapsed ? "<" : ">"}
           </button>
 
-          <div className="panel-content">
-            <AtlasPanel
-              atlasError={atlasState.error}
-              atlasLoading={atlasState.loading}
-              atlasQuery={atlasState.result}
-              bufferFeet={atlasBufferFeet}
-              isDetailLoading={busy.detail}
-              onBufferChange={setAtlasBufferFeet}
-              selectedCode={selectedCode}
-              selectedDetail={selectedAtlasTarget}
-              token={session.token}
-            />
+          <div className="tab-nav support-tab-nav" role="tablist" aria-label="Supporting workspace">
+            <button
+              aria-selected={supportWorkspaceTab === "atlas"}
+              className={`tab-link ${supportWorkspaceTab === "atlas" ? "active" : ""}`}
+              onClick={() => setSupportWorkspaceTab("atlas")}
+              role="tab"
+              type="button"
+            >
+              Atlas
+            </button>
+            <button
+              aria-selected={supportWorkspaceTab === "tax-parcels"}
+              className={`tab-link ${supportWorkspaceTab === "tax-parcels" ? "active" : ""}`}
+              onClick={() => setSupportWorkspaceTab("tax-parcels")}
+              role="tab"
+              type="button"
+            >
+              Tax Parcels
+            </button>
+          </div>
+
+          <div className="panel-content support-panel-content">
+            {supportWorkspaceTab === "atlas" ? (
+              <AtlasPanel
+                atlasError={atlasState.error}
+                atlasLoading={atlasState.loading}
+                atlasQuery={atlasState.result}
+                bufferFeet={atlasBufferFeet}
+                isDetailLoading={busy.detail}
+                onBufferChange={setAtlasBufferFeet}
+                selectedCode={selectedCode}
+                selectedDetail={selectedSupportTarget}
+                token={session.token}
+              />
+            ) : (
+              <TaxParcelPanel
+                bufferFeet={taxParcelBufferFeet}
+                isDetailLoading={busy.detail}
+                onBufferChange={setTaxParcelBufferFeet}
+                selectedCode={selectedCode}
+                selectedDetail={selectedSupportTarget}
+                taxParcelError={taxParcelState.error}
+                taxParcelLoading={taxParcelState.loading}
+                taxParcelQuery={taxParcelState.result}
+                token={session.token}
+              />
+            )}
           </div>
         </aside>
       </section>

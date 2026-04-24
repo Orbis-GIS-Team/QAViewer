@@ -10,6 +10,7 @@ import authRoutes from "./routes/auth.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import layerRoutes from "./routes/layers.js";
 import questionAreaRoutes from "./routes/questionAreas.js";
+import taxParcelRoutes from "./routes/taxParcels.js";
 
 export function createApp(): express.Application {
   const app = express();
@@ -38,6 +39,7 @@ export function createApp(): express.Application {
   app.use("/api/dashboard", authenticateRequest, dashboardRoutes);
   app.use("/api/layers", authenticateRequest, layerRoutes);
   app.use("/api/question-areas", authenticateRequest, questionAreaRoutes);
+  app.use("/api/tax-parcels", authenticateRequest, taxParcelRoutes);
 
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error(error);

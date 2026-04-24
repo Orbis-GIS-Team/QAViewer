@@ -674,6 +674,10 @@ textarea {
   pointer-events: none;
 }
 
+.workspace-panel.collapsed .support-tab-nav {
+  display: none;
+}
+
 .workspace-panel.collapsed .panel-header {
   padding: 16px 12px;
 }
@@ -1027,6 +1031,14 @@ textarea {
   flex-direction: column;
   overflow: hidden;
   padding: 24px;
+}
+
+.support-tab-nav {
+  padding-inline: 16px;
+}
+
+.support-panel-content {
+  padding-top: 20px;
 }
 
 .panel-section {
@@ -1390,8 +1402,37 @@ textarea {
   box-shadow: var(--shadow-sm);
 }
 
+.atlas-record-header {
+  display: grid;
+  gap: 10px;
+}
+
+.atlas-record-title-group {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.atlas-record-title-group span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.atlas-collapse-button {
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
 .atlas-record-heading h2 {
   font-size: 1rem;
+}
+
+.atlas-record-heading {
+  align-items: flex-start;
+  gap: 12px;
 }
 
 .atlas-record-subtitle {
@@ -1431,6 +1472,12 @@ textarea {
 
 .atlas-doc-heading {
   margin-top: 4px;
+}
+
+.atlas-doc-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .atlas-document-tree,
@@ -1597,6 +1644,337 @@ textarea {
 
 .atlas-warning-card span {
   color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.tax-parcel-empty-shell,
+.tax-parcel-loading-shell,
+.tax-parcel-header {
+  gap: 16px;
+}
+
+.tax-parcel-empty-state {
+  display: grid;
+  gap: 8px;
+  padding: 20px;
+  border: 1px dashed rgba(15, 23, 42, 0.16);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.92) 0%, rgba(255, 255, 255, 1) 100%);
+}
+
+.tax-parcel-empty-state strong {
+  font-size: 1rem;
+}
+
+.tax-parcel-empty-state p,
+.tax-parcel-intro {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.tax-parcel-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.tax-parcel-summary-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.95) 0%, #fff 100%);
+}
+
+.tax-parcel-summary-card span {
+  color: var(--muted);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tax-parcel-summary-card strong {
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
+
+.tax-parcel-buffer-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tax-parcel-buffer-option {
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tax-parcel-buffer-option:hover {
+  color: var(--primary);
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.tax-parcel-buffer-option.active,
+.tax-parcel-buffer-option[aria-pressed="true"] {
+  background: white;
+  color: var(--primary);
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+
+.tax-parcel-error-banner {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(239, 68, 68, 0.16);
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: #991b1b;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.tax-parcel-preview-error {
+  margin-top: 8px;
+}
+
+.tax-parcel-loading-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  background: white;
+}
+
+.tax-parcel-preview-shell {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.74) 0%, #fff 100%);
+}
+
+.tax-parcel-preview-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tax-parcel-preview-title {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tax-parcel-preview-title strong {
+  font-size: 0.9rem;
+}
+
+.tax-parcel-preview-title small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.tax-parcel-preview-placeholder {
+  margin: 0;
+  min-height: 160px;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  border: 1px dashed rgba(15, 23, 42, 0.16);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  text-align: center;
+}
+
+.tax-parcel-preview-media {
+  display: block;
+  width: 100%;
+  max-height: 340px;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-sm);
+  background: white;
+}
+
+.tax-parcel-preview-frame {
+  min-height: 340px;
+}
+
+.tax-parcel-warning-list,
+.tax-parcel-bill-list {
+  display: grid;
+  gap: 10px;
+}
+
+.tax-parcel-warning-card,
+.tax-parcel-bill-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-sm);
+  background: white;
+}
+
+.tax-parcel-warning-card {
+  background: linear-gradient(180deg, rgba(255, 247, 237, 0.9) 0%, #fff 100%);
+}
+
+.tax-parcel-warning-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.tax-parcel-warning-copy strong {
+  font-size: 0.875rem;
+}
+
+.tax-parcel-warning-copy p,
+.tax-parcel-warning-card small {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.tax-parcel-card {
+  padding: 16px;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1) 0%, rgba(239, 246, 255, 0.82) 100%);
+  box-shadow: var(--shadow-sm);
+}
+
+.tax-parcel-card-header {
+  display: grid;
+  gap: 10px;
+}
+
+.tax-parcel-card-heading {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.tax-parcel-card-title-group {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tax-parcel-card-title-group h2 {
+  font-size: 1rem;
+}
+
+.tax-parcel-card-title-group span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.tax-parcel-collapse-button {
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.tax-parcel-primary-badge {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.tax-parcel-detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+}
+
+.tax-parcel-note-card {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.tax-parcel-note-card-secondary {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.tax-parcel-note-card strong {
+  color: #1d4ed8;
+  font-size: 0.6875rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tax-parcel-note-card-secondary strong {
+  color: #475569;
+}
+
+.tax-parcel-note-card span {
+  color: var(--ink);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.tax-parcel-bills-heading {
+  margin-top: 4px;
+}
+
+.tax-parcel-bill-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tax-parcel-bill-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tax-parcel-bill-copy strong {
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.tax-parcel-bill-copy span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.tax-parcel-bill-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.tax-parcel-bill-actions .ghost-button,
+.tax-parcel-bill-actions .primary-button {
+  min-height: 32px;
+  padding: 6px 12px;
   font-size: 0.75rem;
 }
 
@@ -2204,7 +2582,10 @@ textarea {
 
   .atlas-preview-toolbar,
   .atlas-document-body,
-  .atlas-warning-card {
+  .atlas-warning-card,
+  .tax-parcel-preview-toolbar,
+  .tax-parcel-warning-card,
+  .tax-parcel-bill-card {
     flex-direction: column;
   }
 
@@ -2226,6 +2607,10 @@ textarea {
   }
 
   .atlas-document-actions {
+    justify-content: flex-start;
+  }
+
+  .tax-parcel-bill-actions {
     justify-content: flex-start;
   }
 
@@ -2263,7 +2648,9 @@ textarea {
   }
 
   .atlas-preview-media,
-  .atlas-preview-frame {
+  .atlas-preview-frame,
+  .tax-parcel-preview-media,
+  .tax-parcel-preview-frame {
     max-height: 260px;
     min-height: 260px;
   }

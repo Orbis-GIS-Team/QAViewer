@@ -44,7 +44,7 @@ type PreviewState = {
 type AtlasDocumentRequest = {
   document: AtlasDocument;
   pageReference: string | null;
-  relationship: "parent" | "child" | "featureless";
+  relationship: "parent" | "child";
 };
 
 export function AtlasPanel({
@@ -63,6 +63,8 @@ export function AtlasPanel({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
+  const [collapsedRecords, setCollapsedRecords] = useState<Record<string, boolean>>({});
+  const [collapsedDocumentTrees, setCollapsedDocumentTrees] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setPreviewDocument(null);
@@ -70,6 +72,8 @@ export function AtlasPanel({
     setPreviewLoading(false);
     setPreviewError(null);
     setPanelError(null);
+    setCollapsedRecords({});
+    setCollapsedDocumentTrees({});
   }, [selectedCode]);
 
   useEffect(() => {
@@ -129,20 +133,8 @@ export function AtlasPanel({
     };
   }, [previewDocument, token]);
 
-  const matchedRecordCount = atlasQuery?.matchedRecordCount ?? atlasQuery?.records.length ?? 0;
-  const linkedDocumentCount =
-    atlasQuery?.linkedDocumentCount ??
-    atlasQuery?.records.reduce(
-      (total, record) => total + (record.parentDocument ? 1 : 0) + record.childDocuments.length,
-      0,
-    ) ??
-    0;
-  const featurelessDocumentCount =
-    atlasQuery?.featurelessDocumentCount ?? atlasQuery?.featurelessDocuments.length ?? 0;
-  const warningCount = atlasQuery?.warnings.length ?? 0;
   const hasSelection = Boolean(selectedCode);
   const records = atlasQuery?.records ?? [];
-  const featurelessDocuments = atlasQuery?.featurelessDocuments ?? [];
 
   const previewLabel = useMemo(() => {
     if (!previewState) {
@@ -285,29 +277,7 @@ export function AtlasPanel({
     <>
       <section className="panel-section atlas-header">
         <div className="section-heading primary-heading">
-          <h2>{selectedDetail?.title ?? "Atlas Workspace"}</h2>
-          <span>{selectedDetail?.code ?? selectedCode}</span>
-        </div>
-        <p className="summary-copy">
-          {selectedDetail?.summary ?? "Atlas context linked to the currently selected question area."}
-        </p>
-        <div className="atlas-summary-grid">
-          <div className="atlas-summary-card">
-            <span>Matched records</span>
-            <strong>{matchedRecordCount.toLocaleString()}</strong>
-          </div>
-          <div className="atlas-summary-card">
-            <span>Linked documents</span>
-            <strong>{linkedDocumentCount.toLocaleString()}</strong>
-          </div>
-          <div className="atlas-summary-card">
-            <span>Buffer</span>
-            <strong>{atlasBufferLabel(bufferFeet)}</strong>
-          </div>
-          <div className="atlas-summary-card">
-            <span>Featureless docs</span>
-            <strong>{featurelessDocumentCount.toLocaleString()}</strong>
-          </div>
+          <h2>Atlas Land Records</h2>
         </div>
       </section>
 
@@ -389,6 +359,9 @@ export function AtlasPanel({
 
       {records.map((record) => {
         const childDocuments = record.childDocuments ?? [];
+        const recordKey = atlasRecordKey(record);
+        const isRecordCollapsed = collapsedRecords[recordKey] ?? false;
+        const isDocumentTreeCollapsed = collapsedDocumentTrees[recordKey] ?? false;
         const parentRequest = record.parentDocument
           ? {
               document: record.parentDocument,
@@ -399,158 +372,143 @@ export function AtlasPanel({
 
         return (
           <section className="panel-section atlas-record-card" key={record.lrNumber ?? atlasRecordSummary(record)}>
-            <div className="section-heading atlas-record-heading">
-              <h2>{record.lrNumber ?? "Unnamed land record"}</h2>
-              <span>{atlasRecordSummary(record) || "Atlas match"}</span>
-            </div>
-            <div className="badge-row">
-              {record.lrStatus ? <span className="badge neutral">{record.lrStatus}</span> : null}
-              {record.lrType ? <span className="badge neutral">{record.lrType}</span> : null}
-              {record.primaryDocumentNumber ? <span className="badge neutral">{record.primaryDocumentNumber}</span> : null}
-            </div>
-            <p className="atlas-record-subtitle">{atlasRecordSubtitle(record) || "Matched Atlas land record"}</p>
-            <dl className="detail-grid atlas-record-grid">
-              <AtlasDetail label="Property">{record.propertyName ?? "None"}</AtlasDetail>
-              <AtlasDetail label="Fund">{record.fundName ?? "None"}</AtlasDetail>
-              <AtlasDetail label="Region">{record.regionName ?? "None"}</AtlasDetail>
-              <AtlasDetail label="Acq Date">{record.acqDate ?? "None"}</AtlasDetail>
-              <AtlasDetail label="Tax Parcel" mono>
-                {record.taxParcelNumber ?? "None"}
-              </AtlasDetail>
-              <AtlasDetail label="GIS Acres" mono>
-                {formatAtlasMetric(record.gisAcres)}
-              </AtlasDetail>
-              <AtlasDetail label="Deed Acres" mono>
-                {formatAtlasMetric(record.deedAcres)}
-              </AtlasDetail>
-              <AtlasDetail label="Township">{record.township ?? "None"}</AtlasDetail>
-              <AtlasDetail label="Range">{record.range ?? "None"}</AtlasDetail>
-              <AtlasDetail label="Section">{record.section ?? "None"}</AtlasDetail>
-              <AtlasDetail label="FIPS" mono>
-                {record.fips ?? "None"}
-              </AtlasDetail>
-              <AtlasDetail label="Primary Doc" mono>
-                {record.primaryDocumentNumber ?? "None"}
-              </AtlasDetail>
-            </dl>
-            {record.remark ? (
-              <p className="atlas-record-remark">
-                <strong>Remark</strong>
-                <span>{record.remark}</span>
-              </p>
-            ) : null}
-
-            <div className="section-heading atlas-doc-heading">
-              <h3>Document tree</h3>
-              <span>{(record.parentDocument ? 1 : 0) + childDocuments.length}</span>
-            </div>
-            <div className="atlas-document-tree">
-              {parentRequest ? (
-                <AtlasDocumentNode
-                  actionTone="primary-button"
-                  onDownload={handleDownloadDocument}
-                  onOpen={handleOpenDocument}
-                  onPreview={(request) => {
-                    setPanelError(null);
-                    setPreviewDocument(request);
-                    setPreviewError(null);
-                  }}
-                  request={parentRequest}
-                  title="Parent document"
-                />
-              ) : (
-                <p className="panel-note atlas-tree-note">No parent document is available for this Atlas land record.</p>
-              )}
-
-              {childDocuments.length > 0 ? (
-                <div className="atlas-child-branch" role="list" aria-label="Child Atlas documents">
-                  {childDocuments.map((document, index) => (
-                    <AtlasDocumentNode
-                      key={atlasDocumentKey(document, index)}
-                      onDownload={handleDownloadDocument}
-                      onOpen={handleOpenDocument}
-                      onPreview={(request) => {
-                        setPanelError(null);
-                        setPreviewDocument(request);
-                        setPreviewError(null);
-                      }}
-                      request={{
-                        document,
-                        pageReference: document.pageNo,
-                        relationship: "child",
-                      }}
-                      title="Child document"
-                    />
-                  ))}
+            <div className="atlas-record-header">
+              <div className="section-heading atlas-record-heading">
+                <div className="atlas-record-title-group">
+                  <h2>{record.lrNumber ?? "Unnamed land record"}</h2>
+                  <span>{atlasRecordSummary(record) || "Atlas match"}</span>
                 </div>
-              ) : (
-                <p className="panel-note atlas-tree-note">No child documents are linked to this Atlas land record.</p>
-              )}
+                <button
+                  aria-expanded={!isRecordCollapsed}
+                  className="ghost-button atlas-collapse-button"
+                  onClick={() =>
+                    setCollapsedRecords((current) => ({
+                      ...current,
+                      [recordKey]: !isRecordCollapsed,
+                    }))
+                  }
+                  type="button"
+                >
+                  {isRecordCollapsed ? "Expand" : "Collapse"}
+                </button>
+              </div>
+              <div className="badge-row">
+                {record.lrStatus ? <span className="badge neutral">{record.lrStatus}</span> : null}
+                {record.lrType ? <span className="badge neutral">{record.lrType}</span> : null}
+                {record.primaryDocumentNumber ? <span className="badge neutral">{record.primaryDocumentNumber}</span> : null}
+              </div>
             </div>
+
+            {!isRecordCollapsed ? (
+              <>
+                <p className="atlas-record-subtitle">{atlasRecordSubtitle(record) || "Matched Atlas land record"}</p>
+                <dl className="detail-grid atlas-record-grid">
+                  <AtlasDetail label="Property">{record.propertyName ?? "None"}</AtlasDetail>
+                  <AtlasDetail label="Fund">{record.fundName ?? "None"}</AtlasDetail>
+                  <AtlasDetail label="Region">{record.regionName ?? "None"}</AtlasDetail>
+                  <AtlasDetail label="Acq Date">{record.acqDate ?? "None"}</AtlasDetail>
+                  <AtlasDetail label="Tax Parcel" mono>
+                    {record.taxParcelNumber ?? "None"}
+                  </AtlasDetail>
+                  <AtlasDetail label="GIS Acres" mono>
+                    {formatAtlasMetric(record.gisAcres)}
+                  </AtlasDetail>
+                  <AtlasDetail label="Deed Acres" mono>
+                    {formatAtlasMetric(record.deedAcres)}
+                  </AtlasDetail>
+                  <AtlasDetail label="Township">{record.township ?? "None"}</AtlasDetail>
+                  <AtlasDetail label="Range">{record.range ?? "None"}</AtlasDetail>
+                  <AtlasDetail label="Section">{record.section ?? "None"}</AtlasDetail>
+                  <AtlasDetail label="FIPS" mono>
+                    {record.fips ?? "None"}
+                  </AtlasDetail>
+                  <AtlasDetail label="Primary Doc" mono>
+                    {record.primaryDocumentNumber ?? "None"}
+                  </AtlasDetail>
+                </dl>
+                {record.remark ? (
+                  <p className="atlas-record-remark">
+                    <strong>Remark</strong>
+                    <span>{record.remark}</span>
+                  </p>
+                ) : null}
+
+                <div className="section-heading atlas-doc-heading">
+                  <h3>Document tree</h3>
+                  <div className="atlas-doc-heading-actions">
+                    <span>{(record.parentDocument ? 1 : 0) + childDocuments.length}</span>
+                    <button
+                      aria-expanded={!isDocumentTreeCollapsed}
+                      className="ghost-button atlas-collapse-button"
+                      onClick={() =>
+                        setCollapsedDocumentTrees((current) => ({
+                          ...current,
+                          [recordKey]: !isDocumentTreeCollapsed,
+                        }))
+                      }
+                      type="button"
+                    >
+                      {isDocumentTreeCollapsed ? "Expand" : "Collapse"}
+                    </button>
+                  </div>
+                </div>
+                {!isDocumentTreeCollapsed ? (
+                  <div className="atlas-document-tree">
+                    {parentRequest ? (
+                      <AtlasDocumentNode
+                        actionTone="primary-button"
+                        onDownload={handleDownloadDocument}
+                        onOpen={handleOpenDocument}
+                        onPreview={(request) => {
+                          setPanelError(null);
+                          setPreviewDocument(request);
+                          setPreviewError(null);
+                        }}
+                        request={parentRequest}
+                        title="Parent document"
+                      />
+                    ) : (
+                      <p className="panel-note atlas-tree-note">No parent document is available for this Atlas land record.</p>
+                    )}
+
+                    {childDocuments.length > 0 ? (
+                      <div className="atlas-child-branch" role="list" aria-label="Child Atlas documents">
+                        {childDocuments.map((document, index) => (
+                          <AtlasDocumentNode
+                            key={atlasDocumentKey(document, index)}
+                            onDownload={handleDownloadDocument}
+                            onOpen={handleOpenDocument}
+                            onPreview={(request) => {
+                              setPanelError(null);
+                              setPreviewDocument(request);
+                              setPreviewError(null);
+                            }}
+                            request={{
+                              document,
+                              pageReference: document.pageNo,
+                              relationship: "child",
+                            }}
+                            title="Child document"
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="panel-note atlas-tree-note">No child documents are linked to this Atlas land record.</p>
+                    )}
+                  </div>
+                ) : null}
+              </>
+            ) : null}
           </section>
         );
       })}
 
-      {!atlasLoading ? (
-        <section className="panel-section atlas-record-card">
-          <div className="section-heading atlas-record-heading">
-            <h2>Featureless documents</h2>
-            <span>Outside matched-record trees</span>
-          </div>
-          <p className="atlas-record-subtitle">
-            Documents available from the Atlas package that are not attached to a matched land record.
-          </p>
-          <div className="atlas-document-list">
-            {featurelessDocuments.length > 0 ? (
-              featurelessDocuments.map((document, index) => (
-                <AtlasDocumentNode
-                  key={atlasDocumentKey(document, index)}
-                  onDownload={handleDownloadDocument}
-                  onOpen={handleOpenDocument}
-                  onPreview={(request) => {
-                    setPanelError(null);
-                    setPreviewDocument(request);
-                    setPreviewError(null);
-                  }}
-                  request={{
-                    document,
-                    pageReference: document.pageNo,
-                    relationship: "featureless",
-                  }}
-                  title="Featureless document"
-                />
-              ))
-            ) : (
-              <p className="panel-note">No featureless Atlas documents were returned for this selection.</p>
-            )}
-          </div>
-        </section>
-      ) : null}
-
-      {warningCount > 0 ? (
-        <section className="panel-section">
-          <div className="section-heading">
-            <h2>Warnings</h2>
-            <span>{warningCount}</span>
-          </div>
-          <div className="atlas-warning-list">
-            {atlasQuery?.warnings.map((warning, index) => (
-              <article className="atlas-warning-card" key={`${warning.code ?? "warning"}-${index}`}>
-                <div>
-                  <strong>{warning.code ?? "Warning"}</strong>
-                  <small>{warning.severity ?? "info"}</small>
-                </div>
-                <p>{warning.message ?? "Atlas returned a warning for this selection."}</p>
-                {warning.lrNumber || warning.documentNumber ? (
-                  <span>{[warning.lrNumber, warning.documentNumber].filter(Boolean).join(" | ")}</span>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
     </>
   );
+}
+
+function atlasRecordKey(record: AtlasQueryResult["records"][number]) {
+  return record.lrNumber ?? atlasRecordSummary(record) ?? record.primaryDocumentNumber ?? "atlas-record";
 }
 
 function AtlasDocumentNode({

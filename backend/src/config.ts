@@ -28,6 +28,10 @@ export const config = {
     process.env.ATLAS_WORKBOOK_PATH ?? path.join(repoRoot, "Combined_LR_Upload_First3Tabs.xlsx"),
   atlasDocumentRoot:
     process.env.ATLAS_DOCUMENT_ROOT ?? path.join(repoRoot, "LR_Documents"),
+  taxParcelSourcePath:
+    process.env.TAX_PARCEL_SOURCE_PATH ?? path.join(repoRoot, "DataBuild", "pa_warren_with_report_data.shp"),
+  taxBillRoot:
+    process.env.TAX_BILL_ROOT ?? path.join(repoRoot, "DataBuild", "TaxBills"),
   seedDir: path.join(repoRoot, "data", "standardized"),
   uploadsDir: path.join(backendDir, "uploads"),
 };

@@ -12,6 +12,7 @@
     "test:smoke": "tsx --test src/smoke.test.ts"
   },
   "dependencies": {
+    "@types/shapefile": "^0.6.4",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -19,6 +20,7 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "pg": "^8.16.3",
+    "shapefile": "^0.6.6",
     "xlsx": "^0.18.5",
     "zod": "^4.1.11"
   },

@@ -26,6 +26,8 @@ services:
       API_PORT: 3001
       ATLAS_WORKBOOK_PATH: /workspace/Combined_LR_Upload_First3Tabs.xlsx
       ATLAS_DOCUMENT_ROOT: /workspace/LR_Documents
+      TAX_PARCEL_SOURCE_PATH: /workspace/DataBuild/pa_warren_with_report_data.shp
+      TAX_BILL_ROOT: /workspace/DataBuild/TaxBills
       FRONTEND_ORIGIN: http://localhost:5173
     working_dir: /workspace/backend
     command: npm run dev
@@ -34,6 +36,7 @@ services:
     volumes:
       - ./backend:/workspace/backend
       - ./data/standardized:/workspace/data/standardized:ro
+      - ./DataBuild:/workspace/DataBuild:ro
       - ./Combined_LR_Upload_First3Tabs.xlsx:/workspace/Combined_LR_Upload_First3Tabs.xlsx:ro
       - ./LR_Documents:/workspace/LR_Documents:ro
       - ./backend/uploads:/workspace/backend/uploads

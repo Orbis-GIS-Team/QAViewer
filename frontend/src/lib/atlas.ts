@@ -92,17 +92,19 @@ export function useAtlasQuery({
   token,
   questionAreaCode,
   bufferFeet,
+  enabled = true,
 }: {
   token: string;
   questionAreaCode: string | null;
   bufferFeet: AtlasBufferFeet;
+  enabled?: boolean;
 }): AtlasQueryState {
   const [result, setResult] = useState<AtlasQueryResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!questionAreaCode) {
+    if (!enabled || !questionAreaCode) {
       setResult(null);
       setLoading(false);
       setError(null);
@@ -142,7 +144,7 @@ export function useAtlasQuery({
     return () => {
       alive = false;
     };
-  }, [bufferFeet, questionAreaCode, token]);
+  }, [bufferFeet, enabled, questionAreaCode, token]);
 
   return { result, loading, error };
 }
