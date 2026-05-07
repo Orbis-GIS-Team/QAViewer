@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useRef, useState } from "react";
+import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 
 import type { Feature, FeatureCollection, Geometry, Point } from "geojson";
@@ -21,6 +21,7 @@ import {
 
 import type { Session } from "../App";
 import { apiDownload, apiRequest } from "../lib/api";
+import { getVisibleSupportTabs, hasPermission, type SupportWorkspaceTab } from "../lib/rbac";
 import { AtlasMapOverlays } from "./AtlasMapOverlays";
 import { AtlasPanel } from "./AtlasPanel";
 import { useAtlasQuery, type AtlasBufferFeet, type AtlasTarget } from "../lib/atlas";
@@ -52,7 +53,6 @@ type SummaryPayload = {
 type LayerKey = "land_records" | "management_areas";
 type MeasureMode = "distance" | "area";
 type ControlPosition = "topleft" | "topright" | "bottomleft" | "bottomright";
-type SupportWorkspaceTab = "atlas" | "tax-parcels";
 
 type QuestionAreaProperties = {
   code: string;
@@ -159,7 +159,7 @@ const STATUS_OPTIONS = ["review", "active", "resolved", "hold"];
 const SEARCH_FIELD_OPTIONS: Array<{ value: SearchField; label: string }> = [
   { value: "all", label: "All fields" },
   { value: "qa_id", label: "Question Area ID" },
-  { value: "parcel_code", label: "Parcel / Owner" },
+  { value: "parcel_code", label: "Support Context" },
   { value: "county", label: "County / State" },
 ];
 
@@ -223,7 +223,9 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
-  const [supportWorkspaceTab, setSupportWorkspaceTab] = useState<SupportWorkspaceTab>("atlas");
+  const [supportWorkspaceTab, setSupportWorkspaceTab] = useState<SupportWorkspaceTab | null>(() => {
+    return getVisibleSupportTabs(session.user.role)[0]?.id ?? null;
+  });
   const [atlasBufferFeet, setAtlasBufferFeet] = useState<AtlasBufferFeet>(500);
   const [taxParcelBufferFeet, setTaxParcelBufferFeet] = useState<TaxParcelBufferFeet>(500);
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
@@ -247,22 +249,39 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   });
 
   const deferredSearch = useDeferredValue(searchInput);
+  const visibleSupportTabs = useMemo(
+    () => getVisibleSupportTabs(session.user.role),
+    [session.user.role],
+  );
+  const hasSupportWorkspace = visibleSupportTabs.length > 0;
+  const canReadAtlas = hasPermission(session.user.role, "atlas_land_records:read");
+  const canReadPropertyTax = hasPermission(session.user.role, "property_tax:read");
   const atlasState = useAtlasQuery({
     token: session.token,
     questionAreaCode: selectedCode,
     bufferFeet: atlasBufferFeet,
-    enabled: supportWorkspaceTab === "atlas",
+    enabled: supportWorkspaceTab === "atlas" && canReadAtlas,
   });
   const taxParcelState = useTaxParcelQuery({
     token: session.token,
     questionAreaCode: selectedCode,
     bufferFeet: taxParcelBufferFeet,
-    enabled: supportWorkspaceTab === "tax-parcels",
+    enabled: supportWorkspaceTab === "tax-parcels" && canReadPropertyTax,
   });
 
   function showFeedback(message: string, type: FeedbackState["type"] = "error") {
     setFeedback({ message, type });
   }
+
+  useEffect(() => {
+    setSupportWorkspaceTab((current) => {
+      if (current && visibleSupportTabs.some((tab) => tab.id === current)) {
+        return current;
+      }
+
+      return visibleSupportTabs[0]?.id ?? null;
+    });
+  }, [visibleSupportTabs]);
 
   useEffect(() => {
     if (!feedback) {
@@ -608,7 +627,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const filteredAreaCount = questionAreas?.features.length ?? 0;
   const openQuestionAreas = (summary?.statuses.review ?? 0) + (summary?.statuses.active ?? 0);
   const selectedLocation = [selectedDetail?.county, selectedDetail?.state].filter(Boolean).join(", ");
-  const selectedContext = [selectedDetail?.parcelCode, selectedLocation].filter(Boolean).join(" | ");
+  const selectedContext = [selectedDetail?.sourceLayer, selectedLocation].filter(Boolean).join(" | ");
   const selectedSupportTarget: AtlasTarget & TaxParcelTarget | null = selectedDetail
     ? {
         code: selectedDetail.code,
@@ -678,9 +697,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         className={[
           "workspace-grid",
           selectedCode ? "review-active" : "browse-active",
+          hasSupportWorkspace ? "" : "support-hidden",
           leftPanelCollapsed ? "left-collapsed" : "",
-          rightPanelCollapsed ? "right-collapsed" : "",
-          leftPanelCollapsed && rightPanelCollapsed ? "both-collapsed" : "",
+          hasSupportWorkspace && rightPanelCollapsed ? "right-collapsed" : "",
+          hasSupportWorkspace && leftPanelCollapsed && rightPanelCollapsed ? "both-collapsed" : "",
         ].join(" ")}
       >
         <aside
@@ -703,7 +723,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 <section className="panel-section review-shell-intro">
                   <div className="section-heading">
                     <h2>Review</h2>
-                    <span>{busy.detail ? "Loading..." : selectedDetail?.code ?? "Selected record"}</span>
                   </div>
                   <div className="review-shell-actions">
                     <button className="ghost-button" onClick={() => selectQuestionArea(null)} type="button">
@@ -760,7 +779,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                       <input
                         className="search-input"
                         onChange={(event) => setSearchInput(event.target.value)}
-                        placeholder="Search code, parcel, owner, county..."
+                        placeholder="Search question area, tax parcel, owner, county..."
                         type="text"
                         value={searchInput}
                       />
@@ -894,8 +913,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
               ) : null}
             </Pane>
 
-            {supportWorkspaceTab === "atlas" ? <AtlasMapOverlays atlasQuery={atlasState.result} /> : null}
-            {supportWorkspaceTab === "tax-parcels" ? (
+            {supportWorkspaceTab === "atlas" && canReadAtlas ? (
+              <AtlasMapOverlays atlasQuery={atlasState.result} />
+            ) : null}
+            {supportWorkspaceTab === "tax-parcels" && canReadPropertyTax ? (
               <TaxParcelMapOverlays taxParcelQuery={taxParcelState.result} />
             ) : null}
 
@@ -917,65 +938,64 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
           </MapContainer>
         </section>
 
-        <aside className={`workspace-panel right-panel ${rightPanelCollapsed ? "collapsed" : ""}`}>
-          <button
-            className="collapse-toggle"
-            onClick={() => setRightPanelCollapsed((current) => !current)}
-            title={rightPanelCollapsed ? "Expand panel" : "Collapse panel"}
-            type="button"
-          >
-            {rightPanelCollapsed ? "<" : ">"}
-          </button>
-
-          <div className="tab-nav support-tab-nav" role="tablist" aria-label="Supporting workspace">
+        {hasSupportWorkspace ? (
+          <aside className={`workspace-panel right-panel ${rightPanelCollapsed ? "collapsed" : ""}`}>
             <button
-              aria-selected={supportWorkspaceTab === "atlas"}
-              className={`tab-link ${supportWorkspaceTab === "atlas" ? "active" : ""}`}
-              onClick={() => setSupportWorkspaceTab("atlas")}
-              role="tab"
+              className="collapse-toggle"
+              onClick={() => setRightPanelCollapsed((current) => !current)}
+              title={rightPanelCollapsed ? "Expand panel" : "Collapse panel"}
               type="button"
             >
-              Atlas
+              {rightPanelCollapsed ? "<" : ">"}
             </button>
-            <button
-              aria-selected={supportWorkspaceTab === "tax-parcels"}
-              className={`tab-link ${supportWorkspaceTab === "tax-parcels" ? "active" : ""}`}
-              onClick={() => setSupportWorkspaceTab("tax-parcels")}
-              role="tab"
-              type="button"
-            >
-              Tax Parcels
-            </button>
-          </div>
 
-          <div className="panel-content support-panel-content">
-            {supportWorkspaceTab === "atlas" ? (
-              <AtlasPanel
-                atlasError={atlasState.error}
-                atlasLoading={atlasState.loading}
-                atlasQuery={atlasState.result}
-                bufferFeet={atlasBufferFeet}
-                isDetailLoading={busy.detail}
-                onBufferChange={setAtlasBufferFeet}
-                selectedCode={selectedCode}
-                selectedDetail={selectedSupportTarget}
-                token={session.token}
-              />
-            ) : (
-              <TaxParcelPanel
-                bufferFeet={taxParcelBufferFeet}
-                isDetailLoading={busy.detail}
-                onBufferChange={setTaxParcelBufferFeet}
-                selectedCode={selectedCode}
-                selectedDetail={selectedSupportTarget}
-                taxParcelError={taxParcelState.error}
-                taxParcelLoading={taxParcelState.loading}
-                taxParcelQuery={taxParcelState.result}
-                token={session.token}
-              />
-            )}
-          </div>
-        </aside>
+            <div className="tab-nav support-tab-nav" role="tablist" aria-label="Supporting workspace">
+              {visibleSupportTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  aria-selected={supportWorkspaceTab === tab.id}
+                  className={`tab-link ${supportWorkspaceTab === tab.id ? "active" : ""}`}
+                  onClick={() => setSupportWorkspaceTab(tab.id)}
+                  role="tab"
+                  type="button"
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {supportWorkspaceTab ? (
+              <div className="panel-content support-panel-content">
+                {supportWorkspaceTab === "atlas" && canReadAtlas ? (
+                  <AtlasPanel
+                    atlasError={atlasState.error}
+                    atlasLoading={atlasState.loading}
+                    atlasQuery={atlasState.result}
+                    bufferFeet={atlasBufferFeet}
+                    isDetailLoading={busy.detail}
+                    onBufferChange={setAtlasBufferFeet}
+                    selectedCode={selectedCode}
+                    selectedDetail={selectedSupportTarget}
+                    token={session.token}
+                  />
+                ) : null}
+                {supportWorkspaceTab === "tax-parcels" && canReadPropertyTax ? (
+                  <TaxParcelPanel
+                    bufferFeet={taxParcelBufferFeet}
+                    isDetailLoading={busy.detail}
+                    onBufferChange={setTaxParcelBufferFeet}
+                    selectedCode={selectedCode}
+                    selectedDetail={selectedSupportTarget}
+                    taxParcelError={taxParcelState.error}
+                    taxParcelLoading={taxParcelState.loading}
+                    taxParcelQuery={taxParcelState.result}
+                    token={session.token}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </aside>
+        ) : null}
       </section>
     </main>
   );
@@ -1024,20 +1044,11 @@ function ReviewRecordSections({
       <section className="panel-section">
         <div className="section-heading primary-heading">
           <h2>{selectedDetail.title}</h2>
-          <span>{selectedDetail.code}</span>
-        </div>
-        <div className="badge-row">
-          <span className={`badge ${workflowBadgeClass(selectedDetail.status)}`}>
-            {workflowLabel(selectedDetail.status)}
-          </span>
-          <span className={`badge ${severityBadgeClass(selectedDetail.severity)}`}>
-            {humanize(selectedDetail.severity)}
-          </span>
         </div>
         <p className="summary-copy">{selectedDetail.summary}</p>
         <dl className="detail-grid">
-          <DetailItem label="Parcel Code" mono>{selectedDetail.parcelCode ?? "None"}</DetailItem>
-          <DetailItem label="Owner">{selectedDetail.ownerName ?? "Unknown"}</DetailItem>
+          <DetailItem label="Tax Parcel Code" mono>{selectedDetail.parcelCode ?? "None"}</DetailItem>
+          <DetailItem label="Record Owner">{selectedDetail.ownerName ?? "Unknown"}</DetailItem>
           <DetailItem label="County">{selectedDetail.county ?? "Unknown"}</DetailItem>
           <DetailItem label="State">{selectedDetail.state ?? "Unknown"}</DetailItem>
           <DetailItem label="Property">{selectedDetail.propertyName ?? "None"}</DetailItem>
@@ -1056,13 +1067,12 @@ function ReviewRecordSections({
       <section className="panel-section">
         <div className="section-heading">
           <h2>Data Signals</h2>
-          <span>Read-only source context</span>
         </div>
         <dl className="detail-grid">
           <DetailItem label="Tax Bill Acres" mono>{formatMetric(selectedDetail.taxBillAcres)}</DetailItem>
           <DetailItem label="GIS Acres" mono>{formatMetric(selectedDetail.gisAcres)}</DetailItem>
-          <DetailItem label="In Legal Layer">{formatBoolean(selectedDetail.existsInLegalLayer)}</DetailItem>
-          <DetailItem label="In Management Layer">
+          <DetailItem label="Legal/Deed Evidence">{formatBoolean(selectedDetail.existsInLegalLayer)}</DetailItem>
+          <DetailItem label="Management Data">
             {formatBoolean(selectedDetail.existsInManagementLayer)}
           </DetailItem>
           <DetailItem label="In Client Bill Data">
@@ -1075,7 +1085,6 @@ function ReviewRecordSections({
       <section className="panel-section">
         <div className="section-heading">
           <h2>Workflow Controls</h2>
-          <span>Editable</span>
         </div>
         <div className="form-stack">
           <label>

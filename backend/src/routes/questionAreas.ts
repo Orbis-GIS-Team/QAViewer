@@ -9,6 +9,7 @@ import { config } from "../config.js";
 import { requireRole } from "../lib/auth.js";
 import { loadAtlasQuestionAreaView, normalizeAtlasBufferFeet } from "../lib/atlas.js";
 import { query } from "../lib/db.js";
+import { requirePermission } from "../lib/rbac.js";
 import { buildQuestionAreaSearchClause, parseSearchField } from "../lib/search.js";
 import {
   loadTaxParcelQuestionAreaView,
@@ -181,7 +182,7 @@ router.get("/", async (req, res) => {
   );
 });
 
-router.get("/:code/atlas", async (req, res) => {
+router.get("/:code/atlas", requirePermission("atlas_land_records:read"), async (req, res) => {
   const unit = String(req.query.unit ?? "feet").trim().toLowerCase();
   if (unit !== "feet") {
     res.status(400).json({ message: "Atlas buffer unit must be feet." });
@@ -194,7 +195,8 @@ router.get("/:code/atlas", async (req, res) => {
     return;
   }
 
-  const result = await loadAtlasQuestionAreaView(req.params.code, bufferFeet);
+  const questionAreaCode = String(req.params.code);
+  const result = await loadAtlasQuestionAreaView(questionAreaCode, bufferFeet);
   if (!result) {
     res.status(404).json({ message: "Question area not found." });
     return;
@@ -203,7 +205,7 @@ router.get("/:code/atlas", async (req, res) => {
   res.json(result);
 });
 
-router.get("/:code/tax-parcels", async (req, res) => {
+router.get("/:code/tax-parcels", requirePermission("property_tax:read"), async (req, res) => {
   const unit = String(req.query.unit ?? "feet").trim().toLowerCase();
   if (unit !== "feet") {
     res.status(400).json({ message: "Tax parcel buffer unit must be feet." });
@@ -216,7 +218,8 @@ router.get("/:code/tax-parcels", async (req, res) => {
     return;
   }
 
-  const result = await loadTaxParcelQuestionAreaView(req.params.code, bufferFeet);
+  const questionAreaCode = String(req.params.code);
+  const result = await loadTaxParcelQuestionAreaView(questionAreaCode, bufferFeet);
   if (!result) {
     res.status(404).json({ message: "Question area not found." });
     return;
