@@ -4,8 +4,9 @@ import { AdminWorkspace } from "./components/AdminWorkspace";
 import { LoginScreen } from "./components/LoginScreen";
 import { MapWorkspace } from "./components/MapWorkspace";
 import { apiRequest } from "./lib/api";
+import type { UserRole } from "./lib/rbac";
 
-export type UserRole = "admin" | "client";
+export type { UserRole } from "./lib/rbac";
 
 export type Session = {
   token: string;

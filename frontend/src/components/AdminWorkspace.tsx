@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 
 import type { Session, UserRole } from "../App";
 import { apiRequest } from "../lib/api";
+import { ROLES } from "../lib/rbac";
 
 type ManagedUser = {
   id: number;
@@ -43,7 +44,7 @@ type AdminWorkspaceProps = {
   onSessionUpdate: (user: Session["user"]) => void;
 };
 
-const ROLE_OPTIONS: UserRole[] = ["admin", "client"];
+const ROLE_OPTIONS: UserRole[] = [...ROLES];
 
 function emptyUserDraft(role: UserRole = "client"): UserDraft {
   return {
@@ -55,7 +56,18 @@ function emptyUserDraft(role: UserRole = "client"): UserDraft {
 }
 
 function labelRole(role: UserRole): string {
-  return role.charAt(0).toUpperCase() + role.slice(1);
+  switch (role) {
+    case "admin":
+      return "Admin";
+    case "gis_team":
+      return "GIS Team";
+    case "land_records_team":
+      return "Land Records Team";
+    case "client":
+      return "Client";
+    case "other":
+      return "Other";
+  }
 }
 
 function summarizeActivity(user: ManagedUser): string {

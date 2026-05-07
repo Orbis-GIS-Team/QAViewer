@@ -6,9 +6,9 @@ import multer from "multer";
 import { z } from "zod";
 
 import { config } from "../config.js";
-import { requireRole } from "../lib/auth.js";
 import { loadAtlasQuestionAreaView, normalizeAtlasBufferFeet } from "../lib/atlas.js";
 import { query } from "../lib/db.js";
+import { hasPermission, requirePermission } from "../lib/rbac.js";
 import { buildQuestionAreaSearchClause, parseSearchField } from "../lib/search.js";
 import {
   loadTaxParcelQuestionAreaView,
@@ -85,7 +85,7 @@ const commentSchema = z.object({
   body: z.string().min(3).max(2000),
 });
 
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("question_areas:read"), async (req, res) => {
   const clauses: string[] = [];
   const params: unknown[] = [];
 
@@ -181,7 +181,7 @@ router.get("/", async (req, res) => {
   );
 });
 
-router.get("/:code/atlas", async (req, res) => {
+router.get("/:code/atlas", requirePermission("atlas_land_records:read"), async (req, res) => {
   const unit = String(req.query.unit ?? "feet").trim().toLowerCase();
   if (unit !== "feet") {
     res.status(400).json({ message: "Atlas buffer unit must be feet." });
@@ -194,7 +194,8 @@ router.get("/:code/atlas", async (req, res) => {
     return;
   }
 
-  const result = await loadAtlasQuestionAreaView(req.params.code, bufferFeet);
+  const questionAreaCode = String(req.params.code);
+  const result = await loadAtlasQuestionAreaView(questionAreaCode, bufferFeet);
   if (!result) {
     res.status(404).json({ message: "Question area not found." });
     return;
@@ -203,7 +204,7 @@ router.get("/:code/atlas", async (req, res) => {
   res.json(result);
 });
 
-router.get("/:code/tax-parcels", async (req, res) => {
+router.get("/:code/tax-parcels", requirePermission("property_tax:read"), async (req, res) => {
   const unit = String(req.query.unit ?? "feet").trim().toLowerCase();
   if (unit !== "feet") {
     res.status(400).json({ message: "Tax parcel buffer unit must be feet." });
@@ -216,7 +217,8 @@ router.get("/:code/tax-parcels", async (req, res) => {
     return;
   }
 
-  const result = await loadTaxParcelQuestionAreaView(req.params.code, bufferFeet);
+  const questionAreaCode = String(req.params.code);
+  const result = await loadTaxParcelQuestionAreaView(questionAreaCode, bufferFeet);
   if (!result) {
     res.status(404).json({ message: "Question area not found." });
     return;
@@ -225,7 +227,7 @@ router.get("/:code/tax-parcels", async (req, res) => {
   res.json(result);
 });
 
-router.get("/:code", async (req, res) => {
+router.get("/:code", requirePermission("question_areas:read"), async (req, res) => {
   const result = await query<{
     id: number;
     code: string;
@@ -367,7 +369,7 @@ router.get("/:code", async (req, res) => {
   });
 });
 
-router.patch("/:code", requireRole("admin", "client"), async (req, res) => {
+router.patch("/:code", requirePermission("question_areas:review"), async (req, res) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ message: "Invalid update payload." });
@@ -400,6 +402,11 @@ router.patch("/:code", requireRole("admin", "client"), async (req, res) => {
     return;
   }
 
+  if (updates.assignedReviewer !== undefined && !hasPermission(req.user, "question_areas:assign")) {
+    res.status(403).json({ message: "Insufficient permissions." });
+    return;
+  }
+
   values.push(req.params.code);
 
   const result = await query<{ code: string; status: string; summary: string; assigned_reviewer: string | null }>(
@@ -426,7 +433,7 @@ router.patch("/:code", requireRole("admin", "client"), async (req, res) => {
   });
 });
 
-router.post("/:code/comments", requireRole("admin", "client"), async (req, res) => {
+router.post("/:code/comments", requirePermission("question_areas:comment"), async (req, res) => {
   const parsed = commentSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ message: "Comment body is required." });
@@ -466,7 +473,7 @@ router.post("/:code/comments", requireRole("admin", "client"), async (req, res) 
   });
 });
 
-router.post("/:code/documents", requireRole("admin", "client"), (req, res, next) => {
+router.post("/:code/documents", requirePermission("question_areas:upload_document"), (req, res, next) => {
   upload.single("file")(req, res, (err: unknown) => {
     if (err instanceof multer.MulterError) {
       res.status(400).json({ message: `Upload error: ${err.message}` });
@@ -533,7 +540,7 @@ router.post("/:code/documents", requireRole("admin", "client"), (req, res, next)
   }
 });
 
-router.get("/documents/:id/download", async (req, res) => {
+router.get("/documents/:id/download", requirePermission("question_areas:read"), async (req, res) => {
   const result = await query<{
     original_name: string;
     stored_name: string;

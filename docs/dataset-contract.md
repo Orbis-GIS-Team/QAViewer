@@ -15,6 +15,8 @@ Do not make backend or frontend code depend directly on a source geodatabase. Co
 
 ## Runtime Model
 
+A question area represents a location where property tax boundaries may not match legal deed retracement or the management/ownership data the client uses to represent what they own and manage.
+
 The active application model is:
 
 - `question_areas`: primary review records, stored as point geometry
