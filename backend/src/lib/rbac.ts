@@ -5,6 +5,11 @@ export const ROLES = ["admin", "gis_team", "land_records_team", "client", "other
 export type Role = (typeof ROLES)[number];
 
 export const PERMISSIONS = [
+  "question_areas:read",
+  "question_areas:review",
+  "question_areas:assign",
+  "question_areas:comment",
+  "question_areas:upload_document",
   "atlas_land_records:read",
   "property_tax:read",
   "admin:manage_users",
@@ -13,10 +18,33 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number];
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  admin: ["atlas_land_records:read", "property_tax:read", "admin:manage_users"],
-  gis_team: ["atlas_land_records:read", "property_tax:read"],
-  land_records_team: ["atlas_land_records:read", "property_tax:read"],
-  client: [],
+  admin: [
+    "question_areas:read",
+    "question_areas:review",
+    "question_areas:assign",
+    "question_areas:comment",
+    "question_areas:upload_document",
+    "atlas_land_records:read",
+    "property_tax:read",
+    "admin:manage_users",
+  ],
+  gis_team: [
+    "question_areas:read",
+    "question_areas:review",
+    "question_areas:comment",
+    "question_areas:upload_document",
+    "atlas_land_records:read",
+    "property_tax:read",
+  ],
+  land_records_team: [
+    "question_areas:read",
+    "question_areas:review",
+    "question_areas:comment",
+    "question_areas:upload_document",
+    "atlas_land_records:read",
+    "property_tax:read",
+  ],
+  client: ["question_areas:read"],
   other: [],
 };
 

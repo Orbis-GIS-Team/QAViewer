@@ -254,6 +254,11 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     [session.user.role],
   );
   const hasSupportWorkspace = visibleSupportTabs.length > 0;
+  const canReadQuestionAreas = hasPermission(session.user.role, "question_areas:read");
+  const canReviewQuestionAreas = hasPermission(session.user.role, "question_areas:review");
+  const canAssignQuestionAreas = hasPermission(session.user.role, "question_areas:assign");
+  const canCommentOnQuestionAreas = hasPermission(session.user.role, "question_areas:comment");
+  const canUploadQuestionAreaDocuments = hasPermission(session.user.role, "question_areas:upload_document");
   const canReadAtlas = hasPermission(session.user.role, "atlas_land_records:read");
   const canReadPropertyTax = hasPermission(session.user.role, "property_tax:read");
   const atlasState = useAtlasQuery({
@@ -502,7 +507,11 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     if (!selectedCode) {
       return;
     }
-    if (!editDraft.summary.trim()) {
+    if (!canReviewQuestionAreas && !canAssignQuestionAreas) {
+      showFeedback("This review action is not available for your access level.");
+      return;
+    }
+    if (canReviewQuestionAreas && !editDraft.summary.trim()) {
       showFeedback("Summary is required.");
       return;
     }
@@ -511,15 +520,25 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     setFeedback(null);
 
     try {
+      const body: {
+        status?: string;
+        summary?: string;
+        description?: string | null;
+        assignedReviewer?: string | null;
+      } = {};
+      if (canReviewQuestionAreas) {
+        body.status = editDraft.status;
+        body.summary = editDraft.summary.trim();
+        body.description = editDraft.description.trim() || null;
+      }
+      if (canAssignQuestionAreas) {
+        body.assignedReviewer = editDraft.assignedReviewer.trim() || null;
+      }
+
       await apiRequest(`/question-areas/${selectedCode}`, {
         method: "PATCH",
         token: session.token,
-        body: {
-          status: editDraft.status,
-          summary: editDraft.summary.trim(),
-          description: editDraft.description.trim() || null,
-          assignedReviewer: editDraft.assignedReviewer.trim() || null,
-        },
+        body,
       });
       await Promise.all([reloadDetail(), refreshSummary()]);
       showFeedback("Question area updated.", "success");
@@ -533,6 +552,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   async function handleCommentSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedCode) {
+      return;
+    }
+    if (!canCommentOnQuestionAreas) {
+      showFeedback("Commenting is not available for your access level.");
       return;
     }
     if (!commentDraft.trim()) {
@@ -561,6 +584,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
   async function handleUploadDocument() {
     if (!selectedCode || !selectedFile) {
+      return;
+    }
+    if (!canUploadQuestionAreaDocuments) {
+      showFeedback("Document uploads are not available for your access level.");
       return;
     }
 
@@ -742,6 +769,11 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 {selectedDetail ? (
                   <ReviewRecordSections
                     busy={busy}
+                    canAssignQuestionAreas={canAssignQuestionAreas}
+                    canCommentOnQuestionAreas={canCommentOnQuestionAreas}
+                    canReadQuestionAreas={canReadQuestionAreas}
+                    canReviewQuestionAreas={canReviewQuestionAreas}
+                    canUploadQuestionAreaDocuments={canUploadQuestionAreaDocuments}
                     commentDraft={commentDraft}
                     editDraft={editDraft}
                     handleCommentSubmit={handleCommentSubmit}
@@ -1012,6 +1044,11 @@ function HeaderSummaryChip({ label, value }: { label: string; value: string | nu
 
 function ReviewRecordSections({
   busy,
+  canAssignQuestionAreas,
+  canCommentOnQuestionAreas,
+  canReadQuestionAreas,
+  canReviewQuestionAreas,
+  canUploadQuestionAreaDocuments,
   commentDraft,
   editDraft,
   handleCommentSubmit,
@@ -1026,6 +1063,11 @@ function ReviewRecordSections({
   uploadInputKey,
 }: {
   busy: BusyState;
+  canAssignQuestionAreas: boolean;
+  canCommentOnQuestionAreas: boolean;
+  canReadQuestionAreas: boolean;
+  canReviewQuestionAreas: boolean;
+  canUploadQuestionAreaDocuments: boolean;
   commentDraft: string;
   editDraft: EditDraft;
   handleCommentSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
@@ -1039,6 +1081,14 @@ function ReviewRecordSections({
   setSelectedFile: (file: File | null) => void;
   uploadInputKey: number;
 }) {
+  if (!canReadQuestionAreas) {
+    return (
+      <section className="panel-section">
+        <p className="panel-note">Question-area details are not available for this account.</p>
+      </section>
+    );
+  }
+
   return (
     <>
       <section className="panel-section">
@@ -1082,62 +1132,70 @@ function ReviewRecordSections({
         </dl>
       </section>
 
-      <section className="panel-section">
-        <div className="section-heading">
-          <h2>Workflow Controls</h2>
-        </div>
-        <div className="form-stack">
-          <label>
-            Status
-            <select
-              value={editDraft.status}
-              onChange={(event) => setEditDraft((current) => ({ ...current, status: event.target.value }))}
+      {canReviewQuestionAreas || canAssignQuestionAreas ? (
+        <section className="panel-section">
+          <div className="section-heading">
+            <h2>Workflow Controls</h2>
+          </div>
+          <div className="form-stack">
+            {canReviewQuestionAreas ? (
+              <>
+                <label>
+                  Status
+                  <select
+                    value={editDraft.status}
+                    onChange={(event) => setEditDraft((current) => ({ ...current, status: event.target.value }))}
+                  >
+                    {STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>
+                        {workflowLabel(status)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Summary
+                  <textarea
+                    rows={3}
+                    value={editDraft.summary}
+                    onChange={(event) => setEditDraft((current) => ({ ...current, summary: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Notes
+                  <textarea
+                    rows={5}
+                    value={editDraft.description}
+                    onChange={(event) => setEditDraft((current) => ({ ...current, description: event.target.value }))}
+                  />
+                </label>
+              </>
+            ) : null}
+            {canAssignQuestionAreas ? (
+              <label>
+                Assigned reviewer
+                <input
+                  value={editDraft.assignedReviewer}
+                  onChange={(event) =>
+                    setEditDraft((current) => ({
+                      ...current,
+                      assignedReviewer: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            ) : null}
+            <button
+              className="primary-button"
+              disabled={busy.saving}
+              onClick={handleSaveDetail}
+              type="button"
             >
-              {STATUS_OPTIONS.map((status) => (
-                <option key={status} value={status}>
-                  {workflowLabel(status)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Assigned reviewer
-            <input
-              value={editDraft.assignedReviewer}
-              onChange={(event) =>
-                setEditDraft((current) => ({
-                  ...current,
-                  assignedReviewer: event.target.value,
-                }))
-              }
-            />
-          </label>
-          <label>
-            Summary
-            <textarea
-              rows={3}
-              value={editDraft.summary}
-              onChange={(event) => setEditDraft((current) => ({ ...current, summary: event.target.value }))}
-            />
-          </label>
-          <label>
-            Notes
-            <textarea
-              rows={5}
-              value={editDraft.description}
-              onChange={(event) => setEditDraft((current) => ({ ...current, description: event.target.value }))}
-            />
-          </label>
-          <button
-            className="primary-button"
-            disabled={busy.saving}
-            onClick={handleSaveDetail}
-            type="button"
-          >
-            {busy.saving ? "Saving..." : "Save review state"}
-          </button>
-        </div>
-      </section>
+              {busy.saving ? "Saving..." : "Save review state"}
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <section className="panel-section">
         <div className="section-heading">
@@ -1160,15 +1218,17 @@ function ReviewRecordSections({
             <p className="panel-note">No comments have been added yet.</p>
           )}
         </div>
-        <form className="form-stack" onSubmit={handleCommentSubmit}>
-          <label>
-            Add comment
-            <textarea rows={3} value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} />
-          </label>
-          <button className="primary-button" disabled={busy.commenting} type="submit">
-            {busy.commenting ? "Posting..." : "Post comment"}
-          </button>
-        </form>
+        {canCommentOnQuestionAreas ? (
+          <form className="form-stack" onSubmit={handleCommentSubmit}>
+            <label>
+              Add comment
+              <textarea rows={3} value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} />
+            </label>
+            <button className="primary-button" disabled={busy.commenting} type="submit">
+              {busy.commenting ? "Posting..." : "Post comment"}
+            </button>
+          </form>
+        ) : null}
       </section>
 
       <section className="panel-section">
@@ -1193,21 +1253,23 @@ function ReviewRecordSections({
             <p className="panel-note">No documents have been uploaded yet.</p>
           )}
         </div>
-        <div className="upload-row">
-          <input
-            key={`question-area-upload-${uploadInputKey}`}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => setSelectedFile(event.target.files?.[0] ?? null)}
-            type="file"
-          />
-          <button
-            className="primary-button"
-            disabled={!selectedFile || busy.uploading}
-            onClick={() => void handleUploadDocument()}
-            type="button"
-          >
-            {busy.uploading ? "Uploading..." : "Upload"}
-          </button>
-        </div>
+        {canUploadQuestionAreaDocuments ? (
+          <div className="upload-row">
+            <input
+              key={`question-area-upload-${uploadInputKey}`}
+              onChange={(event: ChangeEvent<HTMLInputElement>) => setSelectedFile(event.target.files?.[0] ?? null)}
+              type="file"
+            />
+            <button
+              className="primary-button"
+              disabled={!selectedFile || busy.uploading}
+              onClick={() => void handleUploadDocument()}
+              type="button"
+            >
+              {busy.uploading ? "Uploading..." : "Upload"}
+            </button>
+          </div>
+        ) : null}
       </section>
     </>
   );
