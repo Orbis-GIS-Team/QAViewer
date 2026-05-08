@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
+import jwt from "jsonwebtoken";
 
 // Must be declared before any src import so vitest hoists it
 vi.mock("pg", () => {
@@ -21,6 +22,7 @@ vi.mock("pg", () => {
 import { createApp } from "../src/app.js";
 import { pool } from "../src/lib/db.js";
 
+const JWT_SECRET = "test-secret-for-vitest-do-not-use-in-prod";
 const app = createApp();
 
 function mockQuery() {
@@ -129,5 +131,36 @@ describe("GET /api/auth/me", () => {
       .get("/api/auth/me")
       .set("Authorization", "Bearer totally-invalid-token");
     expect(res.status).toBe(401);
+  });
+
+  it("returns the database-loaded role instead of a stale token role", async () => {
+    const token = jwt.sign(
+      { id: 7, email: "user@example.com", name: "Old User", role: "client" },
+      JWT_SECRET,
+      { expiresIn: "1h" },
+    );
+    mockQuery().mockResolvedValueOnce({
+      rows: [
+        {
+          id: 7,
+          name: "Current User",
+          email: "user@example.com",
+          role: "gis_team",
+        },
+      ],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const res = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.user).toMatchObject({
+      id: 7,
+      email: "user@example.com",
+      name: "Current User",
+      role: "gis_team",
+    });
   });
 });

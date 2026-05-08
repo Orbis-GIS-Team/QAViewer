@@ -422,9 +422,9 @@ async function seedComments(client: PoolClient): Promise<void> {
   );
 
   const cannedComments = [
-    "Initial review queued. Please verify the parcel geometry against the management source layer.",
-    "Ownership reference looks consistent, but the mapped overlap needs a second pass before sign-off.",
-    "Document request opened for legal backup. Attach county parcel support when available.",
+    "Initial review queued. Compare the tax boundary against deed retracement and management data before sign-off.",
+    "Ownership reference looks consistent, but the mapped boundary conflict needs a second pass before sign-off.",
+    "Document request opened for legal support. Attach deed retracement or management source evidence when available.",
   ];
 
   for (const [index, area] of questionAreas.entries()) {

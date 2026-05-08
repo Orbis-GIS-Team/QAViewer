@@ -3,8 +3,11 @@ import path from "node:path";
 import { Router } from "express";
 
 import { loadTaxBillAsset } from "../lib/taxParcels.js";
+import { requirePermission } from "../lib/rbac.js";
 
 const router = Router();
+
+router.use(requirePermission("property_tax:read"));
 
 router.get("/bills/:billId/content", async (req, res) => {
   const asset = await loadTaxBillAsset(req.params.billId);

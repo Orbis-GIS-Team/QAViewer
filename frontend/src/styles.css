@@ -600,6 +600,18 @@ textarea {
     minmax(320px, var(--right-rail-width));
 }
 
+.workspace-grid.support-hidden {
+  grid-template-columns:
+    minmax(304px, var(--left-rail-width))
+    minmax(0, 1fr);
+}
+
+.workspace-grid.support-hidden.left-collapsed {
+  grid-template-columns:
+    var(--collapsed-rail-width)
+    minmax(0, 1fr);
+}
+
 .workspace-grid.right-collapsed {
   grid-template-columns:
     minmax(304px, var(--left-rail-width))

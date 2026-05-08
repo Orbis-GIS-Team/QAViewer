@@ -7,8 +7,11 @@ import {
   loadAtlasFeaturelessDocuments,
   loadAtlasImportReport,
 } from "../lib/atlas.js";
+import { requirePermission } from "../lib/rbac.js";
 
 const router = Router();
+
+router.use(requirePermission("atlas_land_records:read"));
 
 router.get("/featureless-docs", async (_req, res) => {
   const documents = await loadAtlasFeaturelessDocuments();

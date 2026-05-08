@@ -4,13 +4,9 @@
 Question Area Review Web App
 
 ## Purpose
-Build a web-based GIS viewer for reviewing **question areas**. A question area is a place where two GIS layers that should generally match do not match, and that difference needs to be reviewed.
+Build a web-based GIS viewer for reviewing **question areas**. A question area is a place where property tax boundaries may not match the legal retracement of deeds or the management/ownership data the client uses to represent what they own and manage.
 
-One example is:
-- a client ownership layer
-- versus property tax parcel mapping
-
-If there is a clear mismatch between the two, that location becomes a **question area**.
+The review focuses on whether tax parcel mapping, deed/legal retracement evidence, and client management data agree closely enough for the client's operational and ownership records.
 
 ## Goal
 Create a web application where users can:
@@ -155,5 +151,5 @@ The app is successful if users can:
 - keep the review process in one place
 
 ## Simple Product Statement
-This product is a web-based GIS review tool for managing **question areas**, which are mapped locations where two GIS layers do not align as expected. The application uses Leaflet on the front end, PostGIS on the back end, and is built around GIS data and standards provided at the start of the project. For the prototype, the system should be containerized with Docker so it can be stood up quickly and consistently during early development.
+This product is a web-based GIS review tool for managing **question areas**, which are mapped locations where property tax boundaries may not match legal deed retracement or the management/ownership data clients use to represent what they own and manage. The application uses Leaflet on the front end, PostGIS on the back end, and is built around GIS data and standards provided at the start of the project. For the prototype, the system should be containerized with Docker so it can be stood up quickly and consistently during early development.
 

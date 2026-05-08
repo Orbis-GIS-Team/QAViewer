@@ -10,7 +10,7 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('admin', 'client')),
+      role TEXT NOT NULL CHECK (role IN ('admin', 'gis_team', 'land_records_team', 'client', 'other')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
@@ -27,8 +27,14 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
   `);
 
   await client.query(`
+    UPDATE users
+    SET role = 'other'
+    WHERE role NOT IN ('admin', 'gis_team', 'land_records_team', 'client', 'other')
+  `);
+
+  await client.query(`
     ALTER TABLE users
-    ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'client'))
+    ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'gis_team', 'land_records_team', 'client', 'other'))
   `);
 
   await client.query(`

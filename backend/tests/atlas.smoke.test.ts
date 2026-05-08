@@ -41,7 +41,9 @@ import { pool } from "../src/lib/db.js";
 const JWT_SECRET = "test-secret-for-vitest-do-not-use-in-prod";
 const app = createApp();
 
-function makeToken(role: "admin" | "client" = "admin", id = 1) {
+type TestRole = "admin" | "gis_team" | "land_records_team" | "client" | "other";
+
+function makeToken(role: TestRole = "admin", id = 1) {
   return jwt.sign({ id, email: "user@test.com", name: "Tester", role }, JWT_SECRET, {
     expiresIn: "1h",
   });
@@ -57,7 +59,11 @@ function stubQuery(...results: any[]) {
   return spy;
 }
 
-const AUTH_ADMIN = { rows: [{ id: 1, email: "user@test.com", name: "Tester", role: "admin" }] };
+function authResult(role: TestRole, id = 1) {
+  return { rows: [{ id, email: "user@test.com", name: "Tester", role }] };
+}
+
+const AUTH_ADMIN = authResult("admin");
 
 const atlasDocument = {
   documentNumber: "DOC-1",
@@ -77,6 +83,44 @@ const atlasDocument = {
 
 describe("GET /api/question-areas/:code/atlas", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it.each(["admin", "gis_team", "land_records_team"] as const)(
+    "allows %s to access Atlas question-area data",
+    async (role) => {
+      vi.mocked(loadAtlasQuestionAreaView).mockResolvedValueOnce({
+        questionAreaCode: "QA-001",
+        bufferValue: 500,
+        bufferUnit: "feet",
+        bufferGeometry: { type: "Polygon", coordinates: [] },
+        matchedRecordCount: 0,
+        linkedDocumentCount: 0,
+        featurelessDocumentCount: 0,
+        importRejectSummary: [],
+        records: [],
+        featurelessDocuments: [],
+        warnings: [],
+      });
+      stubQuery(authResult(role));
+
+      const res = await request(app)
+        .get("/api/question-areas/QA-001/atlas")
+        .set("Authorization", `Bearer ${makeToken(role)}`);
+
+      expect(res.status).toBe(200);
+      expect(loadAtlasQuestionAreaView).toHaveBeenCalledWith("QA-001", 500);
+    },
+  );
+
+  it.each(["client", "other"] as const)("returns 403 for %s before loading Atlas data", async (role) => {
+    stubQuery(authResult(role));
+
+    const res = await request(app)
+      .get("/api/question-areas/QA-001/atlas?buffer=500&unit=feet")
+      .set("Authorization", `Bearer ${makeToken(role)}`);
+
+    expect(res.status).toBe(403);
+    expect(loadAtlasQuestionAreaView).not.toHaveBeenCalled();
+  });
 
   it("returns parent document, child documents, featureless docs, rejects, warnings, and page targets", async () => {
     vi.mocked(loadAtlasQuestionAreaView).mockResolvedValueOnce({
@@ -224,6 +268,17 @@ describe("GET /api/question-areas/:code/atlas", () => {
 
 describe("GET /api/atlas support endpoints", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it.each(["client", "other"] as const)("returns 403 for %s before loading featureless documents", async (role) => {
+    stubQuery(authResult(role));
+
+    const res = await request(app)
+      .get("/api/atlas/featureless-docs")
+      .set("Authorization", `Bearer ${makeToken(role)}`);
+
+    expect(res.status).toBe(403);
+    expect(loadAtlasFeaturelessDocuments).not.toHaveBeenCalled();
+  });
 
   it("returns featureless documents separately from matched land-record trees", async () => {
     vi.mocked(loadAtlasFeaturelessDocuments).mockResolvedValueOnce([

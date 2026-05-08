@@ -4,8 +4,9 @@ import jwt from "jsonwebtoken";
 
 import { config } from "../config.js";
 import { query } from "./db.js";
+import type { Role } from "./rbac.js";
 
-export type Role = "admin" | "client";
+export type { Role } from "./rbac.js";
 
 export type AuthUser = {
   id: number;

@@ -2,12 +2,13 @@ import { Router } from "express";
 import { z } from "zod";
 
 import type { Role } from "../lib/auth.js";
-import { hashPassword, requireRole } from "../lib/auth.js";
+import { hashPassword } from "../lib/auth.js";
 import { query } from "../lib/db.js";
+import { requirePermission, ROLES } from "../lib/rbac.js";
 
 const router = Router();
 
-const ROLE_OPTIONS = ["admin", "client"] as const;
+const ROLE_OPTIONS = ROLES;
 
 const emailSchema = z.string().trim().email().transform((value) => value.toLowerCase());
 
@@ -39,7 +40,7 @@ type AdminCountRow = {
   count: string;
 };
 
-router.use(requireRole("admin"));
+router.use(requirePermission("admin:manage_users"));
 
 function serializeUser(row: ManagedUserRow) {
   return {
@@ -122,7 +123,10 @@ router.get("/users", async (_req, res) => {
       ORDER BY
         CASE u.role
           WHEN 'admin' THEN 0
-          ELSE 1
+          WHEN 'gis_team' THEN 1
+          WHEN 'land_records_team' THEN 2
+          WHEN 'client' THEN 3
+          ELSE 4
         END,
         u.name ASC,
         u.email ASC

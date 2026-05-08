@@ -1,6 +1,6 @@
 # QAViewer
 
-QAViewer is a Docker-first GIS review app built around the NNC cutover dataset in `data/standardized/`. The application is question-area-first: reviewers work from point-based `question_areas` with `land_records` and `management_areas` available as supporting overlays.
+QAViewer is a Docker-first GIS review app built around the NNC cutover dataset in `data/standardized/`. The application is question-area-first: reviewers work from point-based `question_areas` where property tax boundaries may not match legal deed retracement or the management/ownership data clients use to represent what they own and manage. `land_records` and `management_areas` are available as supporting overlays.
 
 The backend also supports a DataBuild tax parcel sidecar used for parcel lookups and tax bill attachments in the question-area workspace.
 

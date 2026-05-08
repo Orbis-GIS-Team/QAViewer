@@ -37,7 +37,9 @@ import {
 const JWT_SECRET = "test-secret-for-vitest-do-not-use-in-prod";
 const app = createApp();
 
-function makeToken(role: "admin" | "client" = "admin", id = 1) {
+type TestRole = "admin" | "gis_team" | "land_records_team" | "client" | "other";
+
+function makeToken(role: TestRole = "admin", id = 1) {
   return jwt.sign({ id, email: "user@test.com", name: "Tester", role }, JWT_SECRET, {
     expiresIn: "1h",
   });
@@ -53,7 +55,11 @@ function stubQuery(...results: any[]) {
   return spy;
 }
 
-const AUTH_ADMIN = { rows: [{ id: 1, email: "user@test.com", name: "Tester", role: "admin" }] };
+function authResult(role: TestRole, id = 1) {
+  return { rows: [{ id, email: "user@test.com", name: "Tester", role }] };
+}
+
+const AUTH_ADMIN = authResult("admin");
 
 const taxBill = {
   billId: "tax-bill-123",
@@ -70,6 +76,41 @@ const taxBill = {
 
 describe("GET /api/question-areas/:code/tax-parcels", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it.each(["admin", "gis_team", "land_records_team"] as const)(
+    "allows %s to access tax parcel question-area data",
+    async (role) => {
+      vi.mocked(loadTaxParcelQuestionAreaView).mockResolvedValueOnce({
+        questionAreaCode: "QA-0073",
+        bufferValue: 500,
+        bufferUnit: "feet",
+        bufferGeometry: { type: "Polygon", coordinates: [] },
+        matchedParcelCount: 0,
+        matchedBillCount: 0,
+        parcels: [],
+        warnings: [],
+      });
+      stubQuery(authResult(role));
+
+      const res = await request(app)
+        .get("/api/question-areas/QA-0073/tax-parcels")
+        .set("Authorization", `Bearer ${makeToken(role)}`);
+
+      expect(res.status).toBe(200);
+      expect(loadTaxParcelQuestionAreaView).toHaveBeenCalledWith("QA-0073", 500);
+    },
+  );
+
+  it.each(["client", "other"] as const)("returns 403 for %s before loading tax parcel data", async (role) => {
+    stubQuery(authResult(role));
+
+    const res = await request(app)
+      .get("/api/question-areas/QA-0073/tax-parcels?buffer=500&unit=feet")
+      .set("Authorization", `Bearer ${makeToken(role)}`);
+
+    expect(res.status).toBe(403);
+    expect(loadTaxParcelQuestionAreaView).not.toHaveBeenCalled();
+  });
 
   it("returns ranked parcel matches with linked bills", async () => {
     vi.mocked(loadTaxParcelQuestionAreaView).mockResolvedValueOnce({
@@ -194,6 +235,17 @@ describe("GET /api/question-areas/:code/tax-parcels", () => {
 
 describe("GET /api/tax-parcels bill endpoints", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it.each(["client", "other"] as const)("returns 403 for %s before loading tax bill content", async (role) => {
+    stubQuery(authResult(role));
+
+    const res = await request(app)
+      .get("/api/tax-parcels/bills/tax-bill-123/content")
+      .set("Authorization", `Bearer ${makeToken(role)}`);
+
+    expect(res.status).toBe(403);
+    expect(loadTaxBillAsset).not.toHaveBeenCalled();
+  });
 
   it("returns 404 for an unknown tax bill content request", async () => {
     vi.mocked(loadTaxBillAsset).mockResolvedValueOnce(null);

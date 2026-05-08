@@ -4,8 +4,8 @@
  * Protects F4 + F10:
  *  - list returns GeoJSON FeatureCollection
  *  - single fetch returns detail with comments/documents
- *  - status update accepts review/active/resolved/hold; rejects invalid values
- *  - comment append validates body
+ *  - client stays read-only for question-area routes
+ *  - reviewer/admin writes still work, with assignment gated separately
  *  - document upload: unsafe application/octet-stream filename rejected; application/pdf accepted
  *
  * All DB calls stubbed via vi.spyOn(pool, "query"). No real DB needed.
@@ -43,7 +43,7 @@ import { pool } from "../src/lib/db.js";
 const JWT_SECRET = "test-secret-for-vitest-do-not-use-in-prod";
 const app = createApp();
 
-function makeToken(role: "admin" | "client" = "admin", id = 1) {
+function makeToken(role: "admin" | "client" | "gis_team" | "land_records_team" = "admin", id = 1) {
   return jwt.sign({ id, email: "user@test.com", name: "Tester", role }, JWT_SECRET, {
     expiresIn: "1h",
   });
@@ -60,6 +60,8 @@ function stubQuery(...results: any[]) {
 }
 
 const AUTH_ADMIN = { rows: [{ id: 1, email: "user@test.com", name: "Tester", role: "admin" }] };
+const AUTH_CLIENT = { rows: [{ id: 2, email: "client@test.com", name: "Client", role: "client" }] };
+const AUTH_GIS = { rows: [{ id: 3, email: "gis@test.com", name: "GIS Reviewer", role: "gis_team" }] };
 
 const minimalQaRow = {
   code: "QA-001",
@@ -130,6 +132,17 @@ describe("GET /api/question-areas", () => {
     expect(res.body.features[0].properties).toHaveProperty("code", "QA-001");
     expect(res.body.features[0].properties).toHaveProperty("status", "review");
   });
+
+  it("allows client read access", async () => {
+    stubQuery(AUTH_CLIENT, { rows: [minimalQaRow] });
+
+    const res = await request(app)
+      .get("/api/question-areas")
+      .set("Authorization", `Bearer ${makeToken("client", 2)}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("type", "FeatureCollection");
+  });
 });
 
 describe("GET /api/question-areas/:code", () => {
@@ -157,6 +170,17 @@ describe("GET /api/question-areas/:code", () => {
     expect(res.body).toHaveProperty("code", "QA-001");
     expect(Array.isArray(res.body.comments)).toBe(true);
     expect(Array.isArray(res.body.documents)).toBe(true);
+  });
+
+  it("allows client detail read access", async () => {
+    stubQuery(AUTH_CLIENT, { rows: [qaDetailRow] }, { rows: [] }, { rows: [] });
+
+    const res = await request(app)
+      .get("/api/question-areas/QA-001")
+      .set("Authorization", `Bearer ${makeToken("client", 2)}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("code", "QA-001");
   });
 });
 
@@ -191,6 +215,42 @@ describe("PATCH /api/question-areas/:code (status update)", () => {
 
     expect(res.status).toBe(400);
   });
+
+  it("returns 403 for client writes", async () => {
+    stubQuery(AUTH_CLIENT);
+
+    const res = await request(app)
+      .patch("/api/question-areas/QA-001")
+      .set("Authorization", `Bearer ${makeToken("client", 2)}`)
+      .send({ status: "active" });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("allows gis_team review updates", async () => {
+    stubQuery(AUTH_GIS, {
+      rows: [{ code: "QA-001", status: "active", summary: "summary", assigned_reviewer: null }],
+    });
+
+    const res = await request(app)
+      .patch("/api/question-areas/QA-001")
+      .set("Authorization", `Bearer ${makeToken("gis_team", 3)}`)
+      .send({ status: "active" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("status", "active");
+  });
+
+  it("blocks assignment changes without assign permission", async () => {
+    stubQuery(AUTH_GIS);
+
+    const res = await request(app)
+      .patch("/api/question-areas/QA-001")
+      .set("Authorization", `Bearer ${makeToken("gis_team", 3)}`)
+      .send({ assignedReviewer: "reviewer@qaviewer.local" });
+
+    expect(res.status).toBe(403);
+  });
 });
 
 describe("POST /api/question-areas/:code/comments", () => {
@@ -222,6 +282,17 @@ describe("POST /api/question-areas/:code/comments", () => {
     expect(res.body).toHaveProperty("id", 55);
     expect(res.body).toHaveProperty("body", "Test comment here");
     expect(res.body).toHaveProperty("authorName", "Tester");
+  });
+
+  it("returns 403 for client comments", async () => {
+    stubQuery(AUTH_CLIENT);
+
+    const res = await request(app)
+      .post("/api/question-areas/QA-001/comments")
+      .set("Authorization", `Bearer ${makeToken("client", 2)}`)
+      .send({ body: "Test comment here" });
+
+    expect(res.status).toBe(403);
   });
 });
 
@@ -271,5 +342,19 @@ describe("POST /api/question-areas/:code/documents (MIME filtering)", () => {
     if (res.status === 201) {
       expect(res.body).toHaveProperty("mimeType", "application/pdf");
     }
+  });
+
+  it("returns 403 for client uploads", async () => {
+    stubQuery(AUTH_CLIENT);
+
+    const res = await request(app)
+      .post("/api/question-areas/QA-001/documents")
+      .set("Authorization", `Bearer ${makeToken("client", 2)}`)
+      .attach("file", Buffer.from("%PDF-fake"), {
+        filename: "doc.pdf",
+        contentType: "application/pdf",
+      });
+
+    expect(res.status).toBe(403);
   });
 });

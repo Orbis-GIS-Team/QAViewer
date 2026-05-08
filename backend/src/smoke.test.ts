@@ -171,6 +171,13 @@ test("auth, admin, question-area, and layer smoke flow", async () => {
   await request(`/question-areas/${questionAreaCode}/comments`, {
     method: "POST",
     token: smokeSession.token,
+    body: { body: `Smoke viewer-only blocked comment ${RUN_ID}` },
+    expectedStatus: 403,
+  });
+
+  await request(`/question-areas/${questionAreaCode}/comments`, {
+    method: "POST",
+    token: admin.token,
     body: { body: `Smoke question-area comment ${RUN_ID}` },
     expectedStatus: 201,
   });
@@ -284,6 +291,6 @@ test("auth, admin, question-area, and layer smoke flow", async () => {
   await request(`/admin/users/${created.user.id}`, {
     method: "DELETE",
     token: admin.token,
-    expectedStatus: 409,
+    expectedStatus: 204,
   });
 });

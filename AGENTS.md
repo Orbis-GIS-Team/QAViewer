@@ -4,6 +4,8 @@
 
 QAViewer is a Docker-first GIS review application built from the PRD in `question_area_review_web_app_prd.md` and the NNC cutover dataset stored in `data/standardized/`.
 
+A question area is a location where property tax boundaries may not match the legal retracement of deeds or the management/ownership data the client uses to represent what they own and manage.
+
 The active app is centered on:
 
 - `question_areas` as point-based review items

@@ -258,7 +258,7 @@ export function TaxParcelPanel({
           <span>{selectedDetail?.parcelCode ?? selectedCode}</span>
         </div>
         <p className="tax-parcel-intro">
-          Ranked parcel matches are derived from the active question-area point buffer and linked to tax bills by Parcel ID.
+          Tax parcel matches are support context for comparing mapped tax boundaries against deed retracement and management data.
         </p>
       </section>
 
