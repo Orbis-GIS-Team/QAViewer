@@ -68,20 +68,21 @@ const minimalQaRow = {
   source_group: "group-a",
   status: "review",
   severity: "medium",
+  actionability_state: "normal",
   title: "Test QA",
   summary: "A test question area",
-  county: null,
-  state: null,
-  primary_parcel_number: null,
-  primary_parcel_code: null,
-  primary_owner_name: null,
+  county: "Clatsop",
+  state: "OR",
+  parcel_code: "PARCEL-001",
+  owner_name: "L&C TREE FARMS LLC",
   property_name: null,
-  analysis_name: null,
   tract_name: null,
+  fund_name: null,
   assigned_reviewer: null,
-  linked_parcel_id: null,
+  exists_in_legal_layer: true,
+  exists_in_management_layer: false,
+  exists_in_client_tabular_bill_data: null,
   geometry: { type: "Point", coordinates: [0, 0] },
-  centroid_geom: { type: "Point", coordinates: [0, 0] },
 };
 
 const qaDetailRow = {
@@ -91,6 +92,7 @@ const qaDetailRow = {
   source_group: "group-a",
   status: "review",
   severity: "medium",
+  actionability_state: "normal",
   title: "Test QA",
   summary: "summary",
   description: null,
@@ -131,6 +133,10 @@ describe("GET /api/question-areas", () => {
     expect(Array.isArray(res.body.features)).toBe(true);
     expect(res.body.features[0].properties).toHaveProperty("code", "QA-001");
     expect(res.body.features[0].properties).toHaveProperty("status", "review");
+    expect(res.body.features[0].properties).toHaveProperty("actionabilityState", "normal");
+    expect(res.body.features[0].properties).toHaveProperty("existsInLegalLayer", true);
+    expect(res.body.features[0].properties).toHaveProperty("existsInManagementLayer", false);
+    expect(res.body.features[0].properties).toHaveProperty("existsInClientTabularBillData", null);
   });
 
   it("allows client read access", async () => {
@@ -142,6 +148,140 @@ describe("GET /api/question-areas", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("type", "FeatureCollection");
+  });
+
+  it("applies business-dimension query filters", async () => {
+    const spy = stubQuery(AUTH_ADMIN, { rows: [minimalQaRow] });
+
+    const res = await request(app)
+      .get("/api/question-areas")
+      .query({
+        status: "review",
+        severity: "medium",
+        state: "OR",
+        county: "Clatsop",
+        propertyName: "Lewis",
+        assignedReviewer: "Ada",
+        actionability: "needs_data",
+        actionabilityState: "high_pain",
+        hasLegalData: "available",
+        hasManagementData: "missing",
+        hasClientBillData: "unknown",
+      })
+      .set("Authorization", `Bearer ${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    const [sql, params] = spy.mock.calls[1];
+    expect(sql).toContain("qa.status =");
+    expect(sql).toContain("qa.severity =");
+    expect(sql).toContain("COALESCE(qa.state, '') ILIKE");
+    expect(sql).toContain("COALESCE(qa.county, '') ILIKE");
+    expect(sql).toContain("COALESCE(qa.property_name, '') ILIKE");
+    expect(sql).toContain("COALESCE(qa.assigned_reviewer, '') ILIKE");
+    expect(sql).toContain("qa.actionability_state =");
+    expect(sql).toContain("qa.exists_in_legal_layer IS TRUE");
+    expect(sql).toContain("qa.exists_in_management_layer IS FALSE");
+    expect(sql).toContain("qa.exists_in_client_tabular_bill_data IS NULL");
+    expect(params).toEqual([
+      "review",
+      "medium",
+      "%OR%",
+      "%Clatsop%",
+      "%Lewis%",
+      "%Ada%",
+      "high_pain",
+    ]);
+  });
+});
+
+describe("GET /api/question-areas/export.xlsx", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const exportRow = {
+    code: "QA-001",
+    status: "review",
+    severity: "medium",
+    actionability_state: "high_pain",
+    title: "Test QA",
+    summary: "A test question area",
+    description: "Exportable description",
+    county: "Clatsop",
+    state: "OR",
+    parcel_code: "PARCEL-001",
+    owner_name: "L&C TREE FARMS LLC",
+    property_name: "Lewis & Clark",
+    tract_name: "Tract 1",
+    fund_name: "Fund A",
+    land_services: "Needs legal review",
+    tax_bill_acres: 12.3,
+    gis_acres: 12.1,
+    assigned_reviewer: "Ada",
+    exists_in_legal_layer: true,
+    exists_in_management_layer: false,
+    exists_in_client_tabular_bill_data: null,
+    longitude: -123.1,
+    latitude: 45.9,
+  };
+
+  it("returns 401 without token", async () => {
+    const res = await request(app).get("/api/question-areas/export.xlsx");
+    expect(res.status).toBe(401);
+  });
+
+  it("allows client read access and returns spreadsheet headers", async () => {
+    stubQuery(AUTH_CLIENT, { rows: [exportRow] });
+
+    const res = await request(app)
+      .get("/api/question-areas/export.xlsx")
+      .set("Authorization", `Bearer ${makeToken("client", 2)}`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain(
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    expect(res.headers["content-disposition"]).toContain("question-area-report.xlsx");
+    expect(Number(res.headers["content-length"])).toBeGreaterThan(0);
+  });
+
+  it("reuses question-area business filters", async () => {
+    const spy = stubQuery(AUTH_ADMIN, { rows: [exportRow] });
+
+    const res = await request(app)
+      .get("/api/question-areas/export.xlsx")
+      .query({
+        status: "review",
+        severity: "medium",
+        state: "OR",
+        county: "Clatsop",
+        propertyName: "Lewis",
+        assignedReviewer: "Ada",
+        actionability: "ready",
+        hasLegalData: "available",
+        hasManagementData: "available",
+        hasClientBillData: "available",
+      })
+      .set("Authorization", `Bearer ${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    const [sql, params] = spy.mock.calls[1];
+    expect(sql).toContain("qa.status =");
+    expect(sql).toContain("qa.severity =");
+    expect(sql).toContain("COALESCE(qa.state, '') ILIKE");
+    expect(sql).toContain("COALESCE(qa.county, '') ILIKE");
+    expect(sql).toContain("COALESCE(qa.property_name, '') ILIKE");
+    expect(sql).toContain("COALESCE(qa.assigned_reviewer, '') ILIKE");
+    expect(sql).toContain("qa.exists_in_legal_layer IS TRUE");
+    expect(sql).toContain("qa.exists_in_management_layer IS TRUE");
+    expect(sql).toContain("qa.exists_in_client_tabular_bill_data IS TRUE");
+    expect(sql).toContain("LIMIT 10000");
+    expect(params).toEqual([
+      "review",
+      "medium",
+      "%OR%",
+      "%Clatsop%",
+      "%Lewis%",
+      "%Ada%",
+    ]);
   });
 });
 
@@ -168,6 +308,7 @@ describe("GET /api/question-areas/:code", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("code", "QA-001");
+    expect(res.body).toHaveProperty("actionabilityState", "normal");
     expect(Array.isArray(res.body.comments)).toBe(true);
     expect(Array.isArray(res.body.documents)).toBe(true);
   });

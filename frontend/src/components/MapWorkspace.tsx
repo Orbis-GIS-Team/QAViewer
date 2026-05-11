@@ -41,6 +41,24 @@ type SearchResult = {
 };
 
 type SearchField = "all" | "parcel_code" | "county" | "qa_id";
+type DataAvailabilityFilter = "all" | "available" | "missing" | "unknown";
+type ActionabilityFilter = "all" | "open" | "closed" | "assigned" | "unassigned" | "needs_data" | "ready";
+type QuestionActionabilityState = "normal" | "high_pain" | "no_parcel_data" | "in_progress";
+
+type QuestionAreaFilters = {
+  search: string;
+  field: SearchField;
+  status: string;
+  severity: string;
+  state: string;
+  county: string;
+  propertyName: string;
+  assignedReviewer: string;
+  actionability: ActionabilityFilter;
+  hasLegalData: DataAvailabilityFilter;
+  hasManagementData: DataAvailabilityFilter;
+  hasClientBillData: DataAvailabilityFilter;
+};
 
 type SummaryPayload = {
   questionAreas: number;
@@ -58,6 +76,7 @@ type QuestionAreaProperties = {
   code: string;
   status: string;
   severity: string;
+  actionabilityState: string | null;
   title: string;
   summary: string;
   county: string | null;
@@ -68,6 +87,9 @@ type QuestionAreaProperties = {
   tractName: string | null;
   fundName: string | null;
   assignedReviewer: string | null;
+  existsInLegalLayer: boolean | null;
+  existsInManagementLayer: boolean | null;
+  existsInClientTabularBillData: boolean | null;
 };
 
 type QuestionAreaFeature = Feature<Geometry, QuestionAreaProperties>;
@@ -78,7 +100,36 @@ type LayerFeatureProperties = {
   [key: string]: unknown;
 };
 
+type LinearRingCoordinates = number[][];
+type PolygonCoordinates = LinearRingCoordinates[];
+type MultiPolygonCoordinates = PolygonCoordinates[];
+type LayerFeature = Feature<Geometry, LayerFeatureProperties>;
 type LayerCollection = FeatureCollection<Geometry, LayerFeatureProperties>;
+
+type IdentifyFieldConfig = {
+  key: string;
+  label: string;
+};
+
+type IdentifyLayerConfig = {
+  label: string;
+  badgeClass: string;
+  primaryFields: IdentifyFieldConfig[];
+  attributeFields: IdentifyFieldConfig[];
+  contextFields: IdentifyFieldConfig[];
+};
+
+type IdentifiedFeature = {
+  layerKey: LayerKey;
+  feature: LayerFeature;
+  latlng: L.LatLngLiteral;
+};
+
+type IdentifyFieldRow = {
+  key: string;
+  label: string;
+  value: string;
+};
 
 type QuestionAreaDetail = {
   id: number;
@@ -86,6 +137,7 @@ type QuestionAreaDetail = {
   sourceLayer: string;
   status: string;
   severity: string;
+  actionabilityState: string | null;
   title: string;
   summary: string;
   description: string | null;
@@ -140,6 +192,7 @@ type BusyState = {
   saving: boolean;
   commenting: boolean;
   uploading: boolean;
+  exporting: boolean;
 };
 
 type MapWorkspaceProps = {
@@ -156,12 +209,54 @@ type LegendItem = {
 };
 
 const STATUS_OPTIONS = ["review", "active", "resolved", "hold"];
+const SEVERITY_OPTIONS = ["high", "medium", "low"];
+const QA_ACTIONABILITY_STATES: QuestionActionabilityState[] = [
+  "normal",
+  "high_pain",
+  "no_parcel_data",
+  "in_progress",
+];
+const QA_ACTIONABILITY_META: Record<QuestionActionabilityState, { label: string; symbol: string }> = {
+  normal: { label: "Normal", symbol: "?" },
+  high_pain: { label: "High Pain", symbol: "!" },
+  no_parcel_data: { label: "No Parcel Data", symbol: "X" },
+  in_progress: { label: "In Progress", symbol: "..." },
+};
 const SEARCH_FIELD_OPTIONS: Array<{ value: SearchField; label: string }> = [
   { value: "all", label: "All fields" },
   { value: "qa_id", label: "Question Area ID" },
   { value: "parcel_code", label: "Support Context" },
   { value: "county", label: "County / State" },
 ];
+const ACTIONABILITY_OPTIONS: Array<{ value: ActionabilityFilter; label: string }> = [
+  { value: "all", label: "All actionability" },
+  { value: "open", label: "Open workflow" },
+  { value: "closed", label: "Closed workflow" },
+  { value: "assigned", label: "Assigned" },
+  { value: "unassigned", label: "Unassigned" },
+  { value: "needs_data", label: "Needs data" },
+  { value: "ready", label: "All data present" },
+];
+const DATA_AVAILABILITY_OPTIONS: Array<{ value: DataAvailabilityFilter; label: string }> = [
+  { value: "all", label: "Any" },
+  { value: "available", label: "Available" },
+  { value: "missing", label: "Missing" },
+  { value: "unknown", label: "Unknown" },
+];
+const DEFAULT_QA_FILTERS: QuestionAreaFilters = {
+  search: "",
+  field: "all",
+  status: "all",
+  severity: "all",
+  state: "",
+  county: "",
+  propertyName: "",
+  assignedReviewer: "",
+  actionability: "all",
+  hasLegalData: "all",
+  hasManagementData: "all",
+  hasClientBillData: "all",
+};
 
 const initialLayers: Record<LayerKey, boolean> = {
   land_records: true,
@@ -173,6 +268,64 @@ const LEGEND_ITEMS: LegendItem[] = [
   { key: "land_records", label: "Land Records", swatch: "land-records", toggleable: true },
   { key: "management_areas", label: "Management Areas", swatch: "management", toggleable: true },
 ];
+const IDENTIFY_LAYER_ORDER: LayerKey[] = ["management_areas", "land_records"];
+
+const IDENTIFY_LAYER_CONFIG: Record<LayerKey, IdentifyLayerConfig> = {
+  land_records: {
+    label: "Land Record",
+    badgeClass: "land-records",
+    primaryFields: [
+      { key: "parcel_number", label: "Parcel Number" },
+      { key: "record_number", label: "Record Number" },
+      { key: "document_number", label: "Document Number" },
+    ],
+    attributeFields: [
+      { key: "current_owner", label: "Current Owner" },
+      { key: "previous_owner", label: "Previous Owner" },
+      { key: "record_type", label: "Record Type" },
+      { key: "document_type", label: "Document Type" },
+      { key: "record_status", label: "Record Status" },
+      { key: "tax_confirmed", label: "Tax Confirmed" },
+    ],
+    contextFields: [
+      { key: "property_name", label: "Property" },
+      { key: "tract_key", label: "Tract Key" },
+      { key: "fund_name", label: "Fund" },
+      { key: "county", label: "County" },
+      { key: "state", label: "State" },
+      { key: "region_name", label: "Region" },
+      { key: "deed_acres", label: "Deed Acres" },
+      { key: "gis_acres", label: "GIS Acres" },
+    ],
+  },
+  management_areas: {
+    label: "Management Area",
+    badgeClass: "management",
+    primaryFields: [
+      { key: "property_code", label: "Property Code" },
+      { key: "property_name", label: "Property" },
+      { key: "portfolio", label: "Portfolio" },
+    ],
+    attributeFields: [
+      { key: "status", label: "Status" },
+      { key: "fund_name", label: "Fund" },
+      { key: "management_type", label: "Management Type" },
+      { key: "investment_manager", label: "Investment Manager" },
+      { key: "business_unit", label: "Business Unit" },
+      { key: "crops", label: "Crops" },
+    ],
+    contextFields: [
+      { key: "county", label: "County" },
+      { key: "state", label: "State" },
+      { key: "region", label: "Region" },
+      { key: "country", label: "Country" },
+      { key: "gross_acres", label: "Gross Acres" },
+      { key: "tillable_acres", label: "Tillable Acres" },
+      { key: "gis_acres", label: "GIS Acres" },
+      { key: "effective_date", label: "Effective Date" },
+    ],
+  },
+};
 
 const landRecordStyle: PathOptions = {
   color: "#0f766e",
@@ -217,12 +370,11 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [layerVisibility, setLayerVisibility] = useState(initialLayers);
   const [layerData, setLayerData] = useState<Partial<Record<LayerKey, LayerCollection>>>({});
   const [searchInput, setSearchInput] = useState("");
-  const [searchFilter, setSearchFilter] = useState("");
+  const [filters, setFilters] = useState<QuestionAreaFilters>(DEFAULT_QA_FILTERS);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [searchField, setSearchField] = useState<SearchField>("all");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
+  const [identifiedFeature, setIdentifiedFeature] = useState<IdentifiedFeature | null>(null);
   const [supportWorkspaceTab, setSupportWorkspaceTab] = useState<SupportWorkspaceTab | null>(() => {
     return getVisibleSupportTabs(session.user.role)[0]?.id ?? null;
   });
@@ -246,6 +398,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     saving: false,
     commenting: false,
     uploading: false,
+    exporting: false,
   });
 
   const deferredSearch = useDeferredValue(searchInput);
@@ -331,7 +484,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     }
 
     let alive = true;
-    const params = new URLSearchParams({ q: query, field: searchField });
+    const params = new URLSearchParams({ q: query, field: filters.field });
 
     apiRequest<{ results: SearchResult[] }>(`/dashboard/search?${params.toString()}`, {
       token: session.token,
@@ -350,23 +503,11 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     return () => {
       alive = false;
     };
-  }, [deferredSearch, searchField, session.token]);
+  }, [deferredSearch, filters.field, session.token]);
 
   useEffect(() => {
     let alive = true;
-    const params = new URLSearchParams({
-      bbox: mapBbox,
-      limit: "600",
-    });
-
-    if (searchFilter) {
-      params.set("search", searchFilter);
-      params.set("field", searchField);
-    }
-
-    if (statusFilter !== "all") {
-      params.set("status", statusFilter);
-    }
+    const params = buildQuestionAreaQueryParams(filters, mapBbox, "600");
 
     apiRequest<QuestionAreaCollection>(`/question-areas?${params.toString()}`, {
       token: session.token,
@@ -390,7 +531,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     return () => {
       alive = false;
     };
-  }, [mapBbox, searchField, searchFilter, session.token, statusFilter]);
+  }, [filters, mapBbox, session.token]);
 
   useEffect(() => {
     const visibleLayers = (Object.keys(layerVisibility) as LayerKey[]).filter(
@@ -434,6 +575,12 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       alive = false;
     };
   }, [layerVisibility, mapBbox, session.token]);
+
+  useEffect(() => {
+    if (identifiedFeature && !layerVisibility[identifiedFeature.layerKey]) {
+      setIdentifiedFeature(null);
+    }
+  }, [identifiedFeature, layerVisibility]);
 
   useEffect(() => {
     if (!selectedCode) {
@@ -633,6 +780,31 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     setSearchResults([]);
   }
 
+  async function handleExportQuestionAreas() {
+    setBusy((current) => ({ ...current, exporting: true }));
+    try {
+      const params = buildQuestionAreaQueryParams(filters, mapBbox);
+      const queryString = params.toString();
+      const path = `/api/question-areas/export.xlsx${queryString ? `?${queryString}` : ""}`;
+      const blob = await apiDownload(path, session.token);
+      const url = window.URL.createObjectURL(blob);
+      const link = window.document.createElement("a");
+      link.href = url;
+      link.download = "question-area-report.xlsx";
+      link.click();
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+      showFeedback("Spreadsheet export started.", "success");
+    } catch (error) {
+      showFeedback(error instanceof Error ? error.message : "Export failed.");
+    } finally {
+      setBusy((current) => ({ ...current, exporting: false }));
+    }
+  }
+
+  function identifyLayerFeature(layerKey: LayerKey, feature: LayerFeature, latlng: L.LatLngLiteral) {
+    setIdentifiedFeature({ layerKey, feature, latlng });
+  }
+
   function toggleLayer(layerKey: LayerKey) {
     setLayerVisibility((current) => ({
       ...current,
@@ -642,12 +814,16 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSearchFilter(searchInput.trim());
+    updateFilters({ search: searchInput.trim() });
   }
 
-  function clearSearch() {
+  function updateFilters(nextFilters: Partial<QuestionAreaFilters>) {
+    setFilters((current) => ({ ...current, ...nextFilters }));
+  }
+
+  function clearFilters() {
     setSearchInput("");
-    setSearchFilter("");
+    setFilters(DEFAULT_QA_FILTERS);
     setSearchResults([]);
   }
 
@@ -696,6 +872,9 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 </span>
                 <span className={`badge ${severityBadgeClass(selectedDetail.severity)}`}>
                   {humanize(selectedDetail.severity)}
+                </span>
+                <span className={`badge ${actionabilityBadgeClass(selectedDetail.actionabilityState)}`}>
+                  {actionabilityLabel(selectedDetail.actionabilityState)}
                 </span>
               </div>
             </div>
@@ -836,8 +1015,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                       <label>
                         Search field
                         <select
-                          value={searchField}
-                          onChange={(event) => setSearchField(event.target.value as SearchField)}
+                          value={filters.field}
+                          onChange={(event) => updateFilters({ field: event.target.value as SearchField })}
                         >
                           {SEARCH_FIELD_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -849,8 +1028,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                       <label>
                         Status
                         <select
-                          value={statusFilter}
-                          onChange={(event) => setStatusFilter(event.target.value)}
+                          value={filters.status}
+                          onChange={(event) => updateFilters({ status: event.target.value })}
                         >
                           <option value="all">All statuses</option>
                           {STATUS_OPTIONS.map((status) => (
@@ -860,12 +1039,120 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                           ))}
                         </select>
                       </label>
+                      <label>
+                        Severity
+                        <select
+                          value={filters.severity}
+                          onChange={(event) => updateFilters({ severity: event.target.value })}
+                        >
+                          <option value="all">All severities</option>
+                          {SEVERITY_OPTIONS.map((severity) => (
+                            <option key={severity} value={severity}>
+                              {humanize(severity)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Actionability
+                        <select
+                          value={filters.actionability}
+                          onChange={(event) =>
+                            updateFilters({ actionability: event.target.value as ActionabilityFilter })
+                          }
+                        >
+                          {ACTIONABILITY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        State
+                        <input
+                          onChange={(event) => updateFilters({ state: event.target.value })}
+                          placeholder="OR, PA, WA..."
+                          value={filters.state}
+                        />
+                      </label>
+                      <label>
+                        County
+                        <input
+                          onChange={(event) => updateFilters({ county: event.target.value })}
+                          placeholder="Clatsop, Warren..."
+                          value={filters.county}
+                        />
+                      </label>
+                      <label>
+                        Property
+                        <input
+                          onChange={(event) => updateFilters({ propertyName: event.target.value })}
+                          placeholder="Lewis & Clark..."
+                          value={filters.propertyName}
+                        />
+                      </label>
+                      <label>
+                        Reviewer
+                        <input
+                          onChange={(event) => updateFilters({ assignedReviewer: event.target.value })}
+                          placeholder="Reviewer name"
+                          value={filters.assignedReviewer}
+                        />
+                      </label>
+                    </div>
+                    <div className="filter-grid data-filter-grid">
+                      <label>
+                        Legal data
+                        <select
+                          value={filters.hasLegalData}
+                          onChange={(event) =>
+                            updateFilters({ hasLegalData: event.target.value as DataAvailabilityFilter })
+                          }
+                        >
+                          {DATA_AVAILABILITY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Management data
+                        <select
+                          value={filters.hasManagementData}
+                          onChange={(event) =>
+                            updateFilters({ hasManagementData: event.target.value as DataAvailabilityFilter })
+                          }
+                        >
+                          {DATA_AVAILABILITY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Client bill data
+                        <select
+                          value={filters.hasClientBillData}
+                          onChange={(event) =>
+                            updateFilters({ hasClientBillData: event.target.value as DataAvailabilityFilter })
+                          }
+                        >
+                          {DATA_AVAILABILITY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                     </div>
                     <div className="search-input-row">
                       <button className="primary-button" type="submit">
                         Apply filter
                       </button>
-                      <button className="ghost-button" onClick={clearSearch} type="button">
+                      <button className="ghost-button" onClick={clearFilters} type="button">
                         Clear
                       </button>
                     </div>
@@ -875,7 +1162,17 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 <section className="panel-section">
                   <div className="section-heading">
                     <h2>Visible Results</h2>
-                    <span>{filteredAreaCount} in map extent</span>
+                    <div className="section-heading-actions">
+                      <span>{filteredAreaCount} in map extent</span>
+                      <button
+                        className="ghost-button compact-button"
+                        disabled={busy.exporting || filteredAreaCount === 0}
+                        onClick={() => void handleExportQuestionAreas()}
+                        type="button"
+                      >
+                        {busy.exporting ? "Exporting..." : "Export XLSX"}
+                      </button>
+                    </div>
                   </div>
                   <div className="result-list">
                     {questionAreas?.features.map((feature) => {
@@ -894,8 +1191,16 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                           <div className="list-card-body">
                             <div className="user-card-head">
                               <strong>{properties.code}</strong>
-                              <span className={`badge ${severityBadgeClass(properties.severity)}`}>
-                                {humanize(properties.severity)}
+                              <span className="list-card-badges">
+                                <span className={`badge ${workflowBadgeClass(properties.status)}`}>
+                                  {workflowLabel(properties.status)}
+                                </span>
+                                <span className={`badge ${severityBadgeClass(properties.severity)}`}>
+                                  {humanize(properties.severity)}
+                                </span>
+                                <span className={`badge ${actionabilityBadgeClass(properties.actionabilityState)}`}>
+                                  {actionabilityLabel(properties.actionabilityState)}
+                                </span>
                               </span>
                             </div>
                             <span className="list-card-title">{properties.title}</span>
@@ -937,11 +1242,21 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
             <MapLegendControl layerVisibility={layerVisibility} onToggleLayer={toggleLayer} />
             <MeasurementControl />
             <MapViewportWatcher onChange={setMapBbox} />
+            <MapIdentifyClickHandler
+              layerData={layerData}
+              layerVisibility={layerVisibility}
+              onIdentify={identifyLayerFeature}
+            />
             <MapFocus geometry={selectedDetail?.geometry ?? null} targetKey={selectedDetail?.code ?? null} />
 
             <Pane name="land-records" style={{ zIndex: 380 }}>
               {layerVisibility.land_records && layerData.land_records ? (
-                <GeoJSON data={layerData.land_records} style={landRecordStyle} />
+                <IdentifyGeoJsonLayer
+                  data={layerData.land_records}
+                  identifiedFeature={identifiedFeature}
+                  layerKey="land_records"
+                  onIdentify={identifyLayerFeature}
+                />
               ) : null}
             </Pane>
 
@@ -954,7 +1269,12 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
             <Pane name="management-areas" style={{ zIndex: 390 }}>
               {layerVisibility.management_areas && layerData.management_areas ? (
-                <GeoJSON data={layerData.management_areas} style={managementAreaStyle} />
+                <IdentifyGeoJsonLayer
+                  data={layerData.management_areas}
+                  identifiedFeature={identifiedFeature}
+                  layerKey="management_areas"
+                  onIdentify={identifyLayerFeature}
+                />
               ) : null}
             </Pane>
 
@@ -968,6 +1288,12 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
               ) : null}
             </Pane>
           </MapContainer>
+          {identifiedFeature ? (
+            <IdentifyPanel
+              identifiedFeature={identifiedFeature}
+              onClose={() => setIdentifiedFeature(null)}
+            />
+          ) : null}
         </section>
 
         {hasSupportWorkspace ? (
@@ -1040,6 +1366,49 @@ function HeaderSummaryChip({ label, value }: { label: string; value: string | nu
       <strong>{value}</strong>
     </div>
   );
+}
+
+function buildQuestionAreaQueryParams(filters: QuestionAreaFilters, mapBbox: string, limit?: string) {
+  const params = new URLSearchParams({ bbox: mapBbox });
+
+  if (limit) {
+    params.set("limit", limit);
+  }
+
+  if (filters.search) {
+    params.set("search", filters.search);
+    params.set("field", filters.field);
+  }
+
+  if (filters.status !== "all") {
+    params.set("status", filters.status);
+  }
+
+  appendFilterParam(params, "severity", filters.severity, "all");
+  appendFilterParam(params, "state", filters.state);
+  appendFilterParam(params, "county", filters.county);
+  appendFilterParam(params, "propertyName", filters.propertyName);
+  appendFilterParam(params, "assignedReviewer", filters.assignedReviewer);
+  appendFilterParam(params, "actionability", filters.actionability, "all");
+  appendFilterParam(params, "hasLegalData", filters.hasLegalData, "all");
+  appendFilterParam(params, "hasManagementData", filters.hasManagementData, "all");
+  appendFilterParam(params, "hasClientBillData", filters.hasClientBillData, "all");
+
+  return params;
+}
+
+function appendFilterParam(
+  params: URLSearchParams,
+  key: string,
+  value: string,
+  skipValue = "",
+) {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === skipValue) {
+    return;
+  }
+
+  params.set(key, trimmed);
 }
 
 function ReviewRecordSections({
@@ -1303,6 +1672,352 @@ function ManagementPatternDefs() {
   );
 }
 
+function MapIdentifyClickHandler({
+  layerData,
+  layerVisibility,
+  onIdentify,
+}: {
+  layerData: Partial<Record<LayerKey, LayerCollection>>;
+  layerVisibility: Record<LayerKey, boolean>;
+  onIdentify: (layerKey: LayerKey, feature: LayerFeature, latlng: L.LatLngLiteral) => void;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+
+    function handleMapClick(event: MouseEvent) {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(".leaflet-control, .leaflet-marker-icon")) {
+        return;
+      }
+
+      const latlng = map.mouseEventToLatLng(event);
+      const identified = findIdentifiedFeature(layerData, layerVisibility, latlng);
+      if (identified) {
+        onIdentify(identified.layerKey, identified.feature, latlng);
+      }
+    }
+
+    container.addEventListener("click", handleMapClick, true);
+    return () => container.removeEventListener("click", handleMapClick, true);
+  }, [layerData, layerVisibility, map, onIdentify]);
+
+  return null;
+}
+
+function IdentifyGeoJsonLayer({
+  data,
+  identifiedFeature,
+  layerKey,
+  onIdentify,
+}: {
+  data: LayerCollection;
+  identifiedFeature: IdentifiedFeature | null;
+  layerKey: LayerKey;
+  onIdentify: (layerKey: LayerKey, feature: LayerFeature, latlng: L.LatLngLiteral) => void;
+}) {
+  return (
+    <GeoJSON
+      key={`${layerKey}-${identifiedFeature?.layerKey ?? "none"}-${identifiedFeature?.feature.properties.id ?? "none"}`}
+      data={data}
+      onEachFeature={(feature, layer) => {
+        if (!isPolygonGeometry(feature.geometry)) {
+          return;
+        }
+
+        layer.on("click", (event: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(event.originalEvent);
+          onIdentify(layerKey, feature as LayerFeature, event.latlng);
+        });
+      }}
+      style={(feature) => identifyFeatureStyle(layerKey, feature as LayerFeature | undefined, identifiedFeature)}
+    />
+  );
+}
+
+function IdentifyPanel({
+  identifiedFeature,
+  onClose,
+}: {
+  identifiedFeature: IdentifiedFeature;
+  onClose: () => void;
+}) {
+  const config = IDENTIFY_LAYER_CONFIG[identifiedFeature.layerKey];
+  const properties = identifiedFeature.feature.properties;
+  const usedKeys = new Set<string>([
+    "id",
+    ...config.primaryFields.map((field) => field.key),
+    ...config.attributeFields.map((field) => field.key),
+    ...config.contextFields.map((field) => field.key),
+  ]);
+  const primaryRows = configuredIdentifyRows(properties, config.primaryFields);
+  const attributeRows = configuredIdentifyRows(properties, config.attributeFields);
+  const contextRows = configuredIdentifyRows(properties, config.contextFields);
+  const metadataRows = geometryMetadataRows(identifiedFeature);
+  const additionalRows = additionalIdentifyRows(properties, usedKeys);
+  const title = firstKnownValue(primaryRows) ?? `${config.label} ${properties.id}`;
+
+  return (
+    <aside className="map-identify-panel" aria-label={`${config.label} details`}>
+      <div className="identify-panel-header">
+        <div className="identify-title-group">
+          <span className={`identify-layer-badge ${config.badgeClass}`}>{config.label}</span>
+          <h2>{title}</h2>
+        </div>
+        <button className="identify-close-button" onClick={onClose} title="Close identify panel" type="button">
+          x
+        </button>
+      </div>
+
+      <IdentifyFieldSection rows={primaryRows} title="Identifiers" />
+      <IdentifyFieldSection rows={attributeRows} title="Attributes" />
+      <IdentifyFieldSection rows={contextRows} title="Context" />
+      <IdentifyFieldSection rows={metadataRows} title="Geometry" />
+
+      {additionalRows.length > 0 ? (
+        <details className="identify-advanced">
+          <summary>Additional Fields ({additionalRows.length})</summary>
+          <IdentifyFieldList rows={additionalRows} />
+        </details>
+      ) : null}
+    </aside>
+  );
+}
+
+function IdentifyFieldSection({ rows, title }: { rows: IdentifyFieldRow[]; title: string }) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="identify-section">
+      <h3>{title}</h3>
+      <IdentifyFieldList rows={rows} />
+    </section>
+  );
+}
+
+function IdentifyFieldList({ rows }: { rows: IdentifyFieldRow[] }) {
+  return (
+    <dl className="identify-field-grid">
+      {rows.map((row) => (
+        <div key={row.key}>
+          <dt>{row.label}</dt>
+          <dd>{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function identifyFeatureStyle(
+  layerKey: LayerKey,
+  feature: LayerFeature | undefined,
+  identifiedFeature: IdentifiedFeature | null,
+): PathOptions {
+  const baseStyle = layerKey === "land_records" ? landRecordStyle : managementAreaStyle;
+  const isSelected =
+    Boolean(feature) &&
+    identifiedFeature?.layerKey === layerKey &&
+    identifiedFeature.feature.properties.id === feature?.properties.id;
+
+  if (!isSelected) {
+    return baseStyle;
+  }
+
+  return {
+    ...baseStyle,
+    color: "#0f172a",
+    fillOpacity: 0.22,
+    weight: 4,
+  };
+}
+
+function configuredIdentifyRows(
+  properties: LayerFeatureProperties,
+  fields: IdentifyFieldConfig[],
+): IdentifyFieldRow[] {
+  return fields.flatMap((field) => {
+    const value = formatIdentifyValue(properties[field.key]);
+    return value ? [{ key: field.key, label: field.label, value }] : [];
+  });
+}
+
+function additionalIdentifyRows(
+  properties: LayerFeatureProperties,
+  usedKeys: Set<string>,
+): IdentifyFieldRow[] {
+  return Object.entries(properties).flatMap(([key, value]) => {
+    if (usedKeys.has(key)) {
+      return [];
+    }
+
+    const formatted = formatIdentifyValue(value);
+    return formatted ? [{ key, label: humanize(key), value: formatted }] : [];
+  });
+}
+
+function geometryMetadataRows(identifiedFeature: IdentifiedFeature): IdentifyFieldRow[] {
+  const geometry = identifiedFeature.feature.geometry;
+  const partCount = geometryPartCount(geometry);
+  const vertexCount = geometryVertexCount(geometry);
+
+  return [
+    { key: "feature_id", label: "Feature ID", value: String(identifiedFeature.feature.properties.id) },
+    { key: "geometry_type", label: "Geometry", value: humanize(geometry.type) },
+    { key: "parts", label: "Parts", value: partCount.toLocaleString() },
+    { key: "vertices", label: "Vertices", value: vertexCount.toLocaleString() },
+    {
+      key: "clicked_location",
+      label: "Clicked Location",
+      value: `${identifiedFeature.latlng.lat.toFixed(5)}, ${identifiedFeature.latlng.lng.toFixed(5)}`,
+    },
+  ];
+}
+
+function firstKnownValue(rows: IdentifyFieldRow[]) {
+  return rows.find((row) => row.value)?.value ?? null;
+}
+
+function formatIdentifyValue(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "boolean") {
+    return formatBoolean(value);
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value)
+      ? value.toLocaleString(undefined, { maximumFractionDigits: 2 })
+      : null;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+
+  const serialized = JSON.stringify(value);
+  if (!serialized || serialized === "{}" || serialized === "[]") {
+    return null;
+  }
+
+  return serialized.length > 180 ? `${serialized.slice(0, 177)}...` : serialized;
+}
+
+function geometryPartCount(geometry: Geometry) {
+  if (geometry.type === "MultiPolygon" || geometry.type === "MultiLineString" || geometry.type === "MultiPoint") {
+    return geometry.coordinates.length;
+  }
+
+  if (geometry.type === "GeometryCollection") {
+    return geometry.geometries.length;
+  }
+
+  return 1;
+}
+
+function geometryVertexCount(geometry: Geometry): number {
+  if (geometry.type === "GeometryCollection") {
+    return geometry.geometries.reduce((count, child) => count + geometryVertexCount(child), 0);
+  }
+
+  return countCoordinatePairs(geometry.coordinates);
+}
+
+function countCoordinatePairs(value: unknown): number {
+  if (!Array.isArray(value)) {
+    return 0;
+  }
+
+  if (typeof value[0] === "number" && typeof value[1] === "number") {
+    return 1;
+  }
+
+  return value.reduce((count: number, child: unknown) => count + countCoordinatePairs(child), 0);
+}
+
+function isPolygonGeometry(geometry: Geometry | null | undefined) {
+  return geometry?.type === "Polygon" || geometry?.type === "MultiPolygon";
+}
+
+function findIdentifiedFeature(
+  layerData: Partial<Record<LayerKey, LayerCollection>>,
+  layerVisibility: Record<LayerKey, boolean>,
+  latlng: L.LatLngLiteral,
+): { layerKey: LayerKey; feature: LayerFeature } | null {
+  for (const layerKey of IDENTIFY_LAYER_ORDER) {
+    if (!layerVisibility[layerKey]) {
+      continue;
+    }
+
+    const collection = layerData[layerKey];
+    const feature = collection?.features.find((candidate) =>
+      isPolygonGeometry(candidate.geometry) && featureContainsLatLng(candidate as LayerFeature, latlng),
+    );
+
+    if (feature) {
+      return { layerKey, feature: feature as LayerFeature };
+    }
+  }
+
+  return null;
+}
+
+function featureContainsLatLng(feature: LayerFeature, latlng: L.LatLngLiteral) {
+  const point: [number, number] = [latlng.lng, latlng.lat];
+  const geometry = feature.geometry;
+
+  if (geometry.type === "Polygon") {
+    return polygonContainsPoint(geometry.coordinates as PolygonCoordinates, point);
+  }
+
+  if (geometry.type === "MultiPolygon") {
+    return (geometry.coordinates as MultiPolygonCoordinates).some((polygon) =>
+      polygonContainsPoint(polygon, point),
+    );
+  }
+
+  return false;
+}
+
+function polygonContainsPoint(polygon: PolygonCoordinates, point: [number, number]) {
+  const [outerRing, ...innerRings] = polygon;
+  if (!outerRing || !ringContainsPoint(outerRing, point)) {
+    return false;
+  }
+
+  return !innerRings.some((ring) => ringContainsPoint(ring, point));
+}
+
+function ringContainsPoint(ring: LinearRingCoordinates, point: [number, number]) {
+  const [x, y] = point;
+  let inside = false;
+
+  for (let currentIndex = 0, previousIndex = ring.length - 1; currentIndex < ring.length; previousIndex = currentIndex++) {
+    const current = ring[currentIndex];
+    const previous = ring[previousIndex];
+    if (!current || !previous) {
+      continue;
+    }
+
+    const [currentX, currentY] = current;
+    const [previousX, previousY] = previous;
+    const intersects =
+      currentY > y !== previousY > y &&
+      x < ((previousX - currentX) * (y - currentY)) / (previousY - currentY) + currentX;
+
+    if (intersects) {
+      inside = !inside;
+    }
+  }
+
+  return inside;
+}
+
 function QAMarkerLayer({
   questionAreas,
   selectedCode,
@@ -1327,7 +2042,7 @@ function QAMarkerLayer({
           <Marker
             key={code}
             eventHandlers={{ click: () => onSelect(code) }}
-            icon={createQAMarker(selectedCode, code)}
+            icon={createQAMarker(selectedCode, code, feature.properties.actionabilityState)}
             position={[lat, lng]}
           />
         );
@@ -1403,20 +2118,36 @@ function MapLegendControl({
                 item.key === "qa_markers" ? true : layerVisibility[item.key as LayerKey];
 
               return (
-                <div key={item.key} className="legend-item">
-                  <span className={`legend-swatch legend-swatch-${item.swatch}`} />
-                  <span className="legend-label">{item.label}</span>
-                  {item.toggleable ? (
-                    <button
-                      className="ghost-button legend-toggle"
-                      onClick={() => onToggleLayer(item.key as LayerKey)}
-                      type="button"
-                    >
-                      {visible ? "Hide" : "Show"}
-                    </button>
-                  ) : (
-                    <span className="legend-static">Always visible</span>
-                  )}
+                <div key={item.key} className="legend-group">
+                  <div className="legend-item">
+                    <span className={`legend-swatch legend-swatch-${item.swatch}`}>
+                      {item.key === "qa_markers" ? QA_ACTIONABILITY_META.normal.symbol : null}
+                    </span>
+                    <span className="legend-label">{item.label}</span>
+                    {item.toggleable ? (
+                      <button
+                        className="ghost-button legend-toggle"
+                        onClick={() => onToggleLayer(item.key as LayerKey)}
+                        type="button"
+                      >
+                        {visible ? "Hide" : "Show"}
+                      </button>
+                    ) : (
+                      <span className="legend-static">Always visible</span>
+                    )}
+                  </div>
+                  {item.key === "qa_markers" ? (
+                    <div className="legend-sublist">
+                      {QA_ACTIONABILITY_STATES.map((state) => (
+                        <div key={state} className="legend-item legend-item-indented">
+                          <span className={`legend-swatch legend-swatch-qa-marker qa-marker-${state}`}>
+                            {QA_ACTIONABILITY_META[state].symbol}
+                          </span>
+                          <span className="legend-label">{QA_ACTIONABILITY_META[state].label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
@@ -1656,12 +2387,14 @@ function SkeletonDetail() {
   );
 }
 
-function createQAMarker(selectedCode: string | null, code: string) {
+function createQAMarker(selectedCode: string | null, code: string, actionabilityState: string | null) {
   const isSelected = selectedCode === code;
+  const state = normalizeActionabilityState(actionabilityState);
+  const meta = QA_ACTIONABILITY_META[state];
 
   return L.divIcon({
     className: "qa-marker-icon",
-    html: `<div class="qa-marker-inner ${isSelected ? "selected pulse" : ""}">?</div>`,
+    html: `<div class="qa-marker-inner qa-marker-${state} ${isSelected ? "selected pulse" : ""}">${meta.symbol}</div>`,
     iconAnchor: [12, 12],
     iconSize: [24, 24],
   });
@@ -1773,6 +2506,21 @@ function severityBadgeClass(value: string | null | undefined) {
     default:
       return "severity-medium";
   }
+}
+
+function normalizeActionabilityState(value: string | null | undefined): QuestionActionabilityState {
+  const normalized = value?.toLowerCase();
+  return QA_ACTIONABILITY_STATES.includes(normalized as QuestionActionabilityState)
+    ? (normalized as QuestionActionabilityState)
+    : "normal";
+}
+
+function actionabilityLabel(value: string | null | undefined) {
+  return QA_ACTIONABILITY_META[normalizeActionabilityState(value)].label;
+}
+
+function actionabilityBadgeClass(value: string | null | undefined) {
+  return `actionability-${normalizeActionabilityState(value)}`;
 }
 
 function isWorkflowOpen(value: string | null | undefined) {

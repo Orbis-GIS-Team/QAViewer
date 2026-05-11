@@ -7,6 +7,8 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
+    "db:apply-actionability": "tsx src/db/applyActionabilityStates.ts",
+    "db:validate": "tsx src/db/validate.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:smoke": "tsx --test src/smoke.test.ts"

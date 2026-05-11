@@ -1,20 +1,40 @@
 # RBAC Implementation Plan
 
+## Status
+
+Baseline RBAC is implemented in `main` as of 2026-05-08.
+
+Implemented:
+
+- centralized backend and frontend RBAC helpers
+- persisted roles `admin`, `gis_team`, `land_records_team`, `client`, and `other`
+- support-module permissions for Atlas and Property Tax
+- explicit question-area permissions for read, review, assignment, comments, and document upload
+- viewer-only default behavior for `client`
+- backend `403` enforcement on unauthorized question-area mutation routes
+- frontend permission-gated rendering for support tabs and question-area workflow controls
+
+Still future-facing:
+
+- more granular external reviewer packaging beyond the current role map
+- top-level viewer vs reviewer shell split
+- property-scoped or client-scoped permissions if needed later
+
 ## Purpose
 
-Add role-based access control for the Atlas Land Records and Property Tax modules.
+Add and document role-based access control for Atlas Land Records, Property Tax, and question-area workflow behavior.
 
 The backend must enforce authorization for every protected module endpoint. The frontend should use the same role and permission model only for user experience: hiding tabs, avoiding restricted component rendering, preventing restricted hooks from firing, and keeping navigation clean.
 
 ## Current State
 
 - Users currently have one persisted `role` field.
-- Existing backend roles are `admin` and `client`.
+- Existing backend roles are `admin`, `gis_team`, `land_records_team`, `client`, and `other`.
 - The backend authenticates protected API routes with bearer JWTs and reloads the current user from the database on each request.
-- Admin routes already use `requireRole("admin")`.
-- Atlas and Property Tax module routes are currently authenticated but not role-authorized.
-- Frontend roles are typed in `frontend/src/App.tsx`.
-- Atlas and Tax Parcels tabs are rendered in the right sidebar of `frontend/src/components/MapWorkspace.tsx`.
+- Admin routes are permission-gated through `admin:manage_users`.
+- Atlas and Property Tax module routes are permission-gated.
+- Question-area read and mutation routes now use explicit question-area permissions.
+- Frontend uses `frontend/src/lib/rbac.ts` to gate support tabs and review controls.
 
 ## Target Roles
 
@@ -30,19 +50,24 @@ The backend must enforce authorization for every protected module endpoint. The 
 
 | Permission | Meaning |
 | --- | --- |
+| `question_areas:read` | Can browse and inspect question areas, including existing comments, documents, and document downloads. |
+| `question_areas:review` | Can update question-area workflow fields such as status, summary, and description. |
+| `question_areas:assign` | Can assign or reassign question areas. |
+| `question_areas:comment` | Can post question-area comments. |
+| `question_areas:upload_document` | Can upload question-area documents. |
 | `atlas_land_records:read` | Can open Atlas Land Records workspace data, overlays, documents, and related support endpoints. |
 | `property_tax:read` | Can open Property Tax workspace data, overlays, tax bills, and related support endpoints. |
 | `admin:manage_users` | Can access user administration. |
 
 ## Role-Permission Mapping
 
-| Role | `atlas_land_records:read` | `property_tax:read` | `admin:manage_users` |
-| --- | ---: | ---: | ---: |
-| `admin` | yes | yes | yes |
-| `gis_team` | yes | yes | no |
-| `land_records_team` | yes | yes | no |
-| `client` | no | no | no |
-| `other` | no | no | no |
+| Role | `question_areas:read` | `question_areas:review` | `question_areas:assign` | `question_areas:comment` | `question_areas:upload_document` | `atlas_land_records:read` | `property_tax:read` | `admin:manage_users` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `admin` | yes | yes | yes | yes | yes | yes | yes | yes |
+| `gis_team` | yes | yes | no | yes | yes | yes | yes | no |
+| `land_records_team` | yes | yes | no | yes | yes | yes | yes | no |
+| `client` | yes | no | no | no | no | no | no | no |
+| `other` | no | no | no | no | no | no | no | no |
 
 Keep this mapping centralized. Do not scatter role literals through route handlers or React components.
 
@@ -177,9 +202,17 @@ Dependencies:
    - `GET /api/tax-parcels/bills/:billId/content`
    - `GET /api/tax-parcels/bills/:billId/download`
 
-7. Keep core Question Area review behavior separate.
+7. Keep core Question Area review behavior explicit.
 
-   Do not block normal question-area review routes unless the product scope changes. The requested RBAC applies to the Atlas Land Records and Property Tax modules and their supporting endpoints.
+   This is now implemented through:
+
+   - `GET /api/question-areas` -> `question_areas:read`
+   - `GET /api/question-areas/:code` -> `question_areas:read`
+   - `PATCH /api/question-areas/:code` -> `question_areas:review`
+   - assignment changes within `PATCH` -> `question_areas:assign`
+   - `POST /api/question-areas/:code/comments` -> `question_areas:comment`
+   - `POST /api/question-areas/:code/documents` -> `question_areas:upload_document`
+   - `GET /api/question-areas/documents/:id/download` -> `question_areas:read`
 
 8. Decide whether supporting base layers need RBAC.
 
@@ -377,3 +410,4 @@ Tests:
 - Do not add role hierarchy tables unless future requirements justify them.
 - Do not grant module access to existing non-admin users by default.
 - Keep the browser decoupled from PostGIS; all restricted data access must remain behind API authorization.
+- Question-area workflow authorization is part of the active RBAC model now, not just a future extension.

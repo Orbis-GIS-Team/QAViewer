@@ -1,18 +1,18 @@
 import { config } from "./config.js";
 import { createApp } from "./app.js";
-import { pool, waitForDatabase, withClient, withTransaction } from "./lib/db.js";
-import { ensureSchema } from "./lib/schema.js";
-import { ensureSeedData } from "./lib/seed.js";
+import { pool, waitForDatabase, withClient } from "./lib/db.js";
+import { runStartupDatabaseStep } from "./lib/startupDatabase.js";
 
 async function bootstrap(): Promise<void> {
   await waitForDatabase();
-  await withClient(ensureSchema);
-  await withTransaction(ensureSeedData);
+  await withClient(runStartupDatabaseStep);
 
   const app = createApp();
 
   app.listen(config.apiPort, config.apiHost, () => {
-    console.log(`API listening on http://${config.apiHost}:${config.apiPort}`);
+    console.log(
+      `API listening on http://${config.apiHost}:${config.apiPort} (STARTUP_DATA_MODE=${config.startupDataMode})`,
+    );
   });
 }
 

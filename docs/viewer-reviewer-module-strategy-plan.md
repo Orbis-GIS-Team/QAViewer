@@ -1,5 +1,24 @@
 # Viewer And Reviewer Module Strategy Plan
 
+## Status
+
+This strategy is partially implemented in `main` as of 2026-05-08.
+
+Implemented:
+
+- explicit question-area permissions in backend and frontend RBAC helpers
+- viewer-only `client` behavior for question-area browsing and detail viewing
+- reviewer-only workflow controls in the shared `MapWorkspace` shell
+- backend permission checks for question-area mutations
+- separate support-module permissions for Atlas and Property Tax
+- read access to existing comments, documents, and document downloads for viewer-only users
+
+Still open:
+
+- a distinct top-level `ViewerWorkspace` vs `ReviewerWorkspace` split
+- broader naming cleanup from generic "review" language to clearer viewer/reviewer language
+- a future external reviewer package if client collaboration needs to exceed viewer-only access
+
 ## Purpose
 
 Reshape QAViewer from a single review-first application into a modular product with:
@@ -44,8 +63,8 @@ The current app is still organized around a single authenticated review workspac
   - review workflow controls
   - comments and uploads
   - Atlas and Property Tax support modules
-- [questionAreas.ts](C:/dev/QAViewer/backend/src/routes/questionAreas.ts) still allows `admin` and `client` to mutate core review records through `PATCH`, comments, and document upload routes
-- Atlas and Property Tax are now permission-gated, but core review behavior is not yet separated into its own permission model
+- [questionAreas.ts](C:/dev/QAViewer/backend/src/routes/questionAreas.ts) now uses explicit permissions for question-area read, review, assignment, comments, uploads, and document downloads
+- Atlas and Property Tax are permission-gated, and core review behavior is now separated into its own permission model
 
 ## Target Capability Model
 
@@ -57,7 +76,7 @@ Recommended permissions:
 - `question_areas:review`
 - `question_areas:assign`
 - `question_areas:comment`
-- `question_areas:upload_documents`
+- `question_areas:upload_document`
 - `atlas_land_records:read`
 - `property_tax:read`
 - `admin:manage_users`
@@ -66,7 +85,7 @@ Notes:
 
 - `question_areas:review` covers status and summary edits
 - `question_areas:assign` is separate because assignment may eventually be more restricted than general review
-- `question_areas:comment` and `question_areas:upload_documents` can be split if the business wants clients to comment without editing workflow fields
+- `question_areas:comment` and `question_areas:upload_document` can be split if the business wants clients to comment without editing workflow fields
 - Atlas and Property Tax remain support-module permissions, not review permissions
 
 ## Proposed Module Model
@@ -123,11 +142,11 @@ Do not lock the long-term design to the current five roles. Use them as an initi
 
 Practical near-term packaging:
 
-| Role | `question_areas:read` | `question_areas:review` | `question_areas:assign` | `question_areas:comment` | `question_areas:upload_documents` | `atlas_land_records:read` | `property_tax:read` | `admin:manage_users` |
+| Role | `question_areas:read` | `question_areas:review` | `question_areas:assign` | `question_areas:comment` | `question_areas:upload_document` | `atlas_land_records:read` | `property_tax:read` | `admin:manage_users` |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `admin` | yes | yes | yes | yes | yes | yes | yes | yes |
-| `gis_team` | yes | yes | yes | yes | yes | yes | yes | no |
-| `land_records_team` | yes | yes | yes | yes | yes | yes | yes | no |
+| `gis_team` | yes | yes | no | yes | yes | yes | yes | no |
+| `land_records_team` | yes | yes | no | yes | yes | yes | yes | no |
 | `client` | yes | no by default | no by default | no by default | no by default | no by default | no by default | no |
 | `other` | yes | no | no | no | no | no | no | no |
 
@@ -196,6 +215,10 @@ Deliverable:
 
 - centralized permission map for the next phases
 
+Current status:
+
+- completed in `main`
+
 ### Phase 2: Split Read-Only And Review UI
 
 Goal:
@@ -226,6 +249,11 @@ Tasks:
 Deliverable:
 
 - no reviewer-only UI visible in viewer mode
+
+Current status:
+
+- completed inside the shared `MapWorkspace` shell
+- viewer-only users still see existing comments and documents, but cannot post or upload
 
 ### Phase 3: Introduce Explicit Viewer And Reviewer Entry Paths
 
@@ -271,12 +299,16 @@ Tasks:
   - `PATCH /api/question-areas/:code` -> `question_areas:review`
   - assignment changes, if split out -> `question_areas:assign`
   - `POST /api/question-areas/:code/comments` -> `question_areas:comment`
-  - `POST /api/question-areas/:code/documents` -> `question_areas:upload_documents`
+  - `POST /api/question-areas/:code/documents` -> `question_areas:upload_document`
 - keep read routes available to `question_areas:read`
 
 Deliverable:
 
 - viewer users cannot mutate review state even if they call the API directly
+
+Current status:
+
+- completed in `main`
 
 ### Phase 5: Clean Up Naming And UX
 
@@ -363,14 +395,14 @@ Verify:
 - support modules remain hidden unless granted
 - no blank rails or broken layouts remain after sections are hidden
 
-## Open Decisions
+## Current Decisions
 
-These decisions should be made before implementation starts:
+The first implementation in `main` currently answers these questions as follows:
 
-1. Should viewer-only users see existing comments and documents, or should those be reviewer-only?
-2. Should assignment be editable by all reviewers, or only internal staff?
-3. Should clients who opt into collaboration reuse the `client` role initially, or should a new external reviewer role be introduced soon?
-4. Should the first implementation keep one shared workspace shell, or immediately split into `ViewerWorkspace` and `ReviewerWorkspace` components?
+1. Viewer-only users can see existing comments and documents, and can download existing documents.
+2. Assignment is currently editable only by `admin`, not by the internal reviewer-capable roles.
+3. `client` is currently viewer-only by default. A separate external reviewer package remains future work.
+4. The first implementation kept one shared workspace shell.
 
 ## Recommended Initial Answer Set
 
@@ -380,7 +412,8 @@ To keep delivery moving, the least disruptive first implementation is:
 - viewer-only users cannot edit workflow fields
 - viewer-only users cannot post comments
 - viewer-only users cannot upload documents
-- reviewer-capable internal roles can do all review actions
+- reviewer-capable internal roles can update workflow, comment, and upload
+- assignment remains more restricted than general review
 - Atlas and Tax remain separately permissioned support modules
 - the frontend may keep one shared shell initially, as long as the read-only vs review split is explicit and backend authorization matches it
 

@@ -44,6 +44,7 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       source_layer TEXT NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('review', 'active', 'resolved', 'hold')),
       severity TEXT NOT NULL CHECK (severity IN ('high', 'medium', 'low')),
+      actionability_state TEXT NOT NULL DEFAULT 'normal' CHECK (actionability_state IN ('normal', 'high_pain', 'no_parcel_data', 'in_progress')),
       title TEXT NOT NULL,
       summary TEXT NOT NULL,
       description TEXT,
@@ -67,6 +68,34 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  await client.query(`
+    ALTER TABLE question_areas
+    ADD COLUMN IF NOT EXISTS actionability_state TEXT
+  `);
+
+  await client.query(`
+    UPDATE question_areas
+    SET actionability_state = 'normal'
+    WHERE actionability_state IS NULL
+  `);
+
+  await client.query(`
+    ALTER TABLE question_areas
+    ALTER COLUMN actionability_state SET DEFAULT 'normal',
+    ALTER COLUMN actionability_state SET NOT NULL
+  `);
+
+  await client.query(`
+    ALTER TABLE question_areas
+    DROP CONSTRAINT IF EXISTS question_areas_actionability_state_check
+  `);
+
+  await client.query(`
+    ALTER TABLE question_areas
+    ADD CONSTRAINT question_areas_actionability_state_check
+    CHECK (actionability_state IN ('normal', 'high_pain', 'no_parcel_data', 'in_progress'))
   `);
 
   await client.query(`
@@ -353,6 +382,7 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS question_areas_status_idx ON question_areas (status);
     CREATE INDEX IF NOT EXISTS question_areas_severity_idx ON question_areas (severity);
+    CREATE INDEX IF NOT EXISTS question_areas_actionability_state_idx ON question_areas (actionability_state);
     CREATE INDEX IF NOT EXISTS atlas_land_records_property_name_idx ON atlas_land_records (property_name);
     CREATE INDEX IF NOT EXISTS atlas_land_records_fund_name_idx ON atlas_land_records (fund_name);
     CREATE INDEX IF NOT EXISTS tax_parcels_parcel_id_idx ON tax_parcels (parcel_id);

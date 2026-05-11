@@ -1,20 +1,20 @@
 # QAViewer
 
-QAViewer is a Docker-first GIS review app built around the NNC cutover dataset in `data/standardized/`. The application is question-area-first: reviewers work from point-based `question_areas` where property tax boundaries may not match legal deed retracement or the management/ownership data clients use to represent what they own and manage. `land_records` and `management_areas` are available as supporting overlays.
+QAViewer is a Docker-first GIS review app built around a prepared PostgreSQL/PostGIS runtime database. The application is question-area-first: reviewer-capable users work from point-based `question_areas` where property tax boundaries may not match legal deed retracement or the management/ownership data clients use to represent what they own and manage. Viewer-only users can browse the same records without workflow mutation controls. `land_records` and `management_areas` are available as supporting overlays.
 
-The backend also supports a DataBuild tax parcel sidecar used for parcel lookups and tax bill attachments in the question-area workspace.
+The backend also supports tax parcel and Atlas land-record views from prepared database tables.
 
 ## Stack
 
 - Frontend: React + Vite + Leaflet
 - Backend: Express + TypeScript
 - Database: PostgreSQL + PostGIS
-- Seed dataset: repo-owned GeoJSON files in `data/standardized/`
+- Runtime data: existing PostgreSQL/PostGIS tables
 
 ## Project structure
 
-- `data/standardized/`: canonical seed dataset loaded into PostGIS on first start
-- `backend/`: API, auth, PostGIS schema, seed loader, comments, and document endpoints
+- `archive/legacy-etl-2026-05-09/`: archived legacy source-data and seed-loader assets
+- `backend/`: API, auth, PostGIS schema, validation, comments, and document endpoints
 - `frontend/`: review workspace and admin UI
 - `backend/uploads/`: uploaded document storage
 - `docs/nnc-cutover-plan.md`: phased NNC cutover record and remaining cleanup tasks
@@ -22,36 +22,29 @@ The backend also supports a DataBuild tax parcel sidecar used for parcel lookups
 ## Run with Docker
 
 1. Copy `.env.example` to `.env` if you need to override runtime defaults.
-2. Ensure the repo root includes the DataBuild sidecar sources expected by the backend:
-
-```text
-DataBuild/
-  pa_warren_with_report_data.shp
-  pa_warren_with_report_data.dbf
-  pa_warren_with_report_data.shx
-  pa_warren_with_report_data.prj
-  pa_warren_with_report_data.cpg  # when available
-  TaxBills/
-    YYYY_<ParcelID>.pdf
-```
-
-The API container mounts `./DataBuild` read-only at `/workspace/DataBuild` and seeds tax parcel and bill metadata from that location on first start.
-
-3. Start the stack:
+2. Start the stack against the existing Docker PostGIS volume:
 
 ```bash
 docker compose up --build
 ```
 
-4. Open:
+By default the API uses `STARTUP_DATA_MODE=validate`, which validates the already-prepared database and does not import seed/source files during startup.
+
+3. Open:
 
 - Web app: `http://localhost:5173`
 - API health: `http://localhost:3001/api/health`
 
+## Archived source data
+
+Legacy source-data and ETL preparation assets have been moved under `archive/legacy-etl-2026-05-09/`. The application no longer mounts or imports those files during normal startup.
+
 ## Demo credentials
 
-- `admin@qaviewer.local` / `admin123!`
-- `client@qaviewer.local` / `client123!`
+- `admin@qaviewer.local` / `admin123!` - full admin and review access
+- `client@qaviewer.local` / `client123!` - viewer-only question-area access by default
+
+Internal reviewer-capable roles are packaged through the persisted `users.role` field and mapped to explicit permissions in the backend and frontend RBAC helpers.
 
 ## Local development without Docker
 
@@ -71,47 +64,33 @@ npm install
 npm run dev
 ```
 
-You still need a PostGIS database available at `DATABASE_URL`.
+You still need a prepared PostGIS database available at `DATABASE_URL`. Use `STARTUP_DATA_MODE=validate` for normal runtime and Supabase-backed development.
 
-For local backend runs outside Docker, the default tax parcel sidecar paths are:
+## Runtime database validation
 
-- `TAX_PARCEL_SOURCE_PATH=../DataBuild/pa_warren_with_report_data.shp`
-- `TAX_BILL_ROOT=../DataBuild/TaxBills`
+Normal startup validates the prepared database only. It checks that PostGIS is enabled, required runtime tables exist, core question-area/land-record/management-area data is present, and at least one admin user exists.
 
-Override them in `.env` if your local layout differs.
-
-## Seed dataset
-
-The active app architecture reads from `data/standardized/`, not `data/generated/`.
-
-Current canonical files:
-
-- `question_areas.geojson`
-- `land_records.geojson`
-- `management_areas.geojson`
-- `manifest.json`
-
-See `docs/dataset-contract.md` for the standardized file contract and expected properties.
-
-## Tax parcel sidecar
-
-Tax parcel and bill support is intentionally separate from the canonical seed dataset in `data/standardized/`.
-
-- Parcel polygons are loaded from `DataBuild/pa_warren_with_report_data.shp`.
-- Tax bills are discovered recursively under `DataBuild/TaxBills`.
-- Bill filenames must match `YYYY_<ParcelID>.<ext>` for manifest import.
-- If the DataBuild shapefile or bill tree changes after PostGIS has already been seeded, the backend will fail fast until you reset and reseed the local database.
-
-## Reset and reseed workflow
-
-The current cutover is a schema break, not an in-place migration. If the standardized seed assets or DataBuild tax parcel sidecar sources change after the database has already been populated, the backend will refuse to start until you explicitly reset local PostGIS.
-
-Reset locally with:
+Run the same validation directly with:
 
 ```bash
-docker compose down -v
-docker compose up --build
+cd backend
+npm run db:validate
 ```
+
+If an older prepared database is missing question-area actionability symbols, apply the explicit compatibility update before validation:
+
+```bash
+cd backend
+npm run db:apply-actionability
+```
+
+## Legacy seed dataset
+
+The active app runtime reads prepared PostGIS tables. The old seed files, DataBuild sidecar, Atlas workbook, document package, and seed loader are archived for provenance and migration reference only.
+
+## Database replacement workflow
+
+Runtime startup does not rebuild data. To replace local or Supabase data, restore a prepared PostGIS database dump or run an explicit future import command outside API startup.
 
 ## Smoke tests
 
@@ -136,10 +115,9 @@ Set `QA_SMOKE_API_URL` to target a non-default API base URL.
 
 ## Notes
 
-- The backend imports the standardized seed layers automatically on first start if the database is empty.
-- The backend also imports the DataBuild tax parcel sidecar on first start when the tax parcel tables are empty.
-- The backend refuses to start against changed standardized seed assets until the database is explicitly reset and reseeded.
-- The backend applies the same fail-fast hash check to the DataBuild tax parcel sidecar sources.
+- The backend validates prepared PostGIS data by default and does not import source files during normal startup.
+- `STARTUP_DATA_MODE` currently supports `validate` only.
+- Legacy source-data and seed-loader assets are kept in `archive/legacy-etl-2026-05-09/` for reference.
 - Documents are stored in `backend/uploads`.
 - Admin users can switch between the review workspace and the administration console from the header.
 - Older parcel-centered architecture notes are retained only as archived reference documents and should not be treated as the current implementation source of truth.

@@ -490,7 +490,8 @@ strong {
 }
 
 .login-form label,
-.form-stack label {
+.form-stack label,
+.search-stack label {
   display: grid;
   gap: 6px;
   font-size: 0.875rem;
@@ -740,6 +741,20 @@ textarea {
   color: var(--muted);
 }
 
+.section-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.compact-button {
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
 .panel-content {
   flex: 1;
   overflow-y: auto;
@@ -886,6 +901,10 @@ textarea {
   gap: 12px;
 }
 
+.data-filter-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .search-results {
   position: absolute;
   top: 100%;
@@ -968,6 +987,13 @@ textarea {
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--primary);
+}
+
+.list-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .list-card-subtitle {
@@ -2068,6 +2094,148 @@ textarea {
   height: 100%;
 }
 
+.map-identify-panel {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 620;
+  width: min(390px, calc(100% - 36px));
+  max-height: min(640px, calc(100% - 36px));
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  overflow-y: auto;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--shadow-lg);
+}
+
+.identify-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.identify-title-group {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.identify-title-group h2 {
+  margin: 0;
+  color: var(--primary);
+  font-size: 1rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.identify-layer-badge {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.identify-layer-badge.land-records {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.identify-layer-badge.management {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.identify-close-button {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--panel-edge);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 800;
+}
+
+.identify-close-button:hover {
+  color: var(--primary);
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.identify-section {
+  display: grid;
+  gap: 8px;
+}
+
+.identify-section h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.identify-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin: 0;
+}
+
+.identify-field-grid div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.identify-field-grid dt {
+  color: var(--muted);
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.identify-field-grid dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.identify-advanced {
+  border-top: 1px solid var(--panel-edge);
+  padding-top: 12px;
+}
+
+.identify-advanced summary {
+  cursor: pointer;
+  color: var(--primary);
+  font-size: 0.8125rem;
+  font-weight: 800;
+}
+
+.identify-advanced .identify-field-grid {
+  margin-top: 12px;
+}
+
 .map-control-shell {
   position: relative;
   display: flex;
@@ -2325,6 +2493,12 @@ textarea {
   gap: 8px;
 }
 
+.legend-group,
+.legend-sublist {
+  display: grid;
+  gap: 6px;
+}
+
 .legend-item {
   display: flex;
   align-items: center;
@@ -2360,10 +2534,6 @@ textarea {
   justify-content: center;
   font-weight: bold;
   font-size: 0.7rem;
-}
-
-.legend-swatch-qa-marker::before {
-  content: '?';
 }
 
 .legend-label {
@@ -2405,6 +2575,48 @@ textarea {
   font-size: 0.9rem;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   transition: transform 0.1s, background-color 0.1s;
+}
+
+.qa-marker-normal {
+  background: #2ab7a9;
+  color: #fff;
+}
+
+.qa-marker-high_pain {
+  background: #dc2626;
+  color: #fff;
+}
+
+.qa-marker-no_parcel_data {
+  background: #111827;
+  color: #fff;
+}
+
+.qa-marker-in_progress {
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+}
+
+.badge.actionability-normal {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.badge.actionability-high_pain {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.badge.actionability-no_parcel_data {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.badge.actionability-in_progress {
+  background: #dbeafe;
+  color: #1d4ed8;
 }
 
 /* Marker Pulse Animation */
@@ -2624,6 +2836,19 @@ textarea {
 
   .tax-parcel-bill-actions {
     justify-content: flex-start;
+  }
+
+  .map-identify-panel {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+    max-height: min(54vh, 460px);
+    padding: 14px;
+  }
+
+  .identify-field-grid {
+    grid-template-columns: 1fr;
   }
 
   .map-control-shell {

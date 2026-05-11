@@ -37,6 +37,7 @@ Expected properties used by the active app:
 - `source_layer`
 - `status`
 - `severity`
+- `actionability_state`
 - `title`
 - `summary`
 - `description`

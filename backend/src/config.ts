@@ -14,6 +14,18 @@ if (jwtSecret === "change-me") {
   );
 }
 
+const startupDataModes = ["validate"] as const;
+type StartupDataMode = (typeof startupDataModes)[number];
+
+function parseStartupDataMode(value: string | undefined): StartupDataMode {
+  const mode = value ?? "validate";
+  if (startupDataModes.includes(mode as StartupDataMode)) {
+    return mode as StartupDataMode;
+  }
+
+  throw new Error(`Invalid STARTUP_DATA_MODE "${mode}". Expected: validate.`);
+}
+
 export const config = {
   apiPort: Number(process.env.API_PORT ?? 3001),
   apiHost: process.env.API_HOST ?? "0.0.0.0",
@@ -21,6 +33,7 @@ export const config = {
     process.env.DATABASE_URL ?? "postgres://qaviewer:qaviewer@localhost:5432/qaviewer",
   jwtSecret,
   demoMode: process.env.DEMO_MODE === "true",
+  startupDataMode: parseStartupDataMode(process.env.STARTUP_DATA_MODE),
   frontendOrigin: process.env.FRONTEND_ORIGIN ?? "http://localhost:5173",
   backendDir,
   repoRoot,

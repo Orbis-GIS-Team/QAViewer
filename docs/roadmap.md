@@ -2,6 +2,14 @@
 
 This document outlines the product and technical roadmap for QAViewer.
 
+## Status Snapshot
+
+As of 2026-05-08, the viewer/reviewer permission foundation is implemented in `main`.
+
+- explicit question-area permissions exist for read, review, assignment, comments, and document upload
+- `client` is viewer-only by default for question-area workflows
+- backend authorization and frontend workflow gating now match that capability split
+
 The current app is already a usable GIS review workspace. The roadmap below is focused on turning it into a shared team platform with:
 
 - one shared source of truth for review state
@@ -25,6 +33,7 @@ The app should remain workflow-oriented. It does not need to become a general GI
 As of the current repo state, QAViewer already has:
 
 - authenticated review workspace
+- viewer-only vs reviewer-capable question-area access controls
 - question area and parcel map review
 - search and filtering
 - comments
@@ -38,6 +47,12 @@ Current architecture:
 - backend: Express + TypeScript
 - database: PostgreSQL + PostGIS
 - local runtime: Docker Compose
+
+Current access baseline:
+
+- `admin`: full review and admin access
+- `gis_team` and `land_records_team`: reviewer-capable access plus support modules
+- `client`: viewer-only question-area access by default
 
 ## Planning Principles
 
@@ -107,6 +122,27 @@ Includes:
 - performance and operational hygiene
 
 ## Phase Roadmap
+
+## Phase 0.5: Client-Safe Access Foundation
+
+Target:
+
+- establish the viewer/reviewer capability boundary before broader client-facing expansion
+
+Status:
+
+- completed
+
+Implemented:
+
+- explicit question-area permission model
+- backend `403` enforcement for unauthorized question-area mutations
+- frontend hiding of reviewer-only workflow controls for viewer-only users
+- separate support-module permissions for Atlas and Property Tax
+
+Result:
+
+- the later roadmap phases can treat client-safe viewing as current baseline rather than future work
 
 ## Phase 0: Baseline and Alignment
 
@@ -375,8 +411,9 @@ These are the most practical next steps for the repo:
 1. Make the backend Supabase-ready.
 2. Add a safe non-local bootstrap and seed strategy.
 3. Decide the shared document storage model.
-4. Build the first map measurement tools.
-5. Define the deed integration schema and API contract before porting logic.
+4. Build the next client-facing workflow slice after permissions: filters and identify.
+5. Build the first map measurement tools.
+6. Define the deed integration schema and API contract before porting logic.
 
 ## Open Questions
 

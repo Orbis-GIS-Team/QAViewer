@@ -1,17 +1,4 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-
-import type { Feature, FeatureCollection, GeoJsonProperties, Geometry } from "geojson";
-
-import { config } from "../config.js";
-
-export async function loadFeatureCollection(
-  filename: string,
-): Promise<FeatureCollection<Geometry, GeoJsonProperties>> {
-  const fullPath = path.join(config.seedDir, filename);
-  const raw = await fs.readFile(fullPath, "utf-8");
-  return JSON.parse(raw) as FeatureCollection<Geometry, GeoJsonProperties>;
-}
+import type { Feature, FeatureCollection } from "geojson";
 
 export function parseBoolean(value: unknown): boolean | null {
   if (value === null || value === undefined) {

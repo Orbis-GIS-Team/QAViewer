@@ -377,6 +377,14 @@ Question area / review:
 - `POST /api/question-areas/:code/documents`
 - `GET /api/question-areas/documents/:id/download`
 
+Current authorization baseline:
+
+- question-area browsing and detail routes require `question_areas:read`
+- workflow edits require `question_areas:review`
+- assignment changes require `question_areas:assign`
+- comment creation requires `question_areas:comment`
+- document upload requires `question_areas:upload_document`
+
 Supporting layers:
 
 - `GET /api/layers/:layerKey`

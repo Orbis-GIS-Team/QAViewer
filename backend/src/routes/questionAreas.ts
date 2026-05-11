@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { Router } from "express";
+import { Router, type Request } from "express";
 import multer from "multer";
+import * as XLSX from "xlsx";
 import { z } from "zod";
 
 import { config } from "../config.js";
@@ -73,6 +74,16 @@ const upload = multer({
 });
 
 const VALID_STATUSES = ["review", "active", "resolved", "hold"] as const;
+const VALID_ACTIONABILITY_STATES = ["normal", "high_pain", "no_parcel_data", "in_progress"] as const;
+const DATA_AVAILABILITY_FILTERS = ["available", "missing", "unknown"] as const;
+const EXPORT_LIMIT = 10_000;
+
+type QuestionActionabilityState = (typeof VALID_ACTIONABILITY_STATES)[number];
+type DataAvailabilityFilter = (typeof DATA_AVAILABILITY_FILTERS)[number];
+type QuestionAreaWhereClause = {
+  whereClause: string;
+  params: unknown[];
+};
 
 const updateSchema = z.object({
   status: z.enum(VALID_STATUSES).optional(),
@@ -85,7 +96,80 @@ const commentSchema = z.object({
   body: z.string().min(3).max(2000),
 });
 
-router.get("/", requirePermission("question_areas:read"), async (req, res) => {
+function addIlikeFilter(clauses: string[], params: unknown[], value: unknown, expression: string) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return;
+  }
+
+  params.push(`%${text}%`);
+  clauses.push(`${expression} ILIKE $${params.length}`);
+}
+
+function addBooleanAvailabilityFilter(
+  clauses: string[],
+  value: unknown,
+  expression: string,
+) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!DATA_AVAILABILITY_FILTERS.includes(normalized as DataAvailabilityFilter)) {
+    return;
+  }
+
+  if (normalized === "available") {
+    clauses.push(`${expression} IS TRUE`);
+  } else if (normalized === "missing") {
+    clauses.push(`${expression} IS FALSE`);
+  } else {
+    clauses.push(`${expression} IS NULL`);
+  }
+}
+
+function addActionabilityFilter(clauses: string[], value: unknown) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  switch (normalized) {
+    case "open":
+      clauses.push(`qa.status IN ('review', 'active')`);
+      break;
+    case "closed":
+      clauses.push(`qa.status IN ('resolved', 'hold')`);
+      break;
+    case "assigned":
+      clauses.push(`NULLIF(BTRIM(qa.assigned_reviewer), '') IS NOT NULL`);
+      break;
+    case "unassigned":
+      clauses.push(`NULLIF(BTRIM(qa.assigned_reviewer), '') IS NULL`);
+      break;
+    case "needs_data":
+      clauses.push(`(
+        qa.exists_in_legal_layer IS NOT TRUE
+        OR qa.exists_in_management_layer IS NOT TRUE
+        OR qa.exists_in_client_tabular_bill_data IS NOT TRUE
+      )`);
+      break;
+    case "ready":
+      clauses.push(`(
+        qa.exists_in_legal_layer IS TRUE
+        AND qa.exists_in_management_layer IS TRUE
+        AND qa.exists_in_client_tabular_bill_data IS TRUE
+      )`);
+      break;
+    default:
+      break;
+  }
+}
+
+function addActionabilityStateFilter(clauses: string[], params: unknown[], value: unknown) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!VALID_ACTIONABILITY_STATES.includes(normalized as QuestionActionabilityState)) {
+    return;
+  }
+
+  params.push(normalized);
+  clauses.push(`qa.actionability_state = $${params.length}`);
+}
+
+function buildQuestionAreaWhereClause(req: Request): QuestionAreaWhereClause {
   const clauses: string[] = [];
   const params: unknown[] = [];
 
@@ -103,6 +187,31 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
     clauses.push(`qa.status = $${params.length}`);
   }
 
+  const severity = String(req.query.severity ?? req.query.priority ?? "").trim();
+  if (severity) {
+    params.push(severity);
+    clauses.push(`qa.severity = $${params.length}`);
+  }
+
+  addIlikeFilter(clauses, params, req.query.state, "COALESCE(qa.state, '')");
+  addIlikeFilter(clauses, params, req.query.county, "COALESCE(qa.county, '')");
+  addIlikeFilter(clauses, params, req.query.propertyName ?? req.query.property, "COALESCE(qa.property_name, '')");
+  addIlikeFilter(
+    clauses,
+    params,
+    req.query.assignedReviewer ?? req.query.reviewer ?? req.query.assignee,
+    "COALESCE(qa.assigned_reviewer, '')",
+  );
+  addActionabilityFilter(clauses, req.query.actionability);
+  addActionabilityStateFilter(clauses, params, req.query.actionabilityState);
+  addBooleanAvailabilityFilter(clauses, req.query.hasLegalData, "qa.exists_in_legal_layer");
+  addBooleanAvailabilityFilter(clauses, req.query.hasManagementData, "qa.exists_in_management_layer");
+  addBooleanAvailabilityFilter(
+    clauses,
+    req.query.hasClientBillData,
+    "qa.exists_in_client_tabular_bill_data",
+  );
+
   const bbox = parseBbox(String(req.query.bbox ?? ""));
   if (bbox) {
     const [west, south, east, north] = bbox;
@@ -112,14 +221,34 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
     );
   }
 
+  return {
+    params,
+    whereClause: clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "",
+  };
+}
+
+function formatExportBoolean(value: boolean | null) {
+  if (value === null) {
+    return "Unknown";
+  }
+
+  return value ? "Yes" : "No";
+}
+
+function safeReportValue(value: string | number | null) {
+  return value ?? "";
+}
+
+router.get("/", requirePermission("question_areas:read"), async (req, res) => {
+  const { params, whereClause } = buildQuestionAreaWhereClause(req);
   const rawLimit = Number(req.query.limit ?? 500);
   const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 500, 1), 1000);
-  const whereClause = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
 
   const result = await query<{
     code: string;
     status: string;
     severity: string;
+    actionability_state: string;
     title: string;
     summary: string;
     county: string | null;
@@ -130,6 +259,9 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
     tract_name: string | null;
     fund_name: string | null;
     assigned_reviewer: string | null;
+    exists_in_legal_layer: boolean | null;
+    exists_in_management_layer: boolean | null;
+    exists_in_client_tabular_bill_data: boolean | null;
     geometry: object;
   }>(
     `
@@ -137,6 +269,7 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
         code,
         status,
         severity,
+        actionability_state,
         title,
         summary,
         county,
@@ -147,6 +280,9 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
         tract_name,
         fund_name,
         assigned_reviewer,
+        exists_in_legal_layer,
+        exists_in_management_layer,
+        exists_in_client_tabular_bill_data,
         ST_AsGeoJSON(geom, 6)::jsonb AS geometry
       FROM question_areas qa
       ${whereClause}
@@ -165,6 +301,7 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
           code: row.code,
           status: row.status,
           severity: row.severity,
+          actionabilityState: row.actionability_state,
           title: row.title,
           summary: row.summary,
           county: row.county,
@@ -175,10 +312,111 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
           tractName: row.tract_name,
           fundName: row.fund_name,
           assignedReviewer: row.assigned_reviewer,
+          existsInLegalLayer: row.exists_in_legal_layer,
+          existsInManagementLayer: row.exists_in_management_layer,
+          existsInClientTabularBillData: row.exists_in_client_tabular_bill_data,
         },
       })),
     ),
   );
+});
+
+router.get("/export.xlsx", requirePermission("question_areas:read"), async (req, res) => {
+  const { params, whereClause } = buildQuestionAreaWhereClause(req);
+  const result = await query<{
+    code: string;
+    status: string;
+    severity: string;
+    actionability_state: string;
+    title: string;
+    summary: string;
+    description: string | null;
+    county: string | null;
+    state: string | null;
+    parcel_code: string | null;
+    owner_name: string | null;
+    property_name: string | null;
+    tract_name: string | null;
+    fund_name: string | null;
+    land_services: string | null;
+    tax_bill_acres: number | null;
+    gis_acres: number | null;
+    assigned_reviewer: string | null;
+    exists_in_legal_layer: boolean | null;
+    exists_in_management_layer: boolean | null;
+    exists_in_client_tabular_bill_data: boolean | null;
+    longitude: number | null;
+    latitude: number | null;
+  }>(
+    `
+      SELECT
+        code,
+        status,
+        severity,
+        actionability_state,
+        title,
+        summary,
+        description,
+        county,
+        state,
+        parcel_code,
+        owner_name,
+        property_name,
+        tract_name,
+        fund_name,
+        land_services,
+        tax_bill_acres,
+        gis_acres,
+        assigned_reviewer,
+        exists_in_legal_layer,
+        exists_in_management_layer,
+        exists_in_client_tabular_bill_data,
+        ST_X(geom) AS longitude,
+        ST_Y(geom) AS latitude
+      FROM question_areas qa
+      ${whereClause}
+      ORDER BY code
+      LIMIT ${EXPORT_LIMIT}
+    `,
+    params,
+  );
+
+  const rows = result.rows.map((row) => ({
+    "Question Area ID": row.code,
+    Status: row.status,
+    Priority: row.severity,
+    Actionability: row.actionability_state,
+    Title: row.title,
+    Summary: row.summary,
+    Description: safeReportValue(row.description),
+    County: safeReportValue(row.county),
+    State: safeReportValue(row.state),
+    "Tax Parcel Code": safeReportValue(row.parcel_code),
+    "Record Owner": safeReportValue(row.owner_name),
+    Property: safeReportValue(row.property_name),
+    Tract: safeReportValue(row.tract_name),
+    Fund: safeReportValue(row.fund_name),
+    "Land Services Note": safeReportValue(row.land_services),
+    "Tax Bill Acres": safeReportValue(row.tax_bill_acres),
+    "GIS Acres": safeReportValue(row.gis_acres),
+    "Assigned Reviewer": safeReportValue(row.assigned_reviewer),
+    "Legal/Deed Evidence": formatExportBoolean(row.exists_in_legal_layer),
+    "Management Data": formatExportBoolean(row.exists_in_management_layer),
+    "In Client Bill Data": formatExportBoolean(row.exists_in_client_tabular_bill_data),
+    Longitude: safeReportValue(row.longitude),
+    Latitude: safeReportValue(row.latitude),
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Question Areas");
+  const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "buffer" }) as Buffer;
+
+  res
+    .status(200)
+    .setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    .setHeader("Content-Disposition", 'attachment; filename="question-area-report.xlsx"')
+    .send(buffer);
 });
 
 router.get("/:code/atlas", requirePermission("atlas_land_records:read"), async (req, res) => {
@@ -234,6 +472,7 @@ router.get("/:code", requirePermission("question_areas:read"), async (req, res) 
     source_layer: string;
     status: string;
     severity: string;
+    actionability_state: string;
     title: string;
     summary: string;
     description: string | null;
@@ -261,6 +500,7 @@ router.get("/:code", requirePermission("question_areas:read"), async (req, res) 
         source_layer,
         status,
         severity,
+        actionability_state,
         title,
         summary,
         description,
@@ -332,6 +572,7 @@ router.get("/:code", requirePermission("question_areas:read"), async (req, res) 
     sourceLayer: row.source_layer,
     status: row.status,
     severity: row.severity,
+    actionabilityState: row.actionability_state,
     title: row.title,
     summary: row.summary,
     description: row.description,
