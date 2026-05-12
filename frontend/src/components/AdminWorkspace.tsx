@@ -59,14 +59,33 @@ function labelRole(role: UserRole): string {
   switch (role) {
     case "admin":
       return "Admin";
+    case "qa_reviewer":
+      return "Reviewer";
     case "gis_team":
-      return "GIS Team";
+      return "GIS Reviewer";
     case "land_records_team":
-      return "Land Records Team";
+      return "Land Records Reviewer";
     case "client":
-      return "Client";
+      return "Viewer";
     case "other":
-      return "Other";
+      return "No access";
+  }
+}
+
+function roleOptionLabel(role: UserRole): string {
+  switch (role) {
+    case "admin":
+      return "Admin - full access";
+    case "qa_reviewer":
+      return "Reviewer - review only";
+    case "gis_team":
+      return "GIS Reviewer - review + support modules";
+    case "land_records_team":
+      return "Land Records Reviewer - review + support modules";
+    case "client":
+      return "Viewer - read only";
+    case "other":
+      return "No access - holding account";
   }
 }
 
@@ -403,6 +422,7 @@ export function AdminWorkspace({
                   <label>
                     Name
                     <input
+                      maxLength={120}
                       placeholder="Full name"
                       required
                       value={createDraft.name}
@@ -437,7 +457,7 @@ export function AdminWorkspace({
                       >
                         {ROLE_OPTIONS.map((role) => (
                           <option key={role} value={role}>
-                            {labelRole(role)}
+                            {roleOptionLabel(role)}
                           </option>
                         ))}
                       </select>
@@ -446,6 +466,8 @@ export function AdminWorkspace({
                   <label>
                     Password
                     <input
+                      maxLength={100}
+                      minLength={8}
                       placeholder="Minimum 8 characters"
                       required
                       type="password"
@@ -486,6 +508,8 @@ export function AdminWorkspace({
                   <label>
                     Name
                     <input
+                      maxLength={120}
+                      required
                       value={editDraft.name}
                       onChange={(event) =>
                         setEditDraft((current) => ({ ...current, name: event.target.value }))
@@ -496,6 +520,7 @@ export function AdminWorkspace({
                     <label>
                       Email
                       <input
+                        required
                         type="email"
                         value={editDraft.email}
                         onChange={(event) =>
@@ -516,7 +541,7 @@ export function AdminWorkspace({
                       >
                         {ROLE_OPTIONS.map((role) => (
                           <option key={role} value={role}>
-                            {labelRole(role)}
+                            {roleOptionLabel(role)}
                           </option>
                         ))}
                       </select>
@@ -525,6 +550,8 @@ export function AdminWorkspace({
                   <label>
                     Update password
                     <input
+                      maxLength={100}
+                      minLength={8}
                       placeholder="Leave blank to keep current"
                       type="password"
                       value={editDraft.password}

@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 
-export const ROLES = ["admin", "gis_team", "land_records_team", "client", "other"] as const;
+export const ROLES = ["admin", "qa_reviewer", "gis_team", "land_records_team", "client", "other"] as const;
 
 export type Role = (typeof ROLES)[number];
 
@@ -27,6 +27,12 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "atlas_land_records:read",
     "property_tax:read",
     "admin:manage_users",
+  ],
+  qa_reviewer: [
+    "question_areas:read",
+    "question_areas:review",
+    "question_areas:comment",
+    "question_areas:upload_document",
   ],
   gis_team: [
     "question_areas:read",

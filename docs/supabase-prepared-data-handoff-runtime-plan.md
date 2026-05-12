@@ -208,6 +208,13 @@ cd backend
 npm run db:apply-actionability
 ```
 
+Older prepared databases can be updated for new persisted user roles with:
+
+```bash
+cd backend
+npm run db:apply-user-roles
+```
+
 ## Data Replacement Rules
 
 For the first single-tenant migration:

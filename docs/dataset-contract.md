@@ -2,16 +2,21 @@
 
 This document defines the active standardized seed contract for QAViewer after the NNC cutover.
 
-## Canonical Seed Outputs
+## Canonical Prepared Data
 
-The backend imports these files from `data/standardized/`:
+QAViewer runs against prepared PostgreSQL/PostGIS tables. Backend startup validates that the
+runtime tables and required data already exist; it does not import source GIS packages or
+standardized files.
 
-- `question_areas.geojson`
-- `land_records.geojson`
-- `management_areas.geojson`
-- `manifest.json`
+Required prepared runtime layers:
 
-Do not make backend or frontend code depend directly on a source geodatabase. Convert source GIS data into this standardized dataset first.
+- `question_areas`
+- `land_records`
+- `management_areas`
+
+The `land_records` table is prepared from the concrete `LandRecords` layer in a source file
+geodatabase, then loaded into PostGIS outside API startup. The browser remains decoupled from
+source files and reads land records only through the API.
 
 ## Runtime Model
 
@@ -59,44 +64,52 @@ Expected properties used by the active app:
 
 Additional source properties may be retained in the file and are stored in `raw_properties`.
 
-## `land_records.geojson`
+## `land_records`
 
 Expected geometry:
 
-- `MultiPolygon` or `Polygon`
+- `MultiPolygon`
+- SRID `4326`
 
-Expected properties used by the seed loader:
+The source layer schema is `LandRecordLayerUpdate/Data.gdb` layer `LandRecords`. PostgreSQL
+column names are the lower-case GDAL/PostGIS import names:
 
+- `objectid`
 - `state`
 - `county`
-- `parcel_number`
-- `deed_acres`
-- `gis_acres`
+- `deedacres`
+- `tractkey`
+- `gisacres`
+- `lr_number`
+- `lr_type`
+- `taxparcelnum`
+- `l_desc`
 - `fips`
-- `description`
-- `record_type`
-- `tract_key`
-- `record_number`
-- `document_number`
-- `source_name`
-- `source_page_number`
-- `document_type`
-- `record_status`
+- `docnumber`
+- `source`
+- `sourcepageno`
+- `doctype`
+- `lr_status`
 - `current_owner`
 - `previous_owner`
-- `acquisition_date`
-- `description_type`
+- `acq_date`
+- `desc_type`
 - `remark`
 - `keyword`
-- `document_name`
+- `docname`
 - `trs`
-- `record_specs`
-- `tax_confirmed`
-- `merge_source`
-- `old_record_number`
-- `property_name`
-- `fund_name`
-- `region_name`
+- `lr_specs`
+- `tax_confirm`
+- `merge_src`
+- `oldlrnum`
+- `propertyname`
+- `fundname`
+- `regionname`
+- `shape_length`
+- `shape_area`
+- `geom`
+
+Current expected row count from `LandRecordLayerUpdate/Data.gdb`: `1316`.
 
 ## `management_areas.geojson`
 

@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "db:apply-actionability": "tsx src/db/applyActionabilityStates.ts",
+    "db:apply-user-roles": "tsx src/db/applyUserRoles.ts",
     "db:validate": "tsx src/db/validate.ts",
     "test": "vitest run",
     "test:watch": "vitest",

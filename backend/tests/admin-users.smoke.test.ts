@@ -27,7 +27,7 @@ import { pool } from "../src/lib/db.js";
 const JWT_SECRET = "test-secret-for-vitest-do-not-use-in-prod";
 const app = createApp();
 
-type TestRole = "admin" | "gis_team" | "land_records_team" | "client" | "other";
+type TestRole = "admin" | "qa_reviewer" | "gis_team" | "land_records_team" | "client" | "other";
 
 function adminToken(id = 1) {
   return jwt.sign({ id, email: "admin@test.com", name: "Admin", role: "admin" }, JWT_SECRET, {
@@ -135,7 +135,7 @@ describe("GET /api/admin/users", () => {
 describe("POST /api/admin/users", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it.each(["admin", "gis_team", "land_records_team", "client", "other"] as const)(
+  it.each(["admin", "qa_reviewer", "gis_team", "land_records_team", "client", "other"] as const)(
     "accepts supported role %s",
     async (role) => {
       stubQuery(AUTH_ADMIN, { rows: [managedUser(role)] });

@@ -43,7 +43,10 @@ import { pool } from "../src/lib/db.js";
 const JWT_SECRET = "test-secret-for-vitest-do-not-use-in-prod";
 const app = createApp();
 
-function makeToken(role: "admin" | "client" | "gis_team" | "land_records_team" = "admin", id = 1) {
+function makeToken(
+  role: "admin" | "client" | "qa_reviewer" | "gis_team" | "land_records_team" = "admin",
+  id = 1,
+) {
   return jwt.sign({ id, email: "user@test.com", name: "Tester", role }, JWT_SECRET, {
     expiresIn: "1h",
   });
@@ -61,6 +64,9 @@ function stubQuery(...results: any[]) {
 
 const AUTH_ADMIN = { rows: [{ id: 1, email: "user@test.com", name: "Tester", role: "admin" }] };
 const AUTH_CLIENT = { rows: [{ id: 2, email: "client@test.com", name: "Client", role: "client" }] };
+const AUTH_REVIEWER = {
+  rows: [{ id: 4, email: "reviewer@test.com", name: "Reviewer", role: "qa_reviewer" }],
+};
 const AUTH_GIS = { rows: [{ id: 3, email: "gis@test.com", name: "GIS Reviewer", role: "gis_team" }] };
 
 const minimalQaRow = {
@@ -333,7 +339,7 @@ describe("PATCH /api/question-areas/:code (status update)", () => {
   for (const status of validStatuses) {
     it(`accepts status '${status}'`, async () => {
       stubQuery(AUTH_ADMIN, {
-        rows: [{ code: "QA-001", status, summary: "summary", assigned_reviewer: null }],
+        rows: [{ code: "QA-001", status, severity: "medium", summary: "summary", assigned_reviewer: null }],
       });
 
       const res = await request(app)
@@ -346,6 +352,22 @@ describe("PATCH /api/question-areas/:code (status update)", () => {
     });
   }
 
+  for (const severity of ["high", "medium", "low"] as const) {
+    it(`accepts priority '${severity}'`, async () => {
+      stubQuery(AUTH_ADMIN, {
+        rows: [{ code: "QA-001", status: "review", severity, summary: "summary", assigned_reviewer: null }],
+      });
+
+      const res = await request(app)
+        .patch("/api/question-areas/QA-001")
+        .set("Authorization", `Bearer ${makeToken()}`)
+        .send({ severity });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty("severity", severity);
+    });
+  }
+
   it("rejects an invalid status with 400", async () => {
     stubQuery(AUTH_ADMIN);
 
@@ -353,6 +375,17 @@ describe("PATCH /api/question-areas/:code (status update)", () => {
       .patch("/api/question-areas/QA-001")
       .set("Authorization", `Bearer ${makeToken()}`)
       .send({ status: "bogus-status" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an invalid priority with 400", async () => {
+    stubQuery(AUTH_ADMIN);
+
+    const res = await request(app)
+      .patch("/api/question-areas/QA-001")
+      .set("Authorization", `Bearer ${makeToken()}`)
+      .send({ severity: "urgent" });
 
     expect(res.status).toBe(400);
   });
@@ -370,16 +403,32 @@ describe("PATCH /api/question-areas/:code (status update)", () => {
 
   it("allows gis_team review updates", async () => {
     stubQuery(AUTH_GIS, {
-      rows: [{ code: "QA-001", status: "active", summary: "summary", assigned_reviewer: null }],
+      rows: [{ code: "QA-001", status: "active", severity: "high", summary: "summary", assigned_reviewer: null }],
     });
 
     const res = await request(app)
       .patch("/api/question-areas/QA-001")
       .set("Authorization", `Bearer ${makeToken("gis_team", 3)}`)
-      .send({ status: "active" });
+      .send({ status: "active", severity: "high" });
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("status", "active");
+    expect(res.body).toHaveProperty("severity", "high");
+  });
+
+  it("allows qa_reviewer review updates without support-module access", async () => {
+    stubQuery(AUTH_REVIEWER, {
+      rows: [{ code: "QA-001", status: "active", severity: "high", summary: "summary", assigned_reviewer: null }],
+    });
+
+    const res = await request(app)
+      .patch("/api/question-areas/QA-001")
+      .set("Authorization", `Bearer ${makeToken("qa_reviewer", 4)}`)
+      .send({ status: "active", severity: "high" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty("status", "active");
+    expect(res.body).toHaveProperty("severity", "high");
   });
 
   it("blocks assignment changes without assign permission", async () => {

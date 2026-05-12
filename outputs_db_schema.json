@@ -1,0 +1,2792 @@
+﻿{
+    "tables": [
+        {
+            "columns": [
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "id",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": "nextval('atlas_document_links_id_seq'::regclass)",
+                    "ordinal_position": 1,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "lr_number",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "document_number",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "page_no",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_workbook_path",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 5,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_sheet",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 6,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "source_row_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": 0,
+                    "column_default": null,
+                    "ordinal_position": 7,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE INDEX atlas_document_links_document_number_idx ON public.atlas_document_links USING btree (document_number)",
+                    "index_name": "atlas_document_links_document_number_idx"
+                },
+                {
+                    "definition": "CREATE INDEX atlas_document_links_lr_number_idx ON public.atlas_document_links USING btree (lr_number)",
+                    "index_name": "atlas_document_links_lr_number_idx"
+                },
+                {
+                    "definition": "CREATE UNIQUE INDEX atlas_document_links_pkey ON public.atlas_document_links USING btree (id)",
+                    "index_name": "atlas_document_links_pkey"
+                }
+            ],
+            "row_count": 2703,
+            "table_name": "atlas_document_links",
+            "constraints": [
+                {
+                    "definition": "FOREIGN KEY (document_number) REFERENCES atlas_documents(document_number) ON DELETE CASCADE",
+                    "constraint_name": "atlas_document_links_document_number_fkey",
+                    "constraint_type": "FOREIGN KEY"
+                },
+                {
+                    "definition": "FOREIGN KEY (lr_number) REFERENCES atlas_land_records(lr_number) ON DELETE CASCADE",
+                    "constraint_name": "atlas_document_links_lr_number_fkey",
+                    "constraint_type": "FOREIGN KEY"
+                },
+                {
+                    "definition": "PRIMARY KEY (id)",
+                    "constraint_name": "atlas_document_links_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "id",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": "nextval('atlas_document_manifest_id_seq'::regclass)",
+                    "ordinal_position": 1,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "property_code",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "property_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_folder",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "package_relative_path",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 5,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "file_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 6,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "extension",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 7,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "int8",
+                    "data_type": "bigint",
+                    "column_name": "size_bytes",
+                    "is_nullable": "YES",
+                    "numeric_scale": 0,
+                    "column_default": null,
+                    "ordinal_position": 8,
+                    "numeric_precision": 64,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "document_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 9,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_workbook_path",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 10,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_docs_root_path",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 11,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_file_path",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 12,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE INDEX atlas_document_manifest_document_number_idx ON public.atlas_document_manifest USING btree (document_number)",
+                    "index_name": "atlas_document_manifest_document_number_idx"
+                },
+                {
+                    "definition": "CREATE INDEX atlas_document_manifest_package_relative_path_idx ON public.atlas_document_manifest USING btree (package_relative_path)",
+                    "index_name": "atlas_document_manifest_package_relative_path_idx"
+                },
+                {
+                    "definition": "CREATE UNIQUE INDEX atlas_document_manifest_pkey ON public.atlas_document_manifest USING btree (id)",
+                    "index_name": "atlas_document_manifest_pkey"
+                }
+            ],
+            "row_count": 497,
+            "table_name": "atlas_document_manifest",
+            "constraints": [
+                {
+                    "definition": "PRIMARY KEY (id)",
+                    "constraint_name": "atlas_document_manifest_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "document_number",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 1,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "doc_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "doc_type",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "recording_instrument",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "recording_date",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 5,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "expiration_date",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 6,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "deed_acres",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 7,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "keywords",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 8,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "remark",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 9,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_file",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 10,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_workbook_path",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 11,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_sheet",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 12,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "source_row_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": 0,
+                    "column_default": null,
+                    "ordinal_position": 13,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE UNIQUE INDEX atlas_documents_pkey ON public.atlas_documents USING btree (document_number)",
+                    "index_name": "atlas_documents_pkey"
+                }
+            ],
+            "row_count": 497,
+            "table_name": "atlas_documents",
+            "constraints": [
+                {
+                    "definition": "PRIMARY KEY (document_number)",
+                    "constraint_name": "atlas_documents_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "document_number",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 1,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_workbook_path",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_sheet",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "source_row_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": 0,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE UNIQUE INDEX atlas_featureless_docs_pkey ON public.atlas_featureless_docs USING btree (document_number)",
+                    "index_name": "atlas_featureless_docs_pkey"
+                }
+            ],
+            "row_count": 0,
+            "table_name": "atlas_featureless_docs",
+            "constraints": [
+                {
+                    "definition": "FOREIGN KEY (document_number) REFERENCES atlas_documents(document_number) ON DELETE CASCADE",
+                    "constraint_name": "atlas_featureless_docs_document_number_fkey",
+                    "constraint_type": "FOREIGN KEY"
+                },
+                {
+                    "definition": "PRIMARY KEY (document_number)",
+                    "constraint_name": "atlas_featureless_docs_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "id",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": "nextval('atlas_import_rejects_id_seq'::regclass)",
+                    "ordinal_position": 1,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "entity_type",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_workbook_path",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_docs_root_path",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_sheet",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 5,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "source_row_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": 0,
+                    "column_default": null,
+                    "ordinal_position": 6,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "reject_reason",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 7,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "jsonb",
+                    "data_type": "jsonb",
+                    "column_name": "raw_data",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": "'{}'::jsonb",
+                    "ordinal_position": 8,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "timestamptz",
+                    "data_type": "timestamp with time zone",
+                    "column_name": "created_at",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": "now()",
+                    "ordinal_position": 9,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE INDEX atlas_import_rejects_entity_type_idx ON public.atlas_import_rejects USING btree (entity_type)",
+                    "index_name": "atlas_import_rejects_entity_type_idx"
+                },
+                {
+                    "definition": "CREATE UNIQUE INDEX atlas_import_rejects_pkey ON public.atlas_import_rejects USING btree (id)",
+                    "index_name": "atlas_import_rejects_pkey"
+                },
+                {
+                    "definition": "CREATE INDEX atlas_import_rejects_source_workbook_path_idx ON public.atlas_import_rejects USING btree (source_workbook_path)",
+                    "index_name": "atlas_import_rejects_source_workbook_path_idx"
+                }
+            ],
+            "row_count": 609,
+            "table_name": "atlas_import_rejects",
+            "constraints": [
+                {
+                    "definition": "PRIMARY KEY (id)",
+                    "constraint_name": "atlas_import_rejects_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "lr_number",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 1,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "tract_key",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "old_lr_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "primary_document_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "primary_page_no",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 5,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "property_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 6,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "fund_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 7,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "region_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 8,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "lr_type",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 9,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "lr_status",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 10,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "acq_date",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 11,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "tax_parcel_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 12,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "gis_acres",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 13,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "deed_acres",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 14,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "doc_description_heading",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 15,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "lr_specs",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 16,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "township",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 17,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "range",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 18,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "section",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 19,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "fips",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 20,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "remark",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 21,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_file",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 22,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_workbook_path",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 23,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_sheet",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 24,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "source_row_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": 0,
+                    "column_default": null,
+                    "ordinal_position": 25,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "geometry",
+                    "data_type": "USER-DEFINED",
+                    "column_name": "geom",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 26,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE INDEX atlas_land_records_fund_name_idx ON public.atlas_land_records USING btree (fund_name)",
+                    "index_name": "atlas_land_records_fund_name_idx"
+                },
+                {
+                    "definition": "CREATE INDEX atlas_land_records_geom_idx ON public.atlas_land_records USING gist (geom)",
+                    "index_name": "atlas_land_records_geom_idx"
+                },
+                {
+                    "definition": "CREATE UNIQUE INDEX atlas_land_records_pkey ON public.atlas_land_records USING btree (lr_number)",
+                    "index_name": "atlas_land_records_pkey"
+                },
+                {
+                    "definition": "CREATE INDEX atlas_land_records_property_name_idx ON public.atlas_land_records USING btree (property_name)",
+                    "index_name": "atlas_land_records_property_name_idx"
+                }
+            ],
+            "row_count": 1693,
+            "table_name": "atlas_land_records",
+            "constraints": [
+                {
+                    "definition": "PRIMARY KEY (lr_number)",
+                    "constraint_name": "atlas_land_records_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "id",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": "nextval('comments_id_seq'::regclass)",
+                    "ordinal_position": 1,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "question_area_id",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "author_id",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "body",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "timestamptz",
+                    "data_type": "timestamp with time zone",
+                    "column_name": "created_at",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": "now()",
+                    "ordinal_position": 5,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE UNIQUE INDEX comments_pkey ON public.comments USING btree (id)",
+                    "index_name": "comments_pkey"
+                },
+                {
+                    "definition": "CREATE INDEX comments_question_area_id_idx ON public.comments USING btree (question_area_id)",
+                    "index_name": "comments_question_area_id_idx"
+                }
+            ],
+            "row_count": 11,
+            "table_name": "comments",
+            "constraints": [
+                {
+                    "definition": "FOREIGN KEY (author_id) REFERENCES users(id)",
+                    "constraint_name": "comments_author_id_fkey",
+                    "constraint_type": "FOREIGN KEY"
+                },
+                {
+                    "definition": "PRIMARY KEY (id)",
+                    "constraint_name": "comments_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                },
+                {
+                    "definition": "FOREIGN KEY (question_area_id) REFERENCES question_areas(id) ON DELETE CASCADE",
+                    "constraint_name": "comments_question_area_id_fkey",
+                    "constraint_type": "FOREIGN KEY"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "id",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": "nextval('documents_id_seq'::regclass)",
+                    "ordinal_position": 1,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "question_area_id",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "original_name",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "stored_name",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "mime_type",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 5,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "size_bytes",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": null,
+                    "ordinal_position": 6,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "uploaded_by",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": null,
+                    "ordinal_position": 7,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "timestamptz",
+                    "data_type": "timestamp with time zone",
+                    "column_name": "created_at",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": "now()",
+                    "ordinal_position": 8,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE UNIQUE INDEX documents_pkey ON public.documents USING btree (id)",
+                    "index_name": "documents_pkey"
+                },
+                {
+                    "definition": "CREATE INDEX documents_question_area_id_idx ON public.documents USING btree (question_area_id)",
+                    "index_name": "documents_question_area_id_idx"
+                }
+            ],
+            "row_count": 6,
+            "table_name": "documents",
+            "constraints": [
+                {
+                    "definition": "PRIMARY KEY (id)",
+                    "constraint_name": "documents_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                },
+                {
+                    "definition": "FOREIGN KEY (question_area_id) REFERENCES question_areas(id) ON DELETE CASCADE",
+                    "constraint_name": "documents_question_area_id_fkey",
+                    "constraint_type": "FOREIGN KEY"
+                },
+                {
+                    "definition": "FOREIGN KEY (uploaded_by) REFERENCES users(id)",
+                    "constraint_name": "documents_uploaded_by_fkey",
+                    "constraint_type": "FOREIGN KEY"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "id",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": "nextval('land_records_id_seq'::regclass)",
+                    "ordinal_position": 1,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "state",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "county",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "parcel_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "deed_acres",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 5,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "gis_acres",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 6,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "fips",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 7,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "description",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 8,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "record_type",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 9,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "tract_key",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 10,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "record_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 11,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "document_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 12,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 13,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_page_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 14,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "document_type",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 15,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "record_status",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 16,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "current_owner",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 17,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "previous_owner",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 18,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "acquisition_date",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 19,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "description_type",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 20,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "remark",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 21,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "keyword",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 22,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "document_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 23,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "trs",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 24,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "record_specs",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 25,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "bool",
+                    "data_type": "boolean",
+                    "column_name": "tax_confirmed",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 26,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "merge_source",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 27,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "old_record_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 28,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "property_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 29,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "fund_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 30,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "region_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 31,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "jsonb",
+                    "data_type": "jsonb",
+                    "column_name": "raw_properties",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": "'{}'::jsonb",
+                    "ordinal_position": 32,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "geometry",
+                    "data_type": "USER-DEFINED",
+                    "column_name": "geom",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 33,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE INDEX land_records_geom_idx ON public.land_records USING gist (geom)",
+                    "index_name": "land_records_geom_idx"
+                },
+                {
+                    "definition": "CREATE UNIQUE INDEX land_records_pkey ON public.land_records USING btree (id)",
+                    "index_name": "land_records_pkey"
+                }
+            ],
+            "row_count": 1316,
+            "table_name": "land_records",
+            "constraints": [
+                {
+                    "definition": "PRIMARY KEY (id)",
+                    "constraint_name": "land_records_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "id",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": "nextval('management_areas_id_seq'::regclass)",
+                    "ordinal_position": 1,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "effective_date",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "status",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "property_code",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "property_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 5,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "portfolio",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 6,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "fund_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 7,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "original_acquisition_date",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 8,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "full_disposition_date",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 9,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "management_type",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 10,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "country",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 11,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "investment_manager",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 12,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "property_coordinates",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 13,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "region",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 14,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "state",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 15,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "county",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 16,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "business_unit",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 17,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "crops",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 18,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "tillable_acres",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 19,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "gross_acres",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 20,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "arable_hectares",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 21,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "gross_hectares",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 22,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "gis_acres",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 23,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "gis_hectares",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 24,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "jsonb",
+                    "data_type": "jsonb",
+                    "column_name": "raw_properties",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": "'{}'::jsonb",
+                    "ordinal_position": 25,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "geometry",
+                    "data_type": "USER-DEFINED",
+                    "column_name": "geom",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 26,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE INDEX management_areas_geom_idx ON public.management_areas USING gist (geom)",
+                    "index_name": "management_areas_geom_idx"
+                },
+                {
+                    "definition": "CREATE UNIQUE INDEX management_areas_pkey ON public.management_areas USING btree (id)",
+                    "index_name": "management_areas_pkey"
+                }
+            ],
+            "row_count": 340,
+            "table_name": "management_areas",
+            "constraints": [
+                {
+                    "definition": "PRIMARY KEY (id)",
+                    "constraint_name": "management_areas_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "id",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": "nextval('question_areas_id_seq'::regclass)",
+                    "ordinal_position": 1,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "code",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_layer",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "status",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "severity",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 5,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "title",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 6,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "summary",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 7,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "description",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 8,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "county",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 9,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "state",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 10,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "parcel_code",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 11,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "owner_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 12,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "property_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 13,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "tract_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 14,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "fund_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 15,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "land_services",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 16,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "tax_bill_acres",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 17,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "gis_acres",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 18,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "bool",
+                    "data_type": "boolean",
+                    "column_name": "exists_in_legal_layer",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 19,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "bool",
+                    "data_type": "boolean",
+                    "column_name": "exists_in_management_layer",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 20,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "bool",
+                    "data_type": "boolean",
+                    "column_name": "exists_in_client_tabular_bill_data",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 21,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "assigned_reviewer",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 22,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "search_keywords",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 23,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "jsonb",
+                    "data_type": "jsonb",
+                    "column_name": "raw_properties",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": "'{}'::jsonb",
+                    "ordinal_position": 24,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "geometry",
+                    "data_type": "USER-DEFINED",
+                    "column_name": "geom",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 25,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "timestamptz",
+                    "data_type": "timestamp with time zone",
+                    "column_name": "created_at",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": "now()",
+                    "ordinal_position": 26,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "timestamptz",
+                    "data_type": "timestamp with time zone",
+                    "column_name": "updated_at",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": "now()",
+                    "ordinal_position": 27,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "actionability_state",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": "'normal'::text",
+                    "ordinal_position": 28,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE INDEX question_areas_actionability_state_idx ON public.question_areas USING btree (actionability_state)",
+                    "index_name": "question_areas_actionability_state_idx"
+                },
+                {
+                    "definition": "CREATE UNIQUE INDEX question_areas_code_key ON public.question_areas USING btree (code)",
+                    "index_name": "question_areas_code_key"
+                },
+                {
+                    "definition": "CREATE INDEX question_areas_code_trgm_idx ON public.question_areas USING gin (code gin_trgm_ops)",
+                    "index_name": "question_areas_code_trgm_idx"
+                },
+                {
+                    "definition": "CREATE INDEX question_areas_geom_idx ON public.question_areas USING gist (geom)",
+                    "index_name": "question_areas_geom_idx"
+                },
+                {
+                    "definition": "CREATE INDEX question_areas_parcel_code_trgm_idx ON public.question_areas USING gin (parcel_code gin_trgm_ops)",
+                    "index_name": "question_areas_parcel_code_trgm_idx"
+                },
+                {
+                    "definition": "CREATE UNIQUE INDEX question_areas_pkey ON public.question_areas USING btree (id)",
+                    "index_name": "question_areas_pkey"
+                },
+                {
+                    "definition": "CREATE INDEX question_areas_search_keywords_trgm_idx ON public.question_areas USING gin (search_keywords gin_trgm_ops)",
+                    "index_name": "question_areas_search_keywords_trgm_idx"
+                },
+                {
+                    "definition": "CREATE INDEX question_areas_severity_idx ON public.question_areas USING btree (severity)",
+                    "index_name": "question_areas_severity_idx"
+                },
+                {
+                    "definition": "CREATE INDEX question_areas_status_idx ON public.question_areas USING btree (status)",
+                    "index_name": "question_areas_status_idx"
+                },
+                {
+                    "definition": "CREATE INDEX question_areas_title_trgm_idx ON public.question_areas USING gin (title gin_trgm_ops)",
+                    "index_name": "question_areas_title_trgm_idx"
+                }
+            ],
+            "row_count": 75,
+            "table_name": "question_areas",
+            "constraints": [
+                {
+                    "definition": "CHECK ((actionability_state = ANY (ARRAY['normal'::text, 'high_pain'::text, 'no_parcel_data'::text, 'in_progress'::text])))",
+                    "constraint_name": "question_areas_actionability_state_check",
+                    "constraint_type": "CHECK"
+                },
+                {
+                    "definition": "UNIQUE (code)",
+                    "constraint_name": "question_areas_code_key",
+                    "constraint_type": "UNIQUE"
+                },
+                {
+                    "definition": "PRIMARY KEY (id)",
+                    "constraint_name": "question_areas_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                },
+                {
+                    "definition": "CHECK ((severity = ANY (ARRAY['high'::text, 'medium'::text, 'low'::text])))",
+                    "constraint_name": "question_areas_severity_check",
+                    "constraint_type": "CHECK"
+                },
+                {
+                    "definition": "CHECK ((status = ANY (ARRAY['review'::text, 'active'::text, 'resolved'::text, 'hold'::text])))",
+                    "constraint_name": "question_areas_status_check",
+                    "constraint_type": "CHECK"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "key",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 1,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "value",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "timestamptz",
+                    "data_type": "timestamp with time zone",
+                    "column_name": "updated_at",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": "now()",
+                    "ordinal_position": 3,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE UNIQUE INDEX seed_metadata_pkey ON public.seed_metadata USING btree (key)",
+                    "index_name": "seed_metadata_pkey"
+                }
+            ],
+            "row_count": 3,
+            "table_name": "seed_metadata",
+            "constraints": [
+                {
+                    "definition": "PRIMARY KEY (key)",
+                    "constraint_name": "seed_metadata_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "bill_id",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 1,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "parcel_id",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "bill_year",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "file_name",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "extension",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 5,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "int8",
+                    "data_type": "bigint",
+                    "column_name": "size_bytes",
+                    "is_nullable": "YES",
+                    "numeric_scale": 0,
+                    "column_default": null,
+                    "ordinal_position": 6,
+                    "numeric_precision": 64,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "bill_relative_path",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 7,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_root_path",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 8,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "source_file_path",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 9,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE INDEX tax_bill_manifest_bill_relative_path_idx ON public.tax_bill_manifest USING btree (bill_relative_path)",
+                    "index_name": "tax_bill_manifest_bill_relative_path_idx"
+                },
+                {
+                    "definition": "CREATE INDEX tax_bill_manifest_bill_year_idx ON public.tax_bill_manifest USING btree (bill_year)",
+                    "index_name": "tax_bill_manifest_bill_year_idx"
+                },
+                {
+                    "definition": "CREATE INDEX tax_bill_manifest_parcel_id_idx ON public.tax_bill_manifest USING btree (parcel_id)",
+                    "index_name": "tax_bill_manifest_parcel_id_idx"
+                },
+                {
+                    "definition": "CREATE UNIQUE INDEX tax_bill_manifest_pkey ON public.tax_bill_manifest USING btree (bill_id)",
+                    "index_name": "tax_bill_manifest_pkey"
+                }
+            ],
+            "row_count": 8,
+            "table_name": "tax_bill_manifest",
+            "constraints": [
+                {
+                    "definition": "PRIMARY KEY (bill_id)",
+                    "constraint_name": "tax_bill_manifest_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "id",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": "nextval('tax_parcels_id_seq'::regclass)",
+                    "ordinal_position": 1,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "parcel_id",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "parcel_code",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "account_number",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "owner_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 5,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "property_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 6,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "parcel_status",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 7,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "tax_program",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 8,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "ownership_type",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 9,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "county",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 10,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "state",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 11,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "float8",
+                    "data_type": "double precision",
+                    "column_name": "gis_acres",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 12,
+                    "numeric_precision": 53,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "description",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 13,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "land_use_type",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 14,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "tract_name",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 15,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "notes",
+                    "is_nullable": "YES",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 16,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "jsonb",
+                    "data_type": "jsonb",
+                    "column_name": "raw_properties",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": "'{}'::jsonb",
+                    "ordinal_position": 17,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "geometry",
+                    "data_type": "USER-DEFINED",
+                    "column_name": "geom",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 18,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE INDEX tax_parcels_account_number_idx ON public.tax_parcels USING btree (account_number)",
+                    "index_name": "tax_parcels_account_number_idx"
+                },
+                {
+                    "definition": "CREATE INDEX tax_parcels_geom_idx ON public.tax_parcels USING gist (geom)",
+                    "index_name": "tax_parcels_geom_idx"
+                },
+                {
+                    "definition": "CREATE INDEX tax_parcels_parcel_code_idx ON public.tax_parcels USING btree (parcel_code)",
+                    "index_name": "tax_parcels_parcel_code_idx"
+                },
+                {
+                    "definition": "CREATE INDEX tax_parcels_parcel_code_trgm_idx ON public.tax_parcels USING gin (parcel_code gin_trgm_ops)",
+                    "index_name": "tax_parcels_parcel_code_trgm_idx"
+                },
+                {
+                    "definition": "CREATE INDEX tax_parcels_parcel_id_idx ON public.tax_parcels USING btree (parcel_id)",
+                    "index_name": "tax_parcels_parcel_id_idx"
+                },
+                {
+                    "definition": "CREATE UNIQUE INDEX tax_parcels_pkey ON public.tax_parcels USING btree (id)",
+                    "index_name": "tax_parcels_pkey"
+                }
+            ],
+            "row_count": 6,
+            "table_name": "tax_parcels",
+            "constraints": [
+                {
+                    "definition": "PRIMARY KEY (id)",
+                    "constraint_name": "tax_parcels_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                }
+            ]
+        },
+        {
+            "columns": [
+                {
+                    "udt_name": "int4",
+                    "data_type": "integer",
+                    "column_name": "id",
+                    "is_nullable": "NO",
+                    "numeric_scale": 0,
+                    "column_default": "nextval('users_id_seq'::regclass)",
+                    "ordinal_position": 1,
+                    "numeric_precision": 32,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "name",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 2,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "email",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 3,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "password_hash",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 4,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "text",
+                    "data_type": "text",
+                    "column_name": "role",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": null,
+                    "ordinal_position": 5,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                },
+                {
+                    "udt_name": "timestamptz",
+                    "data_type": "timestamp with time zone",
+                    "column_name": "created_at",
+                    "is_nullable": "NO",
+                    "numeric_scale": null,
+                    "column_default": "now()",
+                    "ordinal_position": 6,
+                    "numeric_precision": null,
+                    "character_maximum_length": null
+                }
+            ],
+            "indexes": [
+                {
+                    "definition": "CREATE UNIQUE INDEX users_email_key ON public.users USING btree (email)",
+                    "index_name": "users_email_key"
+                },
+                {
+                    "definition": "CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id)",
+                    "index_name": "users_pkey"
+                }
+            ],
+            "row_count": 4,
+            "table_name": "users",
+            "constraints": [
+                {
+                    "definition": "UNIQUE (email)",
+                    "constraint_name": "users_email_key",
+                    "constraint_type": "UNIQUE"
+                },
+                {
+                    "definition": "PRIMARY KEY (id)",
+                    "constraint_name": "users_pkey",
+                    "constraint_type": "PRIMARY KEY"
+                },
+                {
+                    "definition": "CHECK ((role = ANY (ARRAY['admin'::text, 'gis_team'::text, 'land_records_team'::text, 'client'::text, 'other'::text])))",
+                    "constraint_name": "users_role_check",
+                    "constraint_type": "CHECK"
+                }
+            ]
+        }
+    ],
+    "geometry_columns": [
+        {
+            "srid": 4326,
+            "type": "GEOMETRY",
+            "table_name": "atlas_land_records",
+            "column_name": "geom",
+            "coord_dimension": 2
+        },
+        {
+            "srid": 4326,
+            "type": "MULTIPOLYGON",
+            "table_name": "land_records",
+            "column_name": "geom",
+            "coord_dimension": 2
+        },
+        {
+            "srid": 4326,
+            "type": "MULTIPOLYGON",
+            "table_name": "management_areas",
+            "column_name": "geom",
+            "coord_dimension": 2
+        },
+        {
+            "srid": 4326,
+            "type": "POINT",
+            "table_name": "question_areas",
+            "column_name": "geom",
+            "coord_dimension": 2
+        },
+        {
+            "srid": 4326,
+            "type": "MULTIPOLYGON",
+            "table_name": "tax_parcels",
+            "column_name": "geom",
+            "coord_dimension": 2
+        }
+    ]
+}

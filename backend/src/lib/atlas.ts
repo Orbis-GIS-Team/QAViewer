@@ -999,11 +999,11 @@ async function hydrateAtlasGeometryFromLandRecords(client: {
     UPDATE atlas_land_records atlas
     SET
       geom = lr.geom,
-      property_name = COALESCE(atlas.property_name, lr.property_name),
-      fund_name = COALESCE(atlas.fund_name, lr.fund_name),
-      region_name = COALESCE(atlas.region_name, lr.region_name)
+      property_name = COALESCE(atlas.property_name, lr.propertyname),
+      fund_name = COALESCE(atlas.fund_name, lr.fundname),
+      region_name = COALESCE(atlas.region_name, lr.regionname)
     FROM land_records lr
-    WHERE lr.record_number = atlas.lr_number
+    WHERE lr.lr_number = atlas.lr_number
   `);
 }
 

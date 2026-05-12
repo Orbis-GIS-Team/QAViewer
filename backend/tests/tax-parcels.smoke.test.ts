@@ -37,7 +37,7 @@ import {
 const JWT_SECRET = "test-secret-for-vitest-do-not-use-in-prod";
 const app = createApp();
 
-type TestRole = "admin" | "gis_team" | "land_records_team" | "client" | "other";
+type TestRole = "admin" | "qa_reviewer" | "gis_team" | "land_records_team" | "client" | "other";
 
 function makeToken(role: TestRole = "admin", id = 1) {
   return jwt.sign({ id, email: "user@test.com", name: "Tester", role }, JWT_SECRET, {
@@ -101,16 +101,19 @@ describe("GET /api/question-areas/:code/tax-parcels", () => {
     },
   );
 
-  it.each(["client", "other"] as const)("returns 403 for %s before loading tax parcel data", async (role) => {
-    stubQuery(authResult(role));
+  it.each(["qa_reviewer", "client", "other"] as const)(
+    "returns 403 for %s before loading tax parcel data",
+    async (role) => {
+      stubQuery(authResult(role));
 
-    const res = await request(app)
-      .get("/api/question-areas/QA-0073/tax-parcels?buffer=500&unit=feet")
-      .set("Authorization", `Bearer ${makeToken(role)}`);
+      const res = await request(app)
+        .get("/api/question-areas/QA-0073/tax-parcels?buffer=500&unit=feet")
+        .set("Authorization", `Bearer ${makeToken(role)}`);
 
-    expect(res.status).toBe(403);
-    expect(loadTaxParcelQuestionAreaView).not.toHaveBeenCalled();
-  });
+      expect(res.status).toBe(403);
+      expect(loadTaxParcelQuestionAreaView).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns ranked parcel matches with linked bills", async () => {
     vi.mocked(loadTaxParcelQuestionAreaView).mockResolvedValueOnce({
@@ -236,16 +239,19 @@ describe("GET /api/question-areas/:code/tax-parcels", () => {
 describe("GET /api/tax-parcels bill endpoints", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it.each(["client", "other"] as const)("returns 403 for %s before loading tax bill content", async (role) => {
-    stubQuery(authResult(role));
+  it.each(["qa_reviewer", "client", "other"] as const)(
+    "returns 403 for %s before loading tax bill content",
+    async (role) => {
+      stubQuery(authResult(role));
 
-    const res = await request(app)
-      .get("/api/tax-parcels/bills/tax-bill-123/content")
-      .set("Authorization", `Bearer ${makeToken(role)}`);
+      const res = await request(app)
+        .get("/api/tax-parcels/bills/tax-bill-123/content")
+        .set("Authorization", `Bearer ${makeToken(role)}`);
 
-    expect(res.status).toBe(403);
-    expect(loadTaxBillAsset).not.toHaveBeenCalled();
-  });
+      expect(res.status).toBe(403);
+      expect(loadTaxBillAsset).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns 404 for an unknown tax bill content request", async () => {
     vi.mocked(loadTaxBillAsset).mockResolvedValueOnce(null);

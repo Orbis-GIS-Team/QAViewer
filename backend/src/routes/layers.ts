@@ -8,12 +8,16 @@ const router = Router();
 const layerConfig = {
   land_records: {
     table: "land_records",
+    idExpression: "objectid",
+    propertiesExpression: "to_jsonb(land_records) - 'geom'",
     geometryExpression: "ST_AsGeoJSON(geom, 5)::jsonb",
-    orderBy: "id",
+    orderBy: "objectid",
     limit: 6000,
   },
   management_areas: {
     table: "management_areas",
+    idExpression: "id",
+    propertiesExpression: "raw_properties",
     geometryExpression: "ST_AsGeoJSON(geom, 5)::jsonb",
     orderBy: "id",
     limit: 3000,
@@ -37,9 +41,9 @@ router.get("/:layerKey/:id", async (req, res) => {
 
   const result = await query<{ id: number; properties: Record<string, unknown>; geometry: object }>(
     `
-      SELECT id, raw_properties AS properties, ${layer.geometryExpression} AS geometry
+      SELECT ${layer.idExpression} AS id, ${layer.propertiesExpression} AS properties, ${layer.geometryExpression} AS geometry
       FROM ${layer.table}
-      WHERE id = $1
+      WHERE ${layer.idExpression} = $1
       LIMIT 1
     `,
     [featureId],
@@ -86,7 +90,7 @@ router.get("/:layerKey", async (req, res) => {
 
   const result = await query<{ id: number; properties: Record<string, unknown>; geometry: object }>(
     `
-      SELECT id, raw_properties AS properties, ${layer.geometryExpression} AS geometry
+      SELECT ${layer.idExpression} AS id, ${layer.propertiesExpression} AS properties, ${layer.geometryExpression} AS geometry
       FROM ${layer.table}
       ${whereClause}
       ORDER BY ${layer.orderBy}

@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import type { PoolClient, QueryResultRow } from "pg";
 
 import { config } from "../config.js";
+import { ROLES } from "./rbac.js";
 
 type Queryable = {
   query<T extends QueryResultRow>(text: string, values?: unknown[]): Promise<{ rows: T[] }>;
@@ -33,6 +34,42 @@ const REQUIRED_DATA_TABLES = [
 
 const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
   question_areas: ["actionability_state"],
+  land_records: [
+    "objectid",
+    "state",
+    "county",
+    "deedacres",
+    "tractkey",
+    "gisacres",
+    "lr_number",
+    "lr_type",
+    "taxparcelnum",
+    "l_desc",
+    "fips",
+    "docnumber",
+    "source",
+    "sourcepageno",
+    "doctype",
+    "lr_status",
+    "current_owner",
+    "previous_owner",
+    "acq_date",
+    "desc_type",
+    "remark",
+    "keyword",
+    "docname",
+    "trs",
+    "lr_specs",
+    "tax_confirm",
+    "merge_src",
+    "oldlrnum",
+    "propertyname",
+    "fundname",
+    "regionname",
+    "shape_length",
+    "shape_area",
+    "geom",
+  ],
 };
 
 const OPTIONAL_DATA_GROUPS = [
@@ -55,6 +92,7 @@ export async function validatePreparedDatabase(client: Queryable): Promise<void>
   await assertPostgisInstalled(client);
   await assertTablesExist(client);
   await assertRequiredColumnsExist(client);
+  await assertUsersRoleConstraintIsCurrent(client);
   await assertRequiredDataExists(client);
   await assertAdminUserExists(client);
   await warnAboutOptionalData(client);
@@ -122,7 +160,35 @@ async function assertRequiredColumnsExist(client: Queryable): Promise<void> {
     throw new Error(
       [
         `Database is reachable but required runtime columns are missing: ${missing.join(", ")}.`,
-        "Run npm run db:apply-actionability from backend or restore a prepared database with the current schema before starting QAViewer.",
+        "Run the explicit schema/data update commands or restore a prepared database with the current schema before starting QAViewer.",
+      ].join(" "),
+    );
+  }
+}
+
+async function assertUsersRoleConstraintIsCurrent(client: Queryable): Promise<void> {
+  const result = await client.query<{ check_clause: string | null }>(
+    `
+      SELECT cc.check_clause
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.check_constraints cc
+        ON cc.constraint_catalog = tc.constraint_catalog
+       AND cc.constraint_schema = tc.constraint_schema
+       AND cc.constraint_name = tc.constraint_name
+      WHERE tc.table_schema = 'public'
+        AND tc.table_name = 'users'
+        AND tc.constraint_name = 'users_role_check'
+    `,
+  );
+
+  const checkClause = result.rows[0]?.check_clause ?? "";
+  const missingRoles = ROLES.filter((role) => !checkClause.includes(`'${role}'`));
+
+  if (missingRoles.length > 0) {
+    throw new Error(
+      [
+        `Database is reachable but users_role_check is missing supported roles: ${missingRoles.join(", ")}.`,
+        "Run npm run db:apply-user-roles from backend or restore a prepared database with the current user-role schema before starting QAViewer.",
       ].join(" "),
     );
   }

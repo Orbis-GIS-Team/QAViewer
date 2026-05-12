@@ -10,7 +10,7 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('admin', 'gis_team', 'land_records_team', 'client', 'other')),
+      role TEXT NOT NULL CHECK (role IN ('admin', 'qa_reviewer', 'gis_team', 'land_records_team', 'client', 'other')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
@@ -29,12 +29,12 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
   await client.query(`
     UPDATE users
     SET role = 'other'
-    WHERE role NOT IN ('admin', 'gis_team', 'land_records_team', 'client', 'other')
+    WHERE role NOT IN ('admin', 'qa_reviewer', 'gis_team', 'land_records_team', 'client', 'other')
   `);
 
   await client.query(`
     ALTER TABLE users
-    ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'gis_team', 'land_records_team', 'client', 'other'))
+    ADD CONSTRAINT users_role_check CHECK (role IN ('admin', 'qa_reviewer', 'gis_team', 'land_records_team', 'client', 'other'))
   `);
 
   await client.query(`
@@ -108,38 +108,39 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS land_records (
-      id SERIAL PRIMARY KEY,
-      state TEXT,
-      county TEXT,
-      parcel_number TEXT,
-      deed_acres DOUBLE PRECISION,
-      gis_acres DOUBLE PRECISION,
-      fips TEXT,
-      description TEXT,
-      record_type TEXT,
-      tract_key TEXT,
-      record_number TEXT,
-      document_number TEXT,
-      source_name TEXT,
-      source_page_number TEXT,
-      document_type TEXT,
-      record_status TEXT,
-      current_owner TEXT,
-      previous_owner TEXT,
-      acquisition_date TEXT,
-      description_type TEXT,
-      remark TEXT,
-      keyword TEXT,
-      document_name TEXT,
-      trs TEXT,
-      record_specs TEXT,
-      tax_confirmed BOOLEAN,
-      merge_source TEXT,
-      old_record_number TEXT,
-      property_name TEXT,
-      fund_name TEXT,
-      region_name TEXT,
-      raw_properties JSONB NOT NULL DEFAULT '{}'::jsonb,
+      objectid INTEGER PRIMARY KEY,
+      state VARCHAR(50),
+      county VARCHAR(50),
+      deedacres VARCHAR(50),
+      tractkey VARCHAR(50),
+      gisacres DOUBLE PRECISION,
+      lr_number VARCHAR(50),
+      lr_type VARCHAR(50),
+      taxparcelnum VARCHAR(100),
+      l_desc VARCHAR(100),
+      fips VARCHAR(50),
+      docnumber VARCHAR(50),
+      source VARCHAR(50),
+      sourcepageno VARCHAR(10),
+      doctype VARCHAR(50),
+      lr_status VARCHAR(25),
+      current_owner VARCHAR(100),
+      previous_owner VARCHAR(100),
+      acq_date VARCHAR(20),
+      desc_type VARCHAR(50),
+      remark VARCHAR(100),
+      keyword VARCHAR(50),
+      docname VARCHAR(150),
+      trs VARCHAR(50),
+      lr_specs VARCHAR(150),
+      tax_confirm VARCHAR(50),
+      merge_src VARCHAR(255),
+      oldlrnum VARCHAR(255),
+      propertyname VARCHAR(255),
+      fundname VARCHAR(255),
+      regionname VARCHAR(255),
+      shape_length DOUBLE PRECISION,
+      shape_area DOUBLE PRECISION,
       geom geometry(MultiPolygon, 4326) NOT NULL
     )
   `);
@@ -376,6 +377,7 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
   await client.query(`
     CREATE INDEX IF NOT EXISTS question_areas_geom_idx ON question_areas USING GIST (geom);
     CREATE INDEX IF NOT EXISTS land_records_geom_idx ON land_records USING GIST (geom);
+    CREATE INDEX IF NOT EXISTS land_records_lr_number_idx ON land_records (lr_number);
     CREATE INDEX IF NOT EXISTS management_areas_geom_idx ON management_areas USING GIST (geom);
     CREATE INDEX IF NOT EXISTS atlas_land_records_geom_idx ON atlas_land_records USING GIST (geom);
     CREATE INDEX IF NOT EXISTS tax_parcels_geom_idx ON tax_parcels USING GIST (geom);

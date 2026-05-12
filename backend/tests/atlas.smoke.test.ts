@@ -41,7 +41,7 @@ import { pool } from "../src/lib/db.js";
 const JWT_SECRET = "test-secret-for-vitest-do-not-use-in-prod";
 const app = createApp();
 
-type TestRole = "admin" | "gis_team" | "land_records_team" | "client" | "other";
+type TestRole = "admin" | "qa_reviewer" | "gis_team" | "land_records_team" | "client" | "other";
 
 function makeToken(role: TestRole = "admin", id = 1) {
   return jwt.sign({ id, email: "user@test.com", name: "Tester", role }, JWT_SECRET, {
@@ -111,16 +111,19 @@ describe("GET /api/question-areas/:code/atlas", () => {
     },
   );
 
-  it.each(["client", "other"] as const)("returns 403 for %s before loading Atlas data", async (role) => {
-    stubQuery(authResult(role));
+  it.each(["qa_reviewer", "client", "other"] as const)(
+    "returns 403 for %s before loading Atlas data",
+    async (role) => {
+      stubQuery(authResult(role));
 
-    const res = await request(app)
-      .get("/api/question-areas/QA-001/atlas?buffer=500&unit=feet")
-      .set("Authorization", `Bearer ${makeToken(role)}`);
+      const res = await request(app)
+        .get("/api/question-areas/QA-001/atlas?buffer=500&unit=feet")
+        .set("Authorization", `Bearer ${makeToken(role)}`);
 
-    expect(res.status).toBe(403);
-    expect(loadAtlasQuestionAreaView).not.toHaveBeenCalled();
-  });
+      expect(res.status).toBe(403);
+      expect(loadAtlasQuestionAreaView).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns parent document, child documents, featureless docs, rejects, warnings, and page targets", async () => {
     vi.mocked(loadAtlasQuestionAreaView).mockResolvedValueOnce({
@@ -269,16 +272,19 @@ describe("GET /api/question-areas/:code/atlas", () => {
 describe("GET /api/atlas support endpoints", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it.each(["client", "other"] as const)("returns 403 for %s before loading featureless documents", async (role) => {
-    stubQuery(authResult(role));
+  it.each(["qa_reviewer", "client", "other"] as const)(
+    "returns 403 for %s before loading featureless documents",
+    async (role) => {
+      stubQuery(authResult(role));
 
-    const res = await request(app)
-      .get("/api/atlas/featureless-docs")
-      .set("Authorization", `Bearer ${makeToken(role)}`);
+      const res = await request(app)
+        .get("/api/atlas/featureless-docs")
+        .set("Authorization", `Bearer ${makeToken(role)}`);
 
-    expect(res.status).toBe(403);
-    expect(loadAtlasFeaturelessDocuments).not.toHaveBeenCalled();
-  });
+      expect(res.status).toBe(403);
+      expect(loadAtlasFeaturelessDocuments).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns featureless documents separately from matched land-record trees", async () => {
     vi.mocked(loadAtlasFeaturelessDocuments).mockResolvedValueOnce([

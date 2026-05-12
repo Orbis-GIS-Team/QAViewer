@@ -63,6 +63,17 @@ function isUniqueViolation(error: unknown): error is { code: string } {
   );
 }
 
+function isRoleConstraintViolation(error: unknown): error is { code: string; constraint?: string } {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "23514" &&
+    "constraint" in error &&
+    (error as { constraint?: unknown }).constraint === "users_role_check"
+  );
+}
+
 async function getAdminCount(): Promise<number> {
   const result = await query<AdminCountRow>(`SELECT COUNT(*)::text AS count FROM users WHERE role = 'admin'`);
   return Number(result.rows[0]?.count ?? 0);
@@ -123,10 +134,11 @@ router.get("/users", async (_req, res) => {
       ORDER BY
         CASE u.role
           WHEN 'admin' THEN 0
-          WHEN 'gis_team' THEN 1
-          WHEN 'land_records_team' THEN 2
-          WHEN 'client' THEN 3
-          ELSE 4
+          WHEN 'qa_reviewer' THEN 1
+          WHEN 'gis_team' THEN 2
+          WHEN 'land_records_team' THEN 3
+          WHEN 'client' THEN 4
+          ELSE 5
         END,
         u.name ASC,
         u.email ASC
@@ -170,6 +182,13 @@ router.post("/users", async (req, res) => {
   } catch (error) {
     if (isUniqueViolation(error)) {
       res.status(409).json({ message: "A user with that email already exists." });
+      return;
+    }
+    if (isRoleConstraintViolation(error)) {
+      res.status(409).json({
+        message:
+          "The database user-role constraint is out of date. Run npm run db:apply-user-roles in backend and try again.",
+      });
       return;
     }
     throw error;
@@ -248,6 +267,13 @@ router.patch("/users/:id", async (req, res) => {
   } catch (error) {
     if (isUniqueViolation(error)) {
       res.status(409).json({ message: "A user with that email already exists." });
+      return;
+    }
+    if (isRoleConstraintViolation(error)) {
+      res.status(409).json({
+        message:
+          "The database user-role constraint is out of date. Run npm run db:apply-user-roles in backend and try again.",
+      });
       return;
     }
     throw error;

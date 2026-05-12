@@ -74,6 +74,7 @@ const upload = multer({
 });
 
 const VALID_STATUSES = ["review", "active", "resolved", "hold"] as const;
+const VALID_SEVERITIES = ["high", "medium", "low"] as const;
 const VALID_ACTIONABILITY_STATES = ["normal", "high_pain", "no_parcel_data", "in_progress"] as const;
 const DATA_AVAILABILITY_FILTERS = ["available", "missing", "unknown"] as const;
 const EXPORT_LIMIT = 10_000;
@@ -87,6 +88,7 @@ type QuestionAreaWhereClause = {
 
 const updateSchema = z.object({
   status: z.enum(VALID_STATUSES).optional(),
+  severity: z.enum(VALID_SEVERITIES).optional(),
   summary: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
   assignedReviewer: z.string().nullable().optional(),
@@ -625,6 +627,10 @@ router.patch("/:code", requirePermission("question_areas:review"), async (req, r
     values.push(updates.status);
     assignments.push(`status = $${values.length}`);
   }
+  if (updates.severity !== undefined) {
+    values.push(updates.severity);
+    assignments.push(`severity = $${values.length}`);
+  }
   if (updates.summary !== undefined) {
     values.push(updates.summary);
     assignments.push(`summary = $${values.length}`);
@@ -650,12 +656,18 @@ router.patch("/:code", requirePermission("question_areas:review"), async (req, r
 
   values.push(req.params.code);
 
-  const result = await query<{ code: string; status: string; summary: string; assigned_reviewer: string | null }>(
+  const result = await query<{
+    code: string;
+    status: string;
+    severity: string;
+    summary: string;
+    assigned_reviewer: string | null;
+  }>(
     `
       UPDATE question_areas
       SET ${assignments.join(", ")}, updated_at = NOW()
       WHERE code = $${values.length}
-      RETURNING code, status, summary, assigned_reviewer
+      RETURNING code, status, severity, summary, assigned_reviewer
     `,
     values,
   );
@@ -669,6 +681,7 @@ router.patch("/:code", requirePermission("question_areas:review"), async (req, r
   res.json({
     code: row.code,
     status: row.status,
+    severity: row.severity,
     summary: row.summary,
     assignedReviewer: row.assigned_reviewer,
   });
