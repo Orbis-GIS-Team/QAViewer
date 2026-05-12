@@ -125,6 +125,11 @@ type IdentifiedFeature = {
   latlng: L.LatLngLiteral;
 };
 
+type IdentifySelection = {
+  features: IdentifiedFeature[];
+  index: number;
+};
+
 type IdentifyFieldRow = {
   key: string;
   label: string;
@@ -467,7 +472,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
-  const [identifiedFeature, setIdentifiedFeature] = useState<IdentifiedFeature | null>(null);
+  const [identifySelection, setIdentifySelection] = useState<IdentifySelection | null>(null);
   const [supportWorkspaceTab, setSupportWorkspaceTab] = useState<SupportWorkspaceTab | null>(() => {
     return getVisibleSupportTabs(session.user.role)[0]?.id ?? null;
   });
@@ -671,10 +676,23 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   }, [layerVisibility, mapBbox, session.token]);
 
   useEffect(() => {
-    if (identifiedFeature && !layerVisibility[identifiedFeature.layerKey]) {
-      setIdentifiedFeature(null);
+    if (!identifySelection) {
+      return;
     }
-  }, [identifiedFeature, layerVisibility]);
+
+    const visibleFeatures = identifySelection.features.filter((identified) => layerVisibility[identified.layerKey]);
+    if (visibleFeatures.length === 0) {
+      setIdentifySelection(null);
+      return;
+    }
+
+    if (visibleFeatures.length !== identifySelection.features.length) {
+      setIdentifySelection({
+        features: visibleFeatures,
+        index: Math.min(identifySelection.index, visibleFeatures.length - 1),
+      });
+    }
+  }, [identifySelection, layerVisibility]);
 
   useEffect(() => {
     if (!selectedCode) {
@@ -918,8 +936,39 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     }
   }
 
+  function identifyFeaturesAtLocation(latlng: L.LatLngLiteral) {
+    const features = findIdentifiedFeatures(layerData, layerVisibility, latlng);
+    setIdentifySelection(features.length > 0 ? { features, index: 0 } : null);
+  }
+
   function identifyLayerFeature(layerKey: LayerKey, feature: LayerFeature, latlng: L.LatLngLiteral) {
-    setIdentifiedFeature({ layerKey, feature, latlng });
+    const features = findIdentifiedFeatures(layerData, layerVisibility, latlng);
+    const clickedIndex = features.findIndex(
+      (identified) =>
+        identified.layerKey === layerKey &&
+        identified.feature.properties.id === feature.properties.id,
+    );
+
+    setIdentifySelection({
+      features:
+        features.length > 0
+          ? features
+          : [{ layerKey, feature, latlng }],
+      index: clickedIndex >= 0 ? clickedIndex : 0,
+    });
+  }
+
+  function cycleIdentifiedFeature(direction: -1 | 1) {
+    setIdentifySelection((current) => {
+      if (!current || current.features.length < 2) {
+        return current;
+      }
+
+      return {
+        ...current,
+        index: (current.index + direction + current.features.length) % current.features.length,
+      };
+    });
   }
 
   function toggleLayer(layerKey: LayerKey) {
@@ -958,6 +1007,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         title: selectedDetail.title,
       }
     : null;
+  const identifiedFeature = identifySelection?.features[identifySelection.index] ?? null;
 
   return (
     <main className="workspace-shell">
@@ -1367,7 +1417,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
             <MapIdentifyClickHandler
               layerData={layerData}
               layerVisibility={layerVisibility}
-              onIdentify={identifyLayerFeature}
+              onIdentify={identifyFeaturesAtLocation}
             />
             <MapFocus geometry={selectedDetail?.geometry ?? null} targetKey={selectedDetail?.code ?? null} />
 
@@ -1418,8 +1468,11 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
           </MapContainer>
           {identifiedFeature ? (
             <IdentifyPanel
+              currentIndex={identifySelection?.index ?? 0}
               identifiedFeature={identifiedFeature}
-              onClose={() => setIdentifiedFeature(null)}
+              identifyCount={identifySelection?.features.length ?? 1}
+              onClose={() => setIdentifySelection(null)}
+              onCycle={cycleIdentifiedFeature}
             />
           ) : null}
         </section>
@@ -1810,7 +1863,7 @@ function MapIdentifyClickHandler({
 }: {
   layerData: Partial<Record<LayerKey, LayerCollection>>;
   layerVisibility: Record<LayerKey, boolean>;
-  onIdentify: (layerKey: LayerKey, feature: LayerFeature, latlng: L.LatLngLiteral) => void;
+  onIdentify: (latlng: L.LatLngLiteral) => void;
 }) {
   const map = useMap();
 
@@ -1824,10 +1877,7 @@ function MapIdentifyClickHandler({
       }
 
       const latlng = map.mouseEventToLatLng(event);
-      const identified = findIdentifiedFeature(layerData, layerVisibility, latlng);
-      if (identified) {
-        onIdentify(identified.layerKey, identified.feature, latlng);
-      }
+      onIdentify(latlng);
     }
 
     container.addEventListener("click", handleMapClick, true);
@@ -2151,11 +2201,17 @@ function managementAreaDrawPriority(feature: LayerFeature): number {
 }
 
 function IdentifyPanel({
+  currentIndex,
   identifiedFeature,
+  identifyCount,
   onClose,
+  onCycle,
 }: {
+  currentIndex: number;
   identifiedFeature: IdentifiedFeature;
+  identifyCount: number;
   onClose: () => void;
+  onCycle: (direction: -1 | 1) => void;
 }) {
   const config = IDENTIFY_LAYER_CONFIG[identifiedFeature.layerKey];
   const properties = identifiedFeature.feature.properties;
@@ -2172,10 +2228,26 @@ function IdentifyPanel({
           <span className={`identify-layer-badge ${config.badgeClass}`}>{config.label}</span>
           <h2>{title}</h2>
         </div>
-        <button className="identify-close-button" onClick={onClose} title="Close identify panel" type="button">
-          x
-        </button>
+        <div className="identify-header-actions">
+          <button className="identify-close-button" onClick={onClose} title="Close identify panel" type="button">
+            x
+          </button>
+        </div>
       </div>
+
+      {identifyCount > 1 ? (
+        <div className="identify-cycle-controls" aria-label="Identify results">
+          <button onClick={() => onCycle(-1)} title="Previous identified feature" type="button">
+            Previous
+          </button>
+          <span>
+            {currentIndex + 1} of {identifyCount}
+          </span>
+          <button onClick={() => onCycle(1)} title="Next identified feature" type="button">
+            Next
+          </button>
+        </div>
+      ) : null}
 
       <IdentifyFieldSection rows={primaryRows} title="Identifiers" />
       <IdentifyFieldSection rows={attributeRows} title="Attributes" />
@@ -2353,27 +2425,40 @@ function isPolygonGeometry(geometry: Geometry | null | undefined) {
   return geometry?.type === "Polygon" || geometry?.type === "MultiPolygon";
 }
 
-function findIdentifiedFeature(
+function findIdentifiedFeatures(
   layerData: Partial<Record<LayerKey, LayerCollection>>,
   layerVisibility: Record<LayerKey, boolean>,
   latlng: L.LatLngLiteral,
-): { layerKey: LayerKey; feature: LayerFeature } | null {
+): IdentifiedFeature[] {
+  const identifiedFeatures: IdentifiedFeature[] = [];
+
   for (const layerKey of IDENTIFY_LAYER_ORDER) {
     if (!layerVisibility[layerKey]) {
       continue;
     }
 
     const collection = layerData[layerKey];
-    const feature = collection?.features.find((candidate) =>
-      isPolygonGeometry(candidate.geometry) && featureContainsLatLng(candidate as LayerFeature, latlng),
-    );
+    const features = collection ? identifyOrderedFeatures(layerKey, collection) : [];
 
-    if (feature) {
-      return { layerKey, feature: feature as LayerFeature };
+    for (const feature of features) {
+      if (isPolygonGeometry(feature.geometry) && featureContainsLatLng(feature, latlng)) {
+        identifiedFeatures.push({ layerKey, feature, latlng });
+      }
     }
   }
 
-  return null;
+  return identifiedFeatures;
+}
+
+function identifyOrderedFeatures(layerKey: LayerKey, collection: LayerCollection): LayerFeature[] {
+  const orderedCollection =
+    layerKey === "land_records"
+      ? orderLandRecordFeatures(collection)
+      : layerKey === "management_areas"
+        ? orderManagementAreaFeatures(collection)
+        : collection;
+
+  return [...orderedCollection.features].reverse() as LayerFeature[];
 }
 
 function featureContainsLatLng(feature: LayerFeature, latlng: L.LatLngLiteral) {

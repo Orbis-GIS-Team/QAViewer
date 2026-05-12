@@ -2156,6 +2156,12 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.identify-header-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+}
+
 .identify-layer-badge {
   width: fit-content;
   display: inline-flex;
@@ -2198,6 +2204,40 @@ textarea {
   color: var(--primary);
   border-color: #cbd5e1;
   background: #f8fafc;
+}
+
+.identify-cycle-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.identify-cycle-controls button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.identify-cycle-controls button:hover {
+  border-color: #94a3b8;
+  background: #eef2ff;
+}
+
+.identify-cycle-controls span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .identify-section {
