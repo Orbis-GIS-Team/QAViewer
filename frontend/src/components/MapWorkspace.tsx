@@ -70,6 +70,7 @@ type SummaryPayload = {
 
 type LayerKey = "land_records" | "management_areas";
 type MeasureMode = "distance" | "area";
+type MeasureUnit = "metric" | "imperial" | "survey";
 type ControlPosition = "topleft" | "topright" | "bottomleft" | "bottomright";
 
 type QuestionAreaProperties = {
@@ -473,6 +474,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
   const [identifySelection, setIdentifySelection] = useState<IdentifySelection | null>(null);
+  const [isMeasuring, setIsMeasuring] = useState(false);
   const [supportWorkspaceTab, setSupportWorkspaceTab] = useState<SupportWorkspaceTab | null>(() => {
     return getVisibleSupportTabs(session.user.role)[0]?.id ?? null;
   });
@@ -1412,9 +1414,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
               </LayersControl.BaseLayer>
             </LayersControl>
             <MapLegendControl layerVisibility={layerVisibility} onToggleLayer={toggleLayer} />
-            <MeasurementControl />
+            <MeasurementControl onMeasureActiveChange={setIsMeasuring} />
             <MapViewportWatcher onChange={setMapBbox} />
             <MapIdentifyClickHandler
+              disabled={isMeasuring}
               layerData={layerData}
               layerVisibility={layerVisibility}
               onIdentify={identifyFeaturesAtLocation}
@@ -1427,6 +1430,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                   <IdentifyGeoJsonLayer
                     data={layerData.land_records}
                     identifiedFeature={identifiedFeature}
+                    identifyDisabled={isMeasuring}
                     layerKey="land_records"
                     onIdentify={identifyLayerFeature}
                   />
@@ -1448,6 +1452,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                   <IdentifyGeoJsonLayer
                     data={layerData.management_areas}
                     identifiedFeature={identifiedFeature}
+                    identifyDisabled={isMeasuring}
                     layerKey="management_areas"
                     onIdentify={identifyLayerFeature}
                   />
@@ -1857,10 +1862,12 @@ function MapViewportWatcher({ onChange }: { onChange: (bbox: string) => void }) 
 }
 
 function MapIdentifyClickHandler({
+  disabled,
   layerData,
   layerVisibility,
   onIdentify,
 }: {
+  disabled: boolean;
   layerData: Partial<Record<LayerKey, LayerCollection>>;
   layerVisibility: Record<LayerKey, boolean>;
   onIdentify: (latlng: L.LatLngLiteral) => void;
@@ -1871,6 +1878,10 @@ function MapIdentifyClickHandler({
     const container = map.getContainer();
 
     function handleMapClick(event: MouseEvent) {
+      if (disabled) {
+        return;
+      }
+
       const target = event.target instanceof Element ? event.target : null;
       if (target?.closest(".leaflet-control, .leaflet-marker-icon")) {
         return;
@@ -1882,7 +1893,7 @@ function MapIdentifyClickHandler({
 
     container.addEventListener("click", handleMapClick, true);
     return () => container.removeEventListener("click", handleMapClick, true);
-  }, [layerData, layerVisibility, map, onIdentify]);
+  }, [disabled, layerData, layerVisibility, map, onIdentify]);
 
   return null;
 }
@@ -1890,11 +1901,13 @@ function MapIdentifyClickHandler({
 function IdentifyGeoJsonLayer({
   data,
   identifiedFeature,
+  identifyDisabled,
   layerKey,
   onIdentify,
 }: {
   data: LayerCollection;
   identifiedFeature: IdentifiedFeature | null;
+  identifyDisabled: boolean;
   layerKey: LayerKey;
   onIdentify: (layerKey: LayerKey, feature: LayerFeature, latlng: L.LatLngLiteral) => void;
 }) {
@@ -1915,6 +1928,10 @@ function IdentifyGeoJsonLayer({
         }
 
         layer.on("click", (event: L.LeafletMouseEvent) => {
+          if (identifyDisabled) {
+            return;
+          }
+
           L.DomEvent.stopPropagation(event.originalEvent);
           onIdentify(layerKey, feature as LayerFeature, event.latlng);
         });
@@ -2672,9 +2689,14 @@ function MapLegendControl({
   );
 }
 
-function MeasurementControl() {
+function MeasurementControl({
+  onMeasureActiveChange,
+}: {
+  onMeasureActiveChange: (active: boolean) => void;
+}) {
   const [collapsed, setCollapsed] = useState(true);
   const [mode, setMode] = useState<MeasureMode | null>(null);
+  const [unit, setUnit] = useState<MeasureUnit>("survey");
   const [isCapturing, setIsCapturing] = useState(false);
   const [points, setPoints] = useState<L.LatLngLiteral[]>([]);
 
@@ -2683,6 +2705,12 @@ function MeasurementControl() {
   const perimeterMeters =
     mode === "area" && points.length > 2 ? totalDistanceMeters([...points, points[0]]) : 0;
   const lastPoint = points[points.length - 1] ?? null;
+  const lastSegmentMeters =
+    points.length >= 2 ? L.latLng(points[points.length - 2]).distanceTo(points[points.length - 1]) : 0;
+
+  useEffect(() => {
+    onMeasureActiveChange(isCapturing);
+  }, [isCapturing, onMeasureActiveChange]);
 
   function startMeasurement(nextMode: MeasureMode) {
     setMode(nextMode);
@@ -2701,6 +2729,10 @@ function MeasurementControl() {
     setIsCapturing(false);
   }
 
+  function undoPoint() {
+    setPoints((current) => current.slice(0, -1));
+  }
+
   function addPoint(point: L.LatLngLiteral) {
     setPoints((current) => [...current, point]);
   }
@@ -2708,15 +2740,21 @@ function MeasurementControl() {
   const summaryLabel =
     mode === "area"
       ? points.length >= 3
-        ? `${formatArea(areaSquareMeters)} area`
+        ? `${formatArea(areaSquareMeters, unit)} area`
         : "Add at least three points"
       : points.length >= 2
-        ? `${formatDistance(distanceMeters)} total`
+        ? `${formatDistance(distanceMeters, unit)} total`
         : "Add at least two points";
+  const canFinishArea = mode === "area" && points.length >= 3 && isCapturing;
+  const unitOptions: Array<{ label: string; value: MeasureUnit }> = [
+    { label: "ft/ac", value: "survey" },
+    { label: "m/ha", value: "metric" },
+    { label: "mi", value: "imperial" },
+  ];
 
   return (
     <>
-      <MeasureInteraction active={isCapturing} onAddPoint={addPoint} />
+      <MeasureInteraction active={isCapturing} onAddPoint={addPoint} onFinish={stopMeasurement} />
 
       {mode && points.length > 0 ? (
         <Pane name="measurement-overlay" style={{ zIndex: 470 }}>
@@ -2747,8 +2785,8 @@ function MeasurementControl() {
               {lastPoint === point ? (
                 <Tooltip direction="top" offset={[0, -6]} permanent>
                   {mode === "area" && points.length >= 3
-                    ? `${formatArea(areaSquareMeters)} | ${formatDistance(perimeterMeters)} perimeter`
-                    : formatDistance(distanceMeters)}
+                    ? `${formatArea(areaSquareMeters, unit)} | ${formatDistance(perimeterMeters, unit)} perimeter`
+                    : formatDistance(distanceMeters, unit)}
                 </Tooltip>
               ) : null}
             </CircleMarker>
@@ -2756,7 +2794,7 @@ function MeasurementControl() {
         </Pane>
       ) : null}
 
-      <MapControl className="map-control-shell measurement-control" position="topleft">
+      <MapControl className="map-control-shell measurement-control" position="bottomleft">
         <button
           aria-expanded={!collapsed}
           className="map-control-toggle"
@@ -2779,13 +2817,48 @@ function MeasurementControl() {
               <span>{isCapturing ? "Click map to add points" : "Choose a mode"}</span>
             </div>
 
-            <div className="measurement-actions">
-              <button className="ghost-button" onClick={() => startMeasurement("distance")} type="button">
+            <div className="measurement-mode-row" role="group" aria-label="Measurement mode">
+              <button
+                aria-pressed={mode === "distance"}
+                className="measurement-action"
+                onClick={() => startMeasurement("distance")}
+                type="button"
+              >
                 Distance
               </button>
-              <button className="ghost-button" onClick={() => startMeasurement("area")} type="button">
+              <button
+                aria-pressed={mode === "area"}
+                className="measurement-action"
+                onClick={() => startMeasurement("area")}
+                type="button"
+              >
                 Area
               </button>
+            </div>
+
+            <div className="measurement-unit-row" role="group" aria-label="Measurement units">
+              {unitOptions.map((option) => (
+                <button
+                  aria-pressed={unit === option.value}
+                  className="measurement-unit-button"
+                  key={option.value}
+                  onClick={() => setUnit(option.value)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="measurement-actions">
+              <button className="ghost-button" disabled={points.length === 0} onClick={undoPoint} type="button">
+                Undo
+              </button>
+              {canFinishArea ? (
+                <button className="ghost-button primary-button" onClick={stopMeasurement} type="button">
+                  Finish
+                </button>
+              ) : null}
               <button
                 className="ghost-button"
                 disabled={!isCapturing}
@@ -2804,11 +2877,33 @@ function MeasurementControl() {
                 <strong>{mode ? humanize(mode) : "Inactive"}.</strong>{" "}
                 {mode ? summaryLabel : "Start a measurement to draw on the map."}
               </p>
+              {points.length > 0 ? (
+                <dl className="measurement-readout">
+                  <div>
+                    <dt>Points</dt>
+                    <dd>{points.length}</dd>
+                  </div>
+                  {points.length >= 2 ? (
+                    <div>
+                      <dt>Last</dt>
+                      <dd>{formatDistance(lastSegmentMeters, unit)}</dd>
+                    </div>
+                  ) : null}
+                  {mode === "area" && points.length >= 3 ? (
+                    <div>
+                      <dt>Perimeter</dt>
+                      <dd>{formatDistance(perimeterMeters, unit)}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              ) : null}
               <p className="measurement-hint">
                 {mode === "area" && points.length >= 3
-                  ? `${formatDistance(perimeterMeters)} perimeter`
+                  ? isCapturing
+                    ? "Click Finish or double-click the map to close the shape."
+                    : "Area measurement is finished."
                   : isCapturing
-                    ? "Click on the map to add more points."
+                    ? "Click on the map to add points. Double-click to stop."
                     : "Choose Distance or Area to begin."}
               </p>
             </div>
@@ -2851,10 +2946,29 @@ function MapControl({
 function MeasureInteraction({
   active,
   onAddPoint,
+  onFinish,
 }: {
   active: boolean;
   onAddPoint: (point: L.LatLngLiteral) => void;
+  onFinish: () => void;
 }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+
+    const wasDoubleClickZoomEnabled = map.doubleClickZoom.enabled();
+    map.doubleClickZoom.disable();
+
+    return () => {
+      if (wasDoubleClickZoomEnabled) {
+        map.doubleClickZoom.enable();
+      }
+    };
+  }, [active, map]);
+
   useMapEvents({
     click(event) {
       if (!active) {
@@ -2862,6 +2976,14 @@ function MeasureInteraction({
       }
 
       onAddPoint(event.latlng);
+    },
+    dblclick(event) {
+      if (!active) {
+        return;
+      }
+
+      L.DomEvent.stopPropagation(event.originalEvent);
+      onFinish();
     },
   });
 
@@ -2964,24 +3086,48 @@ function formatMetric(value: number | null | undefined) {
   });
 }
 
-function formatDistance(value: number) {
-  if (value >= 1000) {
-    return `${(value / 1000).toFixed(2)} km`;
+function formatDistance(value: number, unit: MeasureUnit) {
+  if (unit === "metric") {
+    if (value >= 1000) {
+      return `${(value / 1000).toFixed(2)} km`;
+    }
+
+    return `${value.toFixed(0)} m`;
   }
 
-  return `${value.toFixed(0)} m`;
+  const feet = value * 3.28084;
+  if (unit === "survey") {
+    return `${feet.toFixed(feet >= 100 ? 0 : 1)} ft`;
+  }
+
+  const miles = feet / 5280;
+  if (miles >= 0.1) {
+    return `${miles.toFixed(2)} mi`;
+  }
+
+  return `${feet.toFixed(feet >= 100 ? 0 : 1)} ft`;
 }
 
-function formatArea(value: number) {
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(2)} sq km`;
+function formatArea(value: number, unit: MeasureUnit) {
+  if (unit === "metric") {
+    if (value >= 1_000_000) {
+      return `${(value / 1_000_000).toFixed(2)} sq km`;
+    }
+
+    if (value >= 10_000) {
+      return `${(value / 10_000).toFixed(2)} ha`;
+    }
+
+    return `${value.toFixed(0)} sq m`;
   }
 
-  if (value >= 10_000) {
-    return `${(value / 10_000).toFixed(2)} ha`;
+  const squareFeet = value * 10.7639;
+  const acres = squareFeet / 43560;
+  if (unit === "survey" || acres >= 0.1) {
+    return `${acres.toFixed(acres >= 10 ? 1 : 2)} ac`;
   }
 
-  return `${value.toFixed(0)} sq m`;
+  return `${squareFeet.toFixed(0)} sq ft`;
 }
 
 function formatBoolean(value: boolean | null | undefined) {
