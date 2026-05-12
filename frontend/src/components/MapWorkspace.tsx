@@ -176,6 +176,7 @@ type QuestionAreaDetail = {
 
 type EditDraft = {
   status: string;
+  severity: string;
   summary: string;
   description: string;
   assignedReviewer: string;
@@ -206,6 +207,18 @@ type LegendItem = {
   label: string;
   swatch: string;
   toggleable: boolean;
+};
+
+type LandRecordLegendItem = {
+  key: string;
+  label: string;
+  swatch: string;
+};
+
+type ManagementLegendItem = {
+  key: string;
+  label: string;
+  swatch: string;
 };
 
 const STATUS_OPTIONS = ["review", "active", "resolved", "hold"];
@@ -265,8 +278,89 @@ const initialLayers: Record<LayerKey, boolean> = {
 
 const LEGEND_ITEMS: LegendItem[] = [
   { key: "qa_markers", label: "Question Areas", swatch: "qa-marker", toggleable: false },
-  { key: "land_records", label: "Land Records", swatch: "land-records", toggleable: true },
-  { key: "management_areas", label: "Management Areas", swatch: "management", toggleable: true },
+  { key: "land_records", label: "Land Records", swatch: "land-records-summary", toggleable: true },
+  { key: "management_areas", label: "Management Areas", swatch: "management-summary", toggleable: true },
+];
+
+const LAND_RECORD_STYLE_BY_TYPE: Record<string, PathOptions> = {
+  "Access Restrictions": { color: "#a900e6", weight: 2, fillOpacity: 0 },
+  Agreement: { color: "#a900e6", weight: 2, fillOpacity: 0 },
+  Easement: { color: "#a900e6", weight: 2, fillOpacity: 0 },
+  Encumbrance: { color: "#686868", dashArray: "5 3", weight: 2, fillColor: "url(#lr-encumbrance-hatch)", fillOpacity: 1 },
+  Exception: { color: "#000000", dashArray: "8 3 2 3", weight: 2.5, fillColor: "url(#lr-exception-hatch)", fillOpacity: 1 },
+  Legal: { color: "#0070ff", weight: 2, fillOpacity: 0 },
+  "Out Sale": { color: "#ff7f00", dashArray: "8 3 2 3", weight: 2.5, fillColor: "url(#lr-out-sale-hatch)", fillOpacity: 1 },
+  "Property Line": { color: "#a900e6", weight: 2, fillOpacity: 0 },
+  Reservation: { color: "#a900e6", weight: 2, fillOpacity: 0 },
+  "Reservation of Minerals": { color: "#a900e6", weight: 2, fillOpacity: 0 },
+  "Right of Way": { color: "#a900e6", weight: 2, fillOpacity: 0 },
+  "Title Examination": { color: "#e60000", weight: 2.5, fillOpacity: 0 },
+};
+
+const LAND_RECORD_DRAW_PRIORITY_BY_TYPE: Record<string, number> = {
+  Legal: 10,
+  Easement: 20,
+  "Access Restrictions": 20,
+  Agreement: 20,
+  "Property Line": 20,
+  Reservation: 20,
+  "Reservation of Minerals": 20,
+  "Right of Way": 20,
+  Encumbrance: 30,
+  "Out Sale": 40,
+  Exception: 50,
+  "Title Examination": 60,
+};
+
+const LAND_RECORD_LEGEND_ITEMS: LandRecordLegendItem[] = [
+  { key: "legal", label: "Legal", swatch: "lr-legal" },
+  { key: "exception", label: "Exception", swatch: "lr-exception" },
+  { key: "out_sale", label: "Out Sale", swatch: "lr-out-sale" },
+  { key: "easement", label: "Easement / related", swatch: "lr-easement" },
+  { key: "encumbrance", label: "Encumbrance", swatch: "lr-encumbrance" },
+  { key: "title_examination", label: "Title Examination", swatch: "lr-title-examination" },
+];
+
+const MANAGEMENT_AREA_STYLE_BY_PROPERTY_NAME: Record<string, PathOptions> = {
+  "Delta South": {
+    color: "#55ff00",
+    fillColor: "url(#management-delta-south-pattern)",
+    fillOpacity: 1,
+    weight: 2,
+  },
+  "L & C OR": {
+    color: "#c500ff",
+    fillColor: "url(#management-l-c-or-pattern)",
+    fillOpacity: 1,
+    weight: 2,
+  },
+  "Latrobe PA NY": {
+    color: "#ffaa00",
+    fillColor: "url(#management-latrobe-pa-ny-pattern)",
+    fillOpacity: 1,
+    weight: 2,
+  },
+  "Quercus WV": {
+    color: "#734c00",
+    fillColor: "url(#management-quercus-wv-pattern)",
+    fillOpacity: 1,
+    weight: 1.5,
+  },
+};
+
+const MANAGEMENT_AREA_DRAW_PRIORITY_BY_PROPERTY_NAME: Record<string, number> = {
+  "Delta South": 10,
+  "L & C OR": 10,
+  "Latrobe PA NY": 10,
+  "Quercus WV": 10,
+};
+
+const MANAGEMENT_AREA_LEGEND_ITEMS: ManagementLegendItem[] = [
+  { key: "delta_south", label: "Delta South", swatch: "management-delta-south" },
+  { key: "l_c_or", label: "L & C OR", swatch: "management-l-c-or" },
+  { key: "latrobe_pa_ny", label: "Latrobe PA NY", swatch: "management-latrobe-pa-ny" },
+  { key: "quercus_wv", label: "Quercus WV", swatch: "management-quercus-wv" },
+  { key: "other", label: "Other Management Areas", swatch: "management-other" },
 ];
 const IDENTIFY_LAYER_ORDER: LayerKey[] = ["management_areas", "land_records"];
 
@@ -275,27 +369,27 @@ const IDENTIFY_LAYER_CONFIG: Record<LayerKey, IdentifyLayerConfig> = {
     label: "Land Record",
     badgeClass: "land-records",
     primaryFields: [
-      { key: "parcel_number", label: "Parcel Number" },
-      { key: "record_number", label: "Record Number" },
-      { key: "document_number", label: "Document Number" },
+      { key: "taxparcelnum", label: "Tax Parcel Number" },
+      { key: "lr_number", label: "LR Number" },
+      { key: "docnumber", label: "Document Number" },
     ],
     attributeFields: [
       { key: "current_owner", label: "Current Owner" },
       { key: "previous_owner", label: "Previous Owner" },
-      { key: "record_type", label: "Record Type" },
-      { key: "document_type", label: "Document Type" },
-      { key: "record_status", label: "Record Status" },
-      { key: "tax_confirmed", label: "Tax Confirmed" },
+      { key: "lr_type", label: "LR Type" },
+      { key: "doctype", label: "Document Type" },
+      { key: "lr_status", label: "LR Status" },
+      { key: "tax_confirm", label: "Tax Confirmed" },
     ],
     contextFields: [
-      { key: "property_name", label: "Property" },
-      { key: "tract_key", label: "Tract Key" },
-      { key: "fund_name", label: "Fund" },
+      { key: "propertyname", label: "Property" },
+      { key: "tractkey", label: "Tract Key" },
+      { key: "fundname", label: "Fund" },
       { key: "county", label: "County" },
       { key: "state", label: "State" },
-      { key: "region_name", label: "Region" },
-      { key: "deed_acres", label: "Deed Acres" },
-      { key: "gis_acres", label: "GIS Acres" },
+      { key: "regionname", label: "Region" },
+      { key: "deedacres", label: "Deed Acres" },
+      { key: "gisacres", label: "GIS Acres" },
     ],
   },
   management_areas: {
@@ -328,10 +422,9 @@ const IDENTIFY_LAYER_CONFIG: Record<LayerKey, IdentifyLayerConfig> = {
 };
 
 const landRecordStyle: PathOptions = {
-  color: "#0f766e",
+  color: "#0070ff",
   weight: 2,
-  fillColor: "#5eead4",
-  fillOpacity: 0.08,
+  fillOpacity: 0,
 };
 
 const managementAreaStyle: PathOptions = {
@@ -384,6 +477,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [editDraft, setEditDraft] = useState<EditDraft>({
     status: "review",
+    severity: "medium",
     summary: "",
     description: "",
     assignedReviewer: "",
@@ -600,6 +694,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         setSelectedDetail(payload);
         setEditDraft({
           status: payload.status,
+          severity: payload.severity,
           summary: payload.summary,
           description: payload.description ?? "",
           assignedReviewer: payload.assignedReviewer ?? "",
@@ -644,6 +739,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     setSelectedDetail(payload);
     setEditDraft({
       status: payload.status,
+      severity: payload.severity,
       summary: payload.summary,
       description: payload.description ?? "",
       assignedReviewer: payload.assignedReviewer ?? "",
@@ -669,12 +765,14 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     try {
       const body: {
         status?: string;
+        severity?: string;
         summary?: string;
         description?: string | null;
         assignedReviewer?: string | null;
       } = {};
       if (canReviewQuestionAreas) {
         body.status = editDraft.status;
+        body.severity = editDraft.severity;
         body.summary = editDraft.summary.trim();
         body.description = editDraft.description.trim() || null;
       }
@@ -687,6 +785,25 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         token: session.token,
         body,
       });
+      setQuestionAreas((current) =>
+        current
+          ? {
+              ...current,
+              features: current.features.map((feature) =>
+                feature.properties.code === selectedCode
+                  ? {
+                      ...feature,
+                      properties: {
+                        ...feature.properties,
+                        status: editDraft.status,
+                        severity: editDraft.severity,
+                      },
+                    }
+                  : feature,
+              ),
+            }
+          : current,
+      );
       await Promise.all([reloadDetail(), refreshSummary()]);
       showFeedback("Question area updated.", "success");
     } catch (error) {
@@ -830,7 +947,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const filteredAreaCount = questionAreas?.features.length ?? 0;
   const openQuestionAreas = (summary?.statuses.review ?? 0) + (summary?.statuses.active ?? 0);
   const selectedLocation = [selectedDetail?.county, selectedDetail?.state].filter(Boolean).join(", ");
-  const selectedContext = [selectedDetail?.sourceLayer, selectedLocation].filter(Boolean).join(" | ");
+  const selectedContext = selectedLocation;
   const selectedSupportTarget: AtlasTarget & TaxParcelTarget | null = selectedDetail
     ? {
         code: selectedDetail.code,
@@ -867,15 +984,21 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 <small>{selectedContext || "Question area selected"}</small>
               </div>
               <div className="header-active-record-badges">
-                <span className={`badge ${workflowBadgeClass(selectedDetail.status)}`}>
-                  {workflowLabel(selectedDetail.status)}
-                </span>
-                <span className={`badge ${severityBadgeClass(selectedDetail.severity)}`}>
-                  {humanize(selectedDetail.severity)}
-                </span>
-                <span className={`badge ${actionabilityBadgeClass(selectedDetail.actionabilityState)}`}>
-                  {actionabilityLabel(selectedDetail.actionabilityState)}
-                </span>
+                <BadgeDescriptor
+                  label="Workflow status"
+                  value={workflowLabel(selectedDetail.status)}
+                  badgeClass={workflowBadgeClass(selectedDetail.status)}
+                />
+                <BadgeDescriptor
+                  label="Severity level"
+                  value={humanize(selectedDetail.severity)}
+                  badgeClass={severityBadgeClass(selectedDetail.severity)}
+                />
+                <BadgeDescriptor
+                  label="Action needed"
+                  value={actionabilityLabel(selectedDetail.actionabilityState)}
+                  badgeClass={actionabilityBadgeClass(selectedDetail.actionabilityState)}
+                />
               </div>
             </div>
           ) : null}
@@ -1040,12 +1163,12 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                         </select>
                       </label>
                       <label>
-                        Severity
+                        Priority
                         <select
                           value={filters.severity}
                           onChange={(event) => updateFilters({ severity: event.target.value })}
                         >
-                          <option value="all">All severities</option>
+                          <option value="all">All priorities</option>
                           {SEVERITY_OPTIONS.map((severity) => (
                             <option key={severity} value={severity}>
                               {humanize(severity)}
@@ -1220,7 +1343,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         </aside>
 
         <section className="map-panel">
-          <ManagementPatternDefs />
           <MapContainer
             center={[39.5, -98.35]}
             className="leaflet-shell"
@@ -1251,12 +1373,15 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
             <Pane name="land-records" style={{ zIndex: 380 }}>
               {layerVisibility.land_records && layerData.land_records ? (
-                <IdentifyGeoJsonLayer
-                  data={layerData.land_records}
-                  identifiedFeature={identifiedFeature}
-                  layerKey="land_records"
-                  onIdentify={identifyLayerFeature}
-                />
+                <>
+                  <IdentifyGeoJsonLayer
+                    data={layerData.land_records}
+                    identifiedFeature={identifiedFeature}
+                    layerKey="land_records"
+                    onIdentify={identifyLayerFeature}
+                  />
+                  <LandRecordSvgPatterns patternKey={layerData.land_records.features.length} />
+                </>
               ) : null}
             </Pane>
 
@@ -1269,12 +1394,15 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
             <Pane name="management-areas" style={{ zIndex: 390 }}>
               {layerVisibility.management_areas && layerData.management_areas ? (
-                <IdentifyGeoJsonLayer
-                  data={layerData.management_areas}
-                  identifiedFeature={identifiedFeature}
-                  layerKey="management_areas"
-                  onIdentify={identifyLayerFeature}
-                />
+                <>
+                  <IdentifyGeoJsonLayer
+                    data={layerData.management_areas}
+                    identifiedFeature={identifiedFeature}
+                    layerKey="management_areas"
+                    onIdentify={identifyLayerFeature}
+                  />
+                  <ManagementSvgPatterns patternKey={layerData.management_areas.features.length} />
+                </>
               ) : null}
             </Pane>
 
@@ -1364,6 +1492,15 @@ function HeaderSummaryChip({ label, value }: { label: string; value: string | nu
     <div className="header-summary-chip">
       <span>{label}</span>
       <strong>{value}</strong>
+    </div>
+  );
+}
+
+function BadgeDescriptor({ label, value, badgeClass }: { label: string; value: string; badgeClass: string }) {
+  return (
+    <div className="header-badge-card">
+      <span className="header-badge-label">{label}</span>
+      <span className={`badge ${badgeClass}`}>{value}</span>
     </div>
   );
 }
@@ -1473,7 +1610,6 @@ function ReviewRecordSections({
           <DetailItem label="Property">{selectedDetail.propertyName ?? "None"}</DetailItem>
           <DetailItem label="Tract">{selectedDetail.tractName ?? "None"}</DetailItem>
           <DetailItem label="Fund">{selectedDetail.fundName ?? "None"}</DetailItem>
-          <DetailItem label="Source Layer">{selectedDetail.sourceLayer}</DetailItem>
         </dl>
         {selectedDetail.landServices ? (
           <div className="qa-reason">
@@ -1484,9 +1620,6 @@ function ReviewRecordSections({
       </section>
 
       <section className="panel-section">
-        <div className="section-heading">
-          <h2>Data Signals</h2>
-        </div>
         <dl className="detail-grid">
           <DetailItem label="Tax Bill Acres" mono>{formatMetric(selectedDetail.taxBillAcres)}</DetailItem>
           <DetailItem label="GIS Acres" mono>{formatMetric(selectedDetail.gisAcres)}</DetailItem>
@@ -1503,9 +1636,6 @@ function ReviewRecordSections({
 
       {canReviewQuestionAreas || canAssignQuestionAreas ? (
         <section className="panel-section">
-          <div className="section-heading">
-            <h2>Workflow Controls</h2>
-          </div>
           <div className="form-stack">
             {canReviewQuestionAreas ? (
               <>
@@ -1518,6 +1648,19 @@ function ReviewRecordSections({
                     {STATUS_OPTIONS.map((status) => (
                       <option key={status} value={status}>
                         {workflowLabel(status)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Priority
+                  <select
+                    value={editDraft.severity}
+                    onChange={(event) => setEditDraft((current) => ({ ...current, severity: event.target.value }))}
+                  >
+                    {SEVERITY_OPTIONS.map((severity) => (
+                      <option key={severity} value={severity}>
+                        {humanize(severity)}
                       </option>
                     ))}
                   </select>
@@ -1660,18 +1803,6 @@ function MapViewportWatcher({ onChange }: { onChange: (bbox: string) => void }) 
   return null;
 }
 
-function ManagementPatternDefs() {
-  return (
-    <svg aria-hidden="true" style={{ height: 0, position: "absolute", width: 0 }}>
-      <defs>
-        <pattern id="management-pattern" width="6" height="6" patternUnits="userSpaceOnUse">
-          <circle cx="3" cy="3" fill="#39ff14" r="1" />
-        </pattern>
-      </defs>
-    </svg>
-  );
-}
-
 function MapIdentifyClickHandler({
   layerData,
   layerVisibility,
@@ -1717,10 +1848,17 @@ function IdentifyGeoJsonLayer({
   layerKey: LayerKey;
   onIdentify: (layerKey: LayerKey, feature: LayerFeature, latlng: L.LatLngLiteral) => void;
 }) {
+  const renderData =
+    layerKey === "land_records"
+      ? orderLandRecordFeatures(data)
+      : layerKey === "management_areas"
+        ? orderManagementAreaFeatures(data)
+        : data;
+
   return (
     <GeoJSON
       key={`${layerKey}-${identifiedFeature?.layerKey ?? "none"}-${identifiedFeature?.feature.properties.id ?? "none"}`}
-      data={data}
+      data={renderData}
       onEachFeature={(feature, layer) => {
         if (!isPolygonGeometry(feature.geometry)) {
           return;
@@ -1736,6 +1874,282 @@ function IdentifyGeoJsonLayer({
   );
 }
 
+function LandRecordSvgPatterns({ patternKey }: { patternKey: number }) {
+  const map = useMap();
+
+  useEffect(() => {
+    let frameId = 0;
+    let attempts = 0;
+    const namespace = "http://www.w3.org/2000/svg";
+
+    const injectPatterns = () => {
+      const pane = map.getPane("land-records");
+      const svgs = Array.from(pane?.querySelectorAll("svg") ?? []);
+
+      if (svgs.length === 0) {
+        attempts += 1;
+        if (attempts < 60) {
+          frameId = window.requestAnimationFrame(injectPatterns);
+        }
+        return;
+      }
+
+      for (const svg of svgs) {
+        svg.querySelector("#lr-pattern-defs")?.remove();
+
+        const defs = document.createElementNS(namespace, "defs");
+        defs.id = "lr-pattern-defs";
+
+        defs.append(
+          createDiagonalPattern(namespace, {
+            id: "lr-exception-hatch",
+            background: "rgba(255, 255, 0, 0.38)",
+            hatch: "#000000",
+            hatchWidth: 0.9,
+            size: 10,
+          }),
+          createDiagonalPattern(namespace, {
+            id: "lr-out-sale-hatch",
+            background: "rgba(255, 127, 0, 0.3)",
+            hatch: "#000000",
+            hatchWidth: 0.9,
+            size: 10,
+          }),
+          createCrossHatchPattern(namespace, {
+            id: "lr-encumbrance-hatch",
+            background: "rgba(104, 104, 104, 0.08)",
+            hatch: "#686868",
+            hatchWidth: 0.8,
+            size: 12,
+          }),
+        );
+
+        svg.prepend(defs);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(injectPatterns);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      map.getPane("land-records")?.querySelectorAll("#lr-pattern-defs").forEach((defs) => defs.remove());
+    };
+  }, [map, patternKey]);
+
+  return null;
+}
+
+function createDiagonalPattern(
+  namespace: string,
+  options: { id: string; background: string; hatch: string; hatchWidth: number; size: number },
+) {
+  const pattern = document.createElementNS(namespace, "pattern");
+  pattern.id = options.id;
+  pattern.setAttribute("patternUnits", "userSpaceOnUse");
+  pattern.setAttribute("width", String(options.size));
+  pattern.setAttribute("height", String(options.size));
+  pattern.setAttribute("patternTransform", "rotate(45)");
+
+  const background = document.createElementNS(namespace, "rect");
+  background.setAttribute("width", String(options.size));
+  background.setAttribute("height", String(options.size));
+  background.setAttribute("fill", options.background);
+  pattern.append(background);
+
+  const line = document.createElementNS(namespace, "line");
+  line.setAttribute("x1", "0");
+  line.setAttribute("y1", "0");
+  line.setAttribute("x2", "0");
+  line.setAttribute("y2", String(options.size));
+  line.setAttribute("stroke", options.hatch);
+  line.setAttribute("stroke-width", String(options.hatchWidth));
+  pattern.append(line);
+
+  return pattern;
+}
+
+function createCrossHatchPattern(
+  namespace: string,
+  options: { id: string; background: string; hatch: string; hatchWidth: number; size: number },
+) {
+  const pattern = document.createElementNS(namespace, "pattern");
+  pattern.id = options.id;
+  pattern.setAttribute("patternUnits", "userSpaceOnUse");
+  pattern.setAttribute("width", String(options.size));
+  pattern.setAttribute("height", String(options.size));
+
+  const background = document.createElementNS(namespace, "rect");
+  background.setAttribute("width", String(options.size));
+  background.setAttribute("height", String(options.size));
+  background.setAttribute("fill", options.background);
+  pattern.append(background);
+
+  const forwardLine = document.createElementNS(namespace, "line");
+  forwardLine.setAttribute("x1", "0");
+  forwardLine.setAttribute("y1", "0");
+  forwardLine.setAttribute("x2", String(options.size));
+  forwardLine.setAttribute("y2", String(options.size));
+  forwardLine.setAttribute("stroke", options.hatch);
+  forwardLine.setAttribute("stroke-width", String(options.hatchWidth));
+  pattern.append(forwardLine);
+
+  const reverseLine = document.createElementNS(namespace, "line");
+  reverseLine.setAttribute("x1", String(options.size));
+  reverseLine.setAttribute("y1", "0");
+  reverseLine.setAttribute("x2", "0");
+  reverseLine.setAttribute("y2", String(options.size));
+  reverseLine.setAttribute("stroke", options.hatch);
+  reverseLine.setAttribute("stroke-width", String(options.hatchWidth));
+  pattern.append(reverseLine);
+
+  return pattern;
+}
+
+function createStipplePattern(
+  namespace: string,
+  options: { id: string; background: string; color: string; size: number },
+) {
+  const pattern = document.createElementNS(namespace, "pattern");
+  pattern.id = options.id;
+  pattern.setAttribute("patternUnits", "userSpaceOnUse");
+  pattern.setAttribute("width", String(options.size));
+  pattern.setAttribute("height", String(options.size));
+
+  const background = document.createElementNS(namespace, "rect");
+  background.setAttribute("width", String(options.size));
+  background.setAttribute("height", String(options.size));
+  background.setAttribute("fill", options.background);
+  pattern.append(background);
+
+  const dots = [
+    [2, 3, 1],
+    [8, 2, 0.8],
+    [14, 5, 1],
+    [5, 10, 0.9],
+    [12, 12, 1],
+    [16, 16, 0.8],
+    [1, 15, 0.7],
+  ];
+
+  for (const [cx, cy, r] of dots) {
+    const dot = document.createElementNS(namespace, "circle");
+    dot.setAttribute("cx", String(cx));
+    dot.setAttribute("cy", String(cy));
+    dot.setAttribute("r", String(r));
+    dot.setAttribute("fill", options.color);
+    pattern.append(dot);
+  }
+
+  return pattern;
+}
+
+function createQuercusPattern(namespace: string) {
+  const pattern = createStipplePattern(namespace, {
+    id: "management-quercus-wv-pattern",
+    background: "rgba(235, 199, 181, 0)",
+    color: "#734c00",
+    size: 20,
+  });
+
+  const line = document.createElementNS(namespace, "path");
+  line.setAttribute("d", "M 1 5 C 6 1, 9 9, 14 5 S 21 7, 24 2");
+  line.setAttribute("fill", "none");
+  line.setAttribute("stroke", "#734c00");
+  line.setAttribute("stroke-width", "0.9");
+  pattern.append(line);
+
+  return pattern;
+}
+
+function orderLandRecordFeatures(data: LayerCollection): LayerCollection {
+  return {
+    ...data,
+    features: [...data.features].sort((left, right) => {
+      return landRecordDrawPriority(left) - landRecordDrawPriority(right);
+    }),
+  };
+}
+
+function landRecordDrawPriority(feature: LayerFeature): number {
+  const lrType = feature.properties.lr_type;
+  return typeof lrType === "string" ? LAND_RECORD_DRAW_PRIORITY_BY_TYPE[lrType] ?? 0 : 0;
+}
+
+function ManagementSvgPatterns({ patternKey }: { patternKey: number }) {
+  const map = useMap();
+
+  useEffect(() => {
+    let frameId = 0;
+    let attempts = 0;
+    const namespace = "http://www.w3.org/2000/svg";
+
+    const injectPatterns = () => {
+      const pane = map.getPane("management-areas");
+      const svgs = Array.from(pane?.querySelectorAll("svg") ?? []);
+
+      if (svgs.length === 0) {
+        attempts += 1;
+        if (attempts < 60) {
+          frameId = window.requestAnimationFrame(injectPatterns);
+        }
+        return;
+      }
+
+      for (const svg of svgs) {
+        svg.querySelector("#management-pattern-defs")?.remove();
+
+        const defs = document.createElementNS(namespace, "defs");
+        defs.id = "management-pattern-defs";
+
+        defs.append(
+          createStipplePattern(namespace, {
+            id: "management-delta-south-pattern",
+            background: "rgba(240, 240, 240, 0)",
+            color: "#55ff00",
+            size: 18,
+          }),
+          createStipplePattern(namespace, {
+            id: "management-l-c-or-pattern",
+            background: "rgba(240, 240, 240, 0)",
+            color: "#c500ff",
+            size: 18,
+          }),
+          createStipplePattern(namespace, {
+            id: "management-latrobe-pa-ny-pattern",
+            background: "rgba(240, 240, 240, 0)",
+            color: "#ffaa00",
+            size: 18,
+          }),
+          createQuercusPattern(namespace),
+        );
+
+        svg.prepend(defs);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(injectPatterns);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      map.getPane("management-areas")?.querySelectorAll("#management-pattern-defs").forEach((defs) => defs.remove());
+    };
+  }, [map, patternKey]);
+
+  return null;
+}
+
+function orderManagementAreaFeatures(data: LayerCollection): LayerCollection {
+  return {
+    ...data,
+    features: [...data.features].sort((left, right) => {
+      return managementAreaDrawPriority(left) - managementAreaDrawPriority(right);
+    }),
+  };
+}
+
+function managementAreaDrawPriority(feature: LayerFeature): number {
+  const propertyName = feature.properties.property_name;
+  return typeof propertyName === "string" ? MANAGEMENT_AREA_DRAW_PRIORITY_BY_PROPERTY_NAME[propertyName] ?? 0 : 0;
+}
+
 function IdentifyPanel({
   identifiedFeature,
   onClose,
@@ -1745,17 +2159,10 @@ function IdentifyPanel({
 }) {
   const config = IDENTIFY_LAYER_CONFIG[identifiedFeature.layerKey];
   const properties = identifiedFeature.feature.properties;
-  const usedKeys = new Set<string>([
-    "id",
-    ...config.primaryFields.map((field) => field.key),
-    ...config.attributeFields.map((field) => field.key),
-    ...config.contextFields.map((field) => field.key),
-  ]);
   const primaryRows = configuredIdentifyRows(properties, config.primaryFields);
   const attributeRows = configuredIdentifyRows(properties, config.attributeFields);
   const contextRows = configuredIdentifyRows(properties, config.contextFields);
   const metadataRows = geometryMetadataRows(identifiedFeature);
-  const additionalRows = additionalIdentifyRows(properties, usedKeys);
   const title = firstKnownValue(primaryRows) ?? `${config.label} ${properties.id}`;
 
   return (
@@ -1774,13 +2181,6 @@ function IdentifyPanel({
       <IdentifyFieldSection rows={attributeRows} title="Attributes" />
       <IdentifyFieldSection rows={contextRows} title="Context" />
       <IdentifyFieldSection rows={metadataRows} title="Geometry" />
-
-      {additionalRows.length > 0 ? (
-        <details className="identify-advanced">
-          <summary>Additional Fields ({additionalRows.length})</summary>
-          <IdentifyFieldList rows={additionalRows} />
-        </details>
-      ) : null}
     </aside>
   );
 }
@@ -1816,7 +2216,12 @@ function identifyFeatureStyle(
   feature: LayerFeature | undefined,
   identifiedFeature: IdentifiedFeature | null,
 ): PathOptions {
-  const baseStyle = layerKey === "land_records" ? landRecordStyle : managementAreaStyle;
+  const baseStyle =
+    layerKey === "land_records"
+      ? landRecordStyleForFeature(feature)
+      : layerKey === "management_areas"
+        ? managementAreaStyleForFeature(feature)
+        : managementAreaStyle;
   const isSelected =
     Boolean(feature) &&
     identifiedFeature?.layerKey === layerKey &&
@@ -1829,9 +2234,27 @@ function identifyFeatureStyle(
   return {
     ...baseStyle,
     color: "#0f172a",
-    fillOpacity: 0.22,
+    fillOpacity: Math.max(Number(baseStyle.fillOpacity ?? 0), 0.22),
     weight: 4,
   };
+}
+
+function landRecordStyleForFeature(feature: LayerFeature | undefined): PathOptions {
+  const lrType = feature?.properties.lr_type;
+  if (typeof lrType !== "string") {
+    return landRecordStyle;
+  }
+
+  return LAND_RECORD_STYLE_BY_TYPE[lrType] ?? landRecordStyle;
+}
+
+function managementAreaStyleForFeature(feature: LayerFeature | undefined): PathOptions {
+  const propertyName = feature?.properties.property_name;
+  if (typeof propertyName !== "string") {
+    return managementAreaStyle;
+  }
+
+  return MANAGEMENT_AREA_STYLE_BY_PROPERTY_NAME[propertyName] ?? managementAreaStyle;
 }
 
 function configuredIdentifyRows(
@@ -1841,20 +2264,6 @@ function configuredIdentifyRows(
   return fields.flatMap((field) => {
     const value = formatIdentifyValue(properties[field.key]);
     return value ? [{ key: field.key, label: field.label, value }] : [];
-  });
-}
-
-function additionalIdentifyRows(
-  properties: LayerFeatureProperties,
-  usedKeys: Set<string>,
-): IdentifyFieldRow[] {
-  return Object.entries(properties).flatMap(([key, value]) => {
-    if (usedKeys.has(key)) {
-      return [];
-    }
-
-    const formatted = formatIdentifyValue(value);
-    return formatted ? [{ key, label: humanize(key), value: formatted }] : [];
   });
 }
 
@@ -2144,6 +2553,26 @@ function MapLegendControl({
                             {QA_ACTIONABILITY_META[state].symbol}
                           </span>
                           <span className="legend-label">{QA_ACTIONABILITY_META[state].label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {item.key === "land_records" ? (
+                    <div className="legend-sublist">
+                      {LAND_RECORD_LEGEND_ITEMS.map((recordType) => (
+                        <div key={recordType.key} className="legend-item legend-item-indented">
+                          <span className={`legend-swatch legend-swatch-${recordType.swatch}`} />
+                          <span className="legend-label">{recordType.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {item.key === "management_areas" ? (
+                    <div className="legend-sublist">
+                      {MANAGEMENT_AREA_LEGEND_ITEMS.map((managementArea) => (
+                        <div key={managementArea.key} className="legend-item legend-item-indented">
+                          <span className={`legend-swatch legend-swatch-${managementArea.swatch}`} />
+                          <span className="legend-label">{managementArea.label}</span>
                         </div>
                       ))}
                     </div>
