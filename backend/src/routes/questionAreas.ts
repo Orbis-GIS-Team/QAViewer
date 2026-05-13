@@ -323,6 +323,52 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
   );
 });
 
+router.get("/filter-options", requirePermission("question_areas:read"), async (_req, res) => {
+  const result = await query<{
+    states: string[];
+    counties: string[];
+    property_names: string[];
+    assigned_reviewers: string[];
+  }>(`
+    SELECT
+      COALESCE(
+        ARRAY_AGG(DISTINCT NULLIF(BTRIM(state), '') ORDER BY NULLIF(BTRIM(state), ''))
+          FILTER (WHERE NULLIF(BTRIM(state), '') IS NOT NULL),
+        ARRAY[]::text[]
+      ) AS states,
+      COALESCE(
+        ARRAY_AGG(DISTINCT NULLIF(BTRIM(county), '') ORDER BY NULLIF(BTRIM(county), ''))
+          FILTER (WHERE NULLIF(BTRIM(county), '') IS NOT NULL),
+        ARRAY[]::text[]
+      ) AS counties,
+      COALESCE(
+        ARRAY_AGG(DISTINCT NULLIF(BTRIM(property_name), '') ORDER BY NULLIF(BTRIM(property_name), ''))
+          FILTER (WHERE NULLIF(BTRIM(property_name), '') IS NOT NULL),
+        ARRAY[]::text[]
+      ) AS property_names,
+      COALESCE(
+        ARRAY_AGG(DISTINCT NULLIF(BTRIM(assigned_reviewer), '') ORDER BY NULLIF(BTRIM(assigned_reviewer), ''))
+          FILTER (WHERE NULLIF(BTRIM(assigned_reviewer), '') IS NOT NULL),
+        ARRAY[]::text[]
+      ) AS assigned_reviewers
+    FROM question_areas
+  `);
+
+  const options = result.rows[0] ?? {
+    states: [],
+    counties: [],
+    property_names: [],
+    assigned_reviewers: [],
+  };
+
+  res.json({
+    states: options.states,
+    counties: options.counties,
+    propertyNames: options.property_names,
+    assignedReviewers: options.assigned_reviewers,
+  });
+});
+
 router.get("/export.xlsx", requirePermission("question_areas:read"), async (req, res) => {
   const { params, whereClause } = buildQuestionAreaWhereClause(req);
   const result = await query<{

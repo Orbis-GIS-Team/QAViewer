@@ -68,6 +68,13 @@ type SummaryPayload = {
   severities: Record<string, number>;
 };
 
+type QuestionAreaFilterOptions = {
+  states: string[];
+  counties: string[];
+  propertyNames: string[];
+  assignedReviewers: string[];
+};
+
 type LayerKey = "land_records" | "management_areas";
 type MeasureMode = "distance" | "area";
 type MeasureUnit = "metric" | "imperial" | "survey";
@@ -277,6 +284,13 @@ const DEFAULT_QA_FILTERS: QuestionAreaFilters = {
   hasClientBillData: "all",
 };
 
+const EMPTY_QA_FILTER_OPTIONS: QuestionAreaFilterOptions = {
+  states: [],
+  counties: [],
+  propertyNames: [],
+  assignedReviewers: [],
+};
+
 const initialLayers: Record<LayerKey, boolean> = {
   land_records: true,
   management_areas: true,
@@ -470,6 +484,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [layerData, setLayerData] = useState<Partial<Record<LayerKey, LayerCollection>>>({});
   const [searchInput, setSearchInput] = useState("");
   const [filters, setFilters] = useState<QuestionAreaFilters>(DEFAULT_QA_FILTERS);
+  const [filterOptions, setFilterOptions] = useState<QuestionAreaFilterOptions>(EMPTY_QA_FILTER_OPTIONS);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
@@ -569,6 +584,26 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       .finally(() => {
         if (alive) {
           setBusy((current) => ({ ...current, summary: false }));
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [session.token]);
+
+  useEffect(() => {
+    let alive = true;
+
+    apiRequest<QuestionAreaFilterOptions>("/question-areas/filter-options", { token: session.token })
+      .then((payload) => {
+        if (alive) {
+          setFilterOptions(payload);
+        }
+      })
+      .catch((error) => {
+        if (alive) {
+          showFeedback(error instanceof Error ? error.message : "Failed to load filter options.");
         }
       });
 
@@ -1245,35 +1280,59 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                       </label>
                       <label>
                         State
-                        <input
+                        <select
                           onChange={(event) => updateFilters({ state: event.target.value })}
-                          placeholder="OR, PA, WA..."
                           value={filters.state}
-                        />
+                        >
+                          <option value="">All states</option>
+                          {withCurrentOption(filterOptions.states, filters.state).map((state) => (
+                            <option key={state} value={state}>
+                              {state}
+                            </option>
+                          ))}
+                        </select>
                       </label>
                       <label>
                         County
-                        <input
+                        <select
                           onChange={(event) => updateFilters({ county: event.target.value })}
-                          placeholder="Clatsop, Warren..."
                           value={filters.county}
-                        />
+                        >
+                          <option value="">All counties</option>
+                          {withCurrentOption(filterOptions.counties, filters.county).map((county) => (
+                            <option key={county} value={county}>
+                              {county}
+                            </option>
+                          ))}
+                        </select>
                       </label>
                       <label>
                         Property
-                        <input
+                        <select
                           onChange={(event) => updateFilters({ propertyName: event.target.value })}
-                          placeholder="Lewis & Clark..."
                           value={filters.propertyName}
-                        />
+                        >
+                          <option value="">All properties</option>
+                          {withCurrentOption(filterOptions.propertyNames, filters.propertyName).map((propertyName) => (
+                            <option key={propertyName} value={propertyName}>
+                              {propertyName}
+                            </option>
+                          ))}
+                        </select>
                       </label>
                       <label>
                         Reviewer
-                        <input
+                        <select
                           onChange={(event) => updateFilters({ assignedReviewer: event.target.value })}
-                          placeholder="Reviewer name"
                           value={filters.assignedReviewer}
-                        />
+                        >
+                          <option value="">All reviewers</option>
+                          {withCurrentOption(filterOptions.assignedReviewers, filters.assignedReviewer).map((reviewer) => (
+                            <option key={reviewer} value={reviewer}>
+                              {reviewer}
+                            </option>
+                          ))}
+                        </select>
                       </label>
                     </div>
                     <div className="filter-grid data-filter-grid">
@@ -1604,6 +1663,15 @@ function appendFilterParam(
   }
 
   params.set(key, trimmed);
+}
+
+function withCurrentOption(options: string[], currentValue: string) {
+  const trimmed = currentValue.trim();
+  if (!trimmed || options.includes(trimmed)) {
+    return options;
+  }
+
+  return [trimmed, ...options].sort((left, right) => left.localeCompare(right));
 }
 
 function ReviewRecordSections({

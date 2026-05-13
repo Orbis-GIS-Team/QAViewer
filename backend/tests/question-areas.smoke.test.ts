@@ -156,6 +156,34 @@ describe("GET /api/question-areas", () => {
     expect(res.body).toHaveProperty("type", "FeatureCollection");
   });
 
+  it("returns distinct filter dropdown options", async () => {
+    const spy = stubQuery(AUTH_ADMIN, {
+      rows: [
+        {
+          states: ["OR", "WA"],
+          counties: ["Clatsop", "Warren"],
+          property_names: ["Lewis & Clark"],
+          assigned_reviewers: ["Ada"],
+        },
+      ],
+    });
+
+    const res = await request(app)
+      .get("/api/question-areas/filter-options")
+      .set("Authorization", `Bearer ${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      states: ["OR", "WA"],
+      counties: ["Clatsop", "Warren"],
+      propertyNames: ["Lewis & Clark"],
+      assignedReviewers: ["Ada"],
+    });
+    const [sql] = spy.mock.calls[1];
+    expect(sql).toContain("ARRAY_AGG(DISTINCT NULLIF(BTRIM(state), '')");
+    expect(sql).toContain("ARRAY_AGG(DISTINCT NULLIF(BTRIM(assigned_reviewer), '')");
+  });
+
   it("applies business-dimension query filters", async () => {
     const spy = stubQuery(AUTH_ADMIN, { rows: [minimalQaRow] });
 
