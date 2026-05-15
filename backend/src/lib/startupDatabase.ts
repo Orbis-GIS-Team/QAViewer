@@ -21,6 +21,7 @@ const REQUIRED_TABLES = [
   "atlas_document_manifest",
   "atlas_import_rejects",
   "tax_parcels",
+  "property_tax_parcel_points",
   "tax_bill_manifest",
   "comments",
   "documents",
@@ -33,6 +34,7 @@ const REQUIRED_DATA_TABLES = [
 ] as const;
 
 const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
+  property_tax_parcel_points: ["coordinate_status", "geom"],
   question_areas: ["actionability_state"],
   land_records: [
     "objectid",
@@ -79,7 +81,7 @@ const OPTIONAL_DATA_GROUPS = [
   },
   {
     name: "tax parcel",
-    tables: ["tax_parcels", "tax_bill_manifest"],
+    tables: ["tax_parcels", "tax_bill_manifest", "property_tax_parcel_points"],
   },
 ] as const;
 

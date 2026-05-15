@@ -77,6 +77,16 @@ type TaxParcelQueryResult = {
   }>;
 };
 
+type PropertyTaxParcelPointCollection = {
+  features: Array<{
+    geometry: object | null;
+    properties: {
+      id: number;
+      parcelCode: string | null;
+    };
+  }>;
+};
+
 async function request<T>(
   path: string,
   options: {
@@ -271,6 +281,20 @@ test("auth, admin, question-area, and layer smoke flow", async () => {
       token: admin.token,
       expectedStatus: taxBill.isPreviewable ? 200 : 415,
       responseType: taxBill.isPreviewable ? "none" : "json",
+    });
+  }
+
+  const taxParcelPoints = await request<PropertyTaxParcelPointCollection>(
+    "/tax-parcels/points?bbox=-180,-90,180,90",
+    { token: admin.token },
+  );
+  assert.ok(Array.isArray(taxParcelPoints.features));
+
+  const taxParcelPoint = taxParcelPoints.features[0];
+  if (taxParcelPoint) {
+    await request(`/tax-parcels/points/${taxParcelPoint.properties.id}`, {
+      method: "GET",
+      token: admin.token,
     });
   }
 
