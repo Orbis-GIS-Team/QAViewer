@@ -315,6 +315,40 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
   `);
 
   await client.query(`
+    CREATE TABLE IF NOT EXISTS property_tax_parcel_points (
+      id SERIAL PRIMARY KEY,
+      parcel_code TEXT,
+      account_number TEXT,
+      gis_acres DOUBLE PRECISION,
+      state TEXT,
+      county TEXT,
+      property_name TEXT,
+      tract_name TEXT,
+      parcel_status TEXT,
+      tax_program TEXT,
+      exemption_enrollment_date TEXT,
+      exemption_expiration_date TEXT,
+      exemption_eligibility_date TEXT,
+      ownership_type TEXT,
+      purchase_date TEXT,
+      owner_name TEXT,
+      description TEXT,
+      fip_parcel_id TEXT,
+      notes TEXT,
+      land_use_type TEXT,
+      latitude DOUBLE PRECISION,
+      longitude DOUBLE PRECISION,
+      coordinate_status TEXT NOT NULL DEFAULT 'missing' CHECK (coordinate_status IN ('present', 'missing', 'invalid')),
+      raw_properties JSONB NOT NULL DEFAULT '{}'::jsonb,
+      source_workbook_path TEXT,
+      source_sheet TEXT,
+      source_row_number INTEGER,
+      imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      geom geometry(Point, 4326)
+    )
+  `);
+
+  await client.query(`
     ALTER TABLE atlas_land_records
     ADD COLUMN IF NOT EXISTS primary_page_no TEXT,
     ADD COLUMN IF NOT EXISTS source_workbook_path TEXT,
@@ -349,6 +383,38 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
     ADD COLUMN IF NOT EXISTS source_workbook_path TEXT,
     ADD COLUMN IF NOT EXISTS source_docs_root_path TEXT,
     ADD COLUMN IF NOT EXISTS source_file_path TEXT
+  `);
+
+  await client.query(`
+    ALTER TABLE property_tax_parcel_points
+    ADD COLUMN IF NOT EXISTS coordinate_status TEXT DEFAULT 'missing'
+  `);
+
+  await client.query(`
+    UPDATE property_tax_parcel_points
+    SET coordinate_status = CASE
+      WHEN latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180 THEN 'present'
+      WHEN latitude IS NULL AND longitude IS NULL THEN 'missing'
+      ELSE 'invalid'
+    END
+    WHERE coordinate_status IS NULL
+  `);
+
+  await client.query(`
+    ALTER TABLE property_tax_parcel_points
+    ALTER COLUMN coordinate_status SET DEFAULT 'missing',
+    ALTER COLUMN coordinate_status SET NOT NULL
+  `);
+
+  await client.query(`
+    ALTER TABLE property_tax_parcel_points
+    DROP CONSTRAINT IF EXISTS property_tax_parcel_points_coordinate_status_check
+  `);
+
+  await client.query(`
+    ALTER TABLE property_tax_parcel_points
+    ADD CONSTRAINT property_tax_parcel_points_coordinate_status_check
+    CHECK (coordinate_status IN ('present', 'missing', 'invalid'))
   `);
 
   await client.query(`
@@ -390,6 +456,13 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
     CREATE INDEX IF NOT EXISTS tax_parcels_parcel_id_idx ON tax_parcels (parcel_id);
     CREATE INDEX IF NOT EXISTS tax_parcels_parcel_code_idx ON tax_parcels (parcel_code);
     CREATE INDEX IF NOT EXISTS tax_parcels_account_number_idx ON tax_parcels (account_number);
+    CREATE INDEX IF NOT EXISTS property_tax_parcel_points_geom_idx
+      ON property_tax_parcel_points USING GIST (geom)
+      WHERE geom IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS property_tax_parcel_points_parcel_code_idx ON property_tax_parcel_points (parcel_code);
+    CREATE INDEX IF NOT EXISTS property_tax_parcel_points_account_number_idx ON property_tax_parcel_points (account_number);
+    CREATE INDEX IF NOT EXISTS property_tax_parcel_points_fip_parcel_id_idx ON property_tax_parcel_points (fip_parcel_id);
+    CREATE INDEX IF NOT EXISTS property_tax_parcel_points_state_county_idx ON property_tax_parcel_points (state, county);
     CREATE INDEX IF NOT EXISTS tax_bill_manifest_parcel_id_idx ON tax_bill_manifest (parcel_id);
     CREATE INDEX IF NOT EXISTS tax_bill_manifest_bill_year_idx ON tax_bill_manifest (bill_year);
     CREATE INDEX IF NOT EXISTS tax_bill_manifest_bill_relative_path_idx ON tax_bill_manifest (bill_relative_path);
@@ -407,6 +480,7 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
     CREATE INDEX IF NOT EXISTS question_areas_title_trgm_idx ON question_areas USING GIN (title gin_trgm_ops);
     CREATE INDEX IF NOT EXISTS question_areas_parcel_code_trgm_idx ON question_areas USING GIN (parcel_code gin_trgm_ops);
     CREATE INDEX IF NOT EXISTS tax_parcels_parcel_code_trgm_idx ON tax_parcels USING GIN (parcel_code gin_trgm_ops);
+    CREATE INDEX IF NOT EXISTS property_tax_parcel_points_parcel_code_trgm_idx ON property_tax_parcel_points USING GIN (parcel_code gin_trgm_ops);
     CREATE INDEX IF NOT EXISTS question_areas_search_keywords_trgm_idx ON question_areas USING GIN (search_keywords gin_trgm_ops);
   `);
 }

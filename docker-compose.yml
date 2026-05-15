@@ -26,6 +26,9 @@ services:
       API_HOST: ${API_HOST:-0.0.0.0}
       API_PORT: 3001
       FRONTEND_ORIGIN: http://localhost:5173
+      PROPERTY_TAX_PARCEL_WORKBOOK_PATH: ${PROPERTY_TAX_PARCEL_WORKBOOK_PATH:-/workspace/PropertyTax Map implementation/ParcelsListingReport.xlsx}
+      REGRID_FEATURE_SERVICE_URL: ${REGRID_FEATURE_SERVICE_URL:-}
+      PROPERTY_TAX_REGRID_MIN_ZOOM: ${PROPERTY_TAX_REGRID_MIN_ZOOM:-12}
     working_dir: /workspace/backend
     command: npm run dev
     ports:
@@ -33,6 +36,7 @@ services:
     volumes:
       - ./backend:/workspace/backend
       - ./backend/uploads:/workspace/backend/uploads
+      - ./PropertyTax Map implementation:/workspace/PropertyTax Map implementation:ro
       - backend_node_modules:/workspace/backend/node_modules
 
   web:
@@ -44,6 +48,7 @@ services:
       - api
     environment:
       VITE_API_BASE_URL: http://localhost:3001/api
+      VITE_REGRID_FEATURE_SERVICE_URL: ${VITE_REGRID_FEATURE_SERVICE_URL:-}
     working_dir: /workspace/frontend
     command: npm run dev -- --host 0.0.0.0 --port 5173
     ports:

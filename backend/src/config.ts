@@ -26,6 +26,19 @@ function parseStartupDataMode(value: string | undefined): StartupDataMode {
   throw new Error(`Invalid STARTUP_DATA_MODE "${mode}". Expected: validate.`);
 }
 
+function parseIntegerEnv(name: string, value: string | undefined, fallback: number): number {
+  if (value === undefined || value.trim() === "") {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) {
+    throw new Error(`Invalid ${name} "${value}". Expected an integer.`);
+  }
+
+  return parsed;
+}
+
 export const config = {
   apiPort: Number(process.env.API_PORT ?? 3001),
   apiHost: process.env.API_HOST ?? "0.0.0.0",
@@ -45,6 +58,18 @@ export const config = {
     process.env.TAX_PARCEL_SOURCE_PATH ?? path.join(repoRoot, "DataBuild", "pa_warren_with_report_data.shp"),
   taxBillRoot:
     process.env.TAX_BILL_ROOT ?? path.join(repoRoot, "DataBuild", "TaxBills"),
+  propertyTaxParcelWorkbookPath:
+    path.resolve(
+      repoRoot,
+      process.env.PROPERTY_TAX_PARCEL_WORKBOOK_PATH
+      ?? path.join("PropertyTax Map implementation", "ParcelsListingReport.xlsx"),
+    ),
+  regridFeatureServiceUrl: process.env.REGRID_FEATURE_SERVICE_URL ?? "",
+  propertyTaxRegridMinZoom: parseIntegerEnv(
+    "PROPERTY_TAX_REGRID_MIN_ZOOM",
+    process.env.PROPERTY_TAX_REGRID_MIN_ZOOM,
+    12,
+  ),
   seedDir: path.join(repoRoot, "data", "standardized"),
   uploadsDir: path.join(backendDir, "uploads"),
 };

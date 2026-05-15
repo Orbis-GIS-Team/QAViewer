@@ -2185,6 +2185,16 @@ textarea {
   color: #15803d;
 }
 
+.identify-layer-badge.regrid {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.identify-layer-badge.regrid-matched {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
 .identify-close-button {
   width: 30px;
   height: 30px;
@@ -2298,6 +2308,54 @@ textarea {
 
 .identify-advanced .identify-field-grid {
   margin-top: 12px;
+}
+
+.regrid-identify-panel {
+  border-color: rgba(15, 118, 110, 0.24);
+}
+
+.regrid-no-match-state {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.map-layer-status {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 625;
+  max-width: min(520px, calc(100% - 36px));
+  padding: 10px 12px;
+  box-shadow: var(--shadow);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.map-layer-error {
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.map-layer-notice {
+  border: 1px solid rgba(15, 118, 110, 0.28);
+  border-radius: 8px;
+  background: rgba(240, 253, 250, 0.96);
+  color: #134e4a;
+}
+
+.regrid-parcel-path {
+  vector-effect: non-scaling-stroke;
 }
 
 .map-control-shell {
@@ -2710,6 +2768,16 @@ textarea {
   border: 2px solid #39ff14;
   background: rgba(57, 255, 20, 0.06);
 }
+.legend-swatch-regrid-parcels {
+  border: 2px solid #7e22ce;
+  background: rgba(216, 180, 254, 0.45);
+}
+.legend-swatch-property-tax-points {
+  border: 2px solid #1e40af;
+  background: #3b82f6;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.24);
+}
 .legend-swatch-qa-marker {
   width: 18px;
   height: 18px;
@@ -2763,6 +2831,20 @@ textarea {
   font-size: 0.9rem;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   transition: transform 0.1s, background-color 0.1s;
+}
+
+.property-tax-cluster-marker + .leaflet-tooltip,
+.property-tax-cluster-marker .leaflet-tooltip {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.property-tax-canvas-layer {
+  pointer-events: none;
 }
 
 .qa-marker-normal {

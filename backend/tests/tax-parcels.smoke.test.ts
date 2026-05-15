@@ -27,8 +27,25 @@ vi.mock("../src/lib/taxParcels.js", () => ({
   }),
 }));
 
+vi.mock("../src/lib/propertyTaxParcelPoints.js", () => ({
+  identifyRegridParcelAtPoint: vi.fn(),
+  loadPropertyTaxParcelPoint: vi.fn(),
+  loadPropertyTaxParcelPointCollection: vi.fn(),
+  loadRegridParcelFabricCollection: vi.fn(),
+  loadRegridParcelCollection: vi.fn(),
+  normalizePropertyTaxRegridMinZoom: vi.fn(() => 12),
+}));
+
 import { createApp } from "../src/app.js";
 import { pool } from "../src/lib/db.js";
+import { ROLES, hasPermission } from "../src/lib/rbac.js";
+import {
+  identifyRegridParcelAtPoint,
+  loadPropertyTaxParcelPoint,
+  loadPropertyTaxParcelPointCollection,
+  loadRegridParcelFabricCollection,
+  loadRegridParcelCollection,
+} from "../src/lib/propertyTaxParcelPoints.js";
 import {
   loadTaxBillAsset,
   loadTaxParcelQuestionAreaView,
@@ -73,6 +90,23 @@ const taxBill = {
   contentUrl: "/api/tax-parcels/bills/tax-bill-123/content",
   downloadUrl: "/api/tax-parcels/bills/tax-bill-123/download",
 };
+
+describe("property tax RBAC", () => {
+  it("grants Regrid map-layer access to every authenticated role", () => {
+    for (const role of ROLES) {
+      expect(hasPermission({ role }, "property_tax_map:read")).toBe(true);
+    }
+  });
+
+  it("keeps detailed tax parcel access limited to property-tax reader roles", () => {
+    expect(hasPermission({ role: "admin" }, "property_tax:read")).toBe(true);
+    expect(hasPermission({ role: "gis_team" }, "property_tax:read")).toBe(true);
+    expect(hasPermission({ role: "land_records_team" }, "property_tax:read")).toBe(true);
+    expect(hasPermission({ role: "qa_reviewer" }, "property_tax:read")).toBe(false);
+    expect(hasPermission({ role: "client" }, "property_tax:read")).toBe(false);
+    expect(hasPermission({ role: "other" }, "property_tax:read")).toBe(false);
+  });
+});
 
 describe("GET /api/question-areas/:code/tax-parcels", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -298,5 +332,184 @@ describe("GET /api/tax-parcels bill endpoints", () => {
 
     expect(res.status).toBe(404);
     expect(res.body).toHaveProperty("message", "Tax bill file is missing from package storage.");
+  });
+});
+
+describe("GET /api/tax-parcels property tax map endpoints", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it.each(["qa_reviewer", "client", "other"] as const)(
+    "returns spreadsheet point GeoJSON for %s map-layer readers",
+    async (role) => {
+      vi.mocked(loadPropertyTaxParcelPointCollection).mockResolvedValueOnce({
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [-91.63497, 34.0666] },
+            properties: { id: 1, parcelCode: "000-00304-000" },
+          },
+        ],
+      } as never);
+      stubQuery(authResult(role));
+
+      const res = await request(app)
+        .get("/api/tax-parcels/points?bbox=-92,34,-91,35")
+        .set("Authorization", `Bearer ${makeToken(role)}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.features).toHaveLength(1);
+      expect(loadPropertyTaxParcelPointCollection).toHaveBeenCalledWith([-92, 34, -91, 35]);
+    },
+  );
+
+  it.each(["qa_reviewer", "client", "other"] as const)(
+    "identifies Regrid parcel workbook matches for %s map-layer readers",
+    async (role) => {
+      vi.mocked(identifyRegridParcelAtPoint).mockResolvedValueOnce({
+        clicked: { latitude: 34.0666, longitude: -91.63497 },
+        regridParcel: null,
+        matches: [],
+        matchCount: 0,
+        joinMethod: "point-in-polygon",
+        message: "No Regrid parcel found at this location.",
+      });
+      stubQuery(authResult(role));
+
+      const res = await request(app)
+        .post("/api/tax-parcels/regrid-identify")
+        .set("Authorization", `Bearer ${makeToken(role)}`)
+        .send({ latitude: 34.0666, longitude: -91.63497 });
+
+      expect(res.status).toBe(200);
+      expect(identifyRegridParcelAtPoint).toHaveBeenCalledWith(34.0666, -91.63497);
+    },
+  );
+
+  it("returns spreadsheet point GeoJSON for detailed property-tax readers", async () => {
+    vi.mocked(loadPropertyTaxParcelPointCollection).mockResolvedValueOnce({
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [-91.63497, 34.0666] },
+          properties: { id: 1, parcelCode: "000-00304-000" },
+        },
+      ],
+    } as never);
+    stubQuery(AUTH_ADMIN);
+
+    const res = await request(app)
+      .get("/api/tax-parcels/points?bbox=-92,34,-91,35")
+      .set("Authorization", `Bearer ${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.features).toHaveLength(1);
+    expect(loadPropertyTaxParcelPointCollection).toHaveBeenCalledWith([-92, 34, -91, 35]);
+  });
+
+  it("returns one full spreadsheet point record", async () => {
+    vi.mocked(loadPropertyTaxParcelPoint).mockResolvedValueOnce({
+      id: 1,
+      parcelCode: "000-00304-000",
+      accountNumber: "11266",
+      gisAcres: 79.84,
+      state: "AR",
+      county: "Lincoln",
+      propertyName: "Trojan",
+      tractName: "ius2-006",
+      parcelStatus: "Active",
+      taxProgram: "Not Enrolled",
+      exemptionEnrollmentDate: null,
+      exemptionExpirationDate: null,
+      exemptionEligibilityDate: null,
+      ownershipType: "Fee Simple",
+      purchaseDate: null,
+      ownerName: "IAI USA Fund II LLC",
+      description: "FRL S 1/2 SW 1/4",
+      fipParcelId: "59639",
+      notes: null,
+      landUseType: "Agricultural",
+      latitude: 34.0666,
+      longitude: -91.63497,
+      coordinateStatus: "present",
+      sourceWorkbookPath: "ParcelsListingReport.xlsx",
+      sourceSheet: "Sheet1",
+      sourceRowNumber: 2,
+      rawProperties: { ParcelCode: "000-00304-000" },
+      geometry: { type: "Point", coordinates: [-91.63497, 34.0666] },
+    });
+    stubQuery(AUTH_ADMIN);
+
+    const res = await request(app)
+      .get("/api/tax-parcels/points/1")
+      .set("Authorization", `Bearer ${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: 1, parcelCode: "000-00304-000" });
+  });
+
+  it("keeps the enriched Regrid GeoJSON debug endpoint available", async () => {
+    vi.mocked(loadRegridParcelCollection).mockResolvedValueOnce({
+      type: "FeatureCollection",
+      features: [],
+    } as never);
+    stubQuery(AUTH_ADMIN);
+
+    const res = await request(app)
+      .get("/api/tax-parcels/regrid-parcels?bbox=-92,34,-91,35&zoom=12")
+      .set("Authorization", `Bearer ${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.metadata).toEqual({ minZoom: 12 });
+    expect(loadRegridParcelCollection).toHaveBeenCalledWith([-92, 34, -91, 35], 12);
+  });
+
+  it("keeps the non-enriched Regrid GeoJSON debug endpoint available", async () => {
+    vi.mocked(loadRegridParcelFabricCollection).mockResolvedValueOnce({
+      type: "FeatureCollection",
+      features: [],
+    } as never);
+    stubQuery(AUTH_ADMIN);
+
+    const res = await request(app)
+      .get("/api/tax-parcels/regrid-parcels/query?bbox=-92,34,-91,35&zoom=12")
+      .set("Authorization", `Bearer ${makeToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.metadata).toEqual({ minZoom: 12, enriched: false });
+    expect(loadRegridParcelFabricCollection).toHaveBeenCalledWith([-92, 34, -91, 35], 12);
+  });
+
+  it("identifies the clicked Regrid parcel against workbook points", async () => {
+    vi.mocked(identifyRegridParcelAtPoint).mockResolvedValueOnce({
+      clicked: { latitude: 34.0666, longitude: -91.63497 },
+      regridParcel: null,
+      matches: [],
+      matchCount: 0,
+      joinMethod: "point-in-polygon",
+      message: "No Regrid parcel found at this location.",
+    });
+    stubQuery(AUTH_ADMIN);
+
+    const res = await request(app)
+      .post("/api/tax-parcels/regrid-identify")
+      .set("Authorization", `Bearer ${makeToken()}`)
+      .send({ latitude: 34.0666, longitude: -91.63497 });
+
+    expect(res.status).toBe(200);
+    expect(identifyRegridParcelAtPoint).toHaveBeenCalledWith(34.0666, -91.63497);
+  });
+
+  it("rejects out-of-range Regrid identify coordinates", async () => {
+    stubQuery(AUTH_ADMIN);
+
+    const res = await request(app)
+      .post("/api/tax-parcels/regrid-identify")
+      .set("Authorization", `Bearer ${makeToken()}`)
+      .send({ latitude: 134.0666, longitude: -91.63497 });
+
+    expect(res.status).toBe(400);
+    expect(identifyRegridParcelAtPoint).not.toHaveBeenCalled();
   });
 });

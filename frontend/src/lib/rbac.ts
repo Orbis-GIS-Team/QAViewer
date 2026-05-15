@@ -9,6 +9,7 @@ export const PERMISSIONS = [
   "question_areas:comment",
   "question_areas:upload_document",
   "atlas_land_records:read",
+  "property_tax_map:read",
   "property_tax:read",
   "admin:manage_users",
 ] as const;
@@ -25,6 +26,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "question_areas:comment",
     "question_areas:upload_document",
     "atlas_land_records:read",
+    "property_tax_map:read",
     "property_tax:read",
     "admin:manage_users",
   ],
@@ -33,6 +35,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "question_areas:review",
     "question_areas:comment",
     "question_areas:upload_document",
+    "property_tax_map:read",
   ],
   gis_team: [
     "question_areas:read",
@@ -40,6 +43,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "question_areas:comment",
     "question_areas:upload_document",
     "atlas_land_records:read",
+    "property_tax_map:read",
     "property_tax:read",
   ],
   land_records_team: [
@@ -48,10 +52,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     "question_areas:comment",
     "question_areas:upload_document",
     "atlas_land_records:read",
+    "property_tax_map:read",
     "property_tax:read",
   ],
-  client: ["question_areas:read"],
-  other: [],
+  client: ["question_areas:read", "property_tax_map:read"],
+  other: ["property_tax_map:read"],
 };
 
 export const SUPPORT_TABS: Array<{

@@ -6,6 +6,11 @@ type RequestOptions = {
   token?: string;
   body?: unknown;
   formData?: FormData;
+  signal?: AbortSignal;
+};
+
+type DownloadOptions = {
+  signal?: AbortSignal;
 };
 
 function handleUnauthorized(): never {
@@ -27,6 +32,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     method: options.method ?? "GET",
     headers,
     body: options.formData ?? (options.body ? JSON.stringify(options.body) : undefined),
+    signal: options.signal,
   });
 
   if (response.status === 401) {
@@ -45,11 +51,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   return response.json() as Promise<T>;
 }
 
-export async function apiDownload(pathOrUrl: string, token: string): Promise<Blob> {
+export async function apiDownload(pathOrUrl: string, token: string, options: DownloadOptions = {}): Promise<Blob> {
   const response = await fetch(new URL(pathOrUrl, API_BASE).toString(), {
     headers: {
       Authorization: `Bearer ${token}`,
     },
+    signal: options.signal,
   });
 
   if (response.status === 401) {

@@ -1,9 +1,12 @@
-import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, FormEvent, ReactNode } from "react";
+import { Component, startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, ErrorInfo, FormEvent, ReactNode } from "react";
 
 import type { Feature, FeatureCollection, Geometry, Point } from "geojson";
 import L from "leaflet";
-import type { PathOptions } from "leaflet";
+import type { LatLngExpression, PathOptions } from "leaflet";
+import * as esriLeaflet from "esri-leaflet";
+import Supercluster from "supercluster";
+import type { ClusterFeature, PointFeature } from "supercluster";
 import {
   CircleMarker,
   GeoJSON,
@@ -21,6 +24,21 @@ import {
 
 import type { Session } from "../App";
 import { apiDownload, apiRequest } from "../lib/api";
+import {
+  PROPERTY_TAX_CLUSTER_MAX_ZOOM,
+  PROPERTY_TAX_POINT_MIN_ZOOM,
+  PROPERTY_TAX_REGRID_MIN_ZOOM,
+  fetchRegridParcels,
+  fetchPropertyTaxPoints,
+  identifyRegridParcel,
+  type PropertyTaxParcelPointDetail,
+  type PropertyTaxParcelPointProperties,
+  type PropertyTaxPointCollection,
+  type RegridIdentifyResult,
+  type RegridParcelCollection,
+  type RegridParcelFeature,
+  type RegridParcelProperties,
+} from "../lib/propertyTaxMap";
 import { getVisibleSupportTabs, hasPermission, type SupportWorkspaceTab } from "../lib/rbac";
 import { AtlasMapOverlays } from "./AtlasMapOverlays";
 import { AtlasPanel } from "./AtlasPanel";
@@ -44,6 +62,11 @@ type SearchField = "all" | "parcel_code" | "county" | "qa_id";
 type DataAvailabilityFilter = "all" | "available" | "missing" | "unknown";
 type ActionabilityFilter = "all" | "open" | "closed" | "assigned" | "unassigned" | "needs_data" | "ready";
 type QuestionActionabilityState = "normal" | "high_pain" | "no_parcel_data" | "in_progress";
+
+const MAP_VIEWPORT_DEBOUNCE_MS = 160;
+const MAP_DATA_FETCH_DEBOUNCE_MS = 220;
+const REGRID_FEATURE_SERVICE_URL = (import.meta.env.VITE_REGRID_FEATURE_SERVICE_URL ?? "").trim();
+const REGRID_FEATURE_SERVICE_FIELDS = ["id", "parcelnumb", "account_number", "ll_uuid", "owner", "address"];
 
 type QuestionAreaFilters = {
   search: string;
@@ -222,6 +245,34 @@ type LegendItem = {
   toggleable: boolean;
 };
 
+type PropertyTaxMapLayerKey = "regridParcels" | "propertyTaxPoints";
+
+type PropertyTaxMapLayerVisibility = Record<PropertyTaxMapLayerKey, boolean>;
+
+type RegridIdentifyState = {
+  status: "idle" | "loading" | "success" | "error";
+  latlng: L.LatLngLiteral | null;
+  result: RegridIdentifyResult | null;
+  error: string | null;
+};
+
+type RegridFeatureLayerEvent = L.LeafletEvent & {
+  error?: Error;
+  feature?: RegridParcelFeature;
+  latlng?: L.LatLng;
+  layer?: (L.Layer & { bindTooltip?: L.Layer["bindTooltip"]; feature?: RegridParcelFeature }) | null;
+  message?: string;
+  originalEvent?: Event;
+};
+
+type SelectedRegridParcel = {
+  parcelId: string | null;
+  geometry: Geometry;
+  properties: RegridParcelProperties;
+  matches: PropertyTaxParcelPointDetail[];
+  selectedFrom: "regrid-parcel" | "property-tax-point";
+};
+
 type LandRecordLegendItem = {
   key: string;
   label: string;
@@ -294,6 +345,11 @@ const EMPTY_QA_FILTER_OPTIONS: QuestionAreaFilterOptions = {
 const initialLayers: Record<LayerKey, boolean> = {
   land_records: true,
   management_areas: true,
+};
+
+const initialPropertyTaxMapLayers: PropertyTaxMapLayerVisibility = {
+  regridParcels: true,
+  propertyTaxPoints: true,
 };
 
 const LEGEND_ITEMS: LegendItem[] = [
@@ -454,6 +510,30 @@ const managementAreaStyle: PathOptions = {
   fillOpacity: 0.06,
 };
 
+const regridParcelStyle: PathOptions = {
+  className: "regrid-parcel-path",
+  color: "#6b7280",
+  fillOpacity: 0,
+  opacity: 0.92,
+  weight: 1.6,
+};
+
+const matchedRegridParcelStyle: PathOptions = {
+  className: "regrid-parcel-path",
+  color: "#8a00c4",
+  fillColor: "#d8b4fe",
+  fillOpacity: 0.28,
+  opacity: 0.98,
+  weight: 3,
+};
+
+const activeRegridParcelStyle: PathOptions = {
+  color: "#0f172a",
+  fillColor: "#f59e0b",
+  fillOpacity: 0.28,
+  weight: 3,
+};
+
 const BASEMAPS = {
   osm: {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -480,8 +560,17 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [summary, setSummary] = useState<SummaryPayload | null>(null);
   const [questionAreas, setQuestionAreas] = useState<QuestionAreaCollection | null>(null);
   const [mapBbox, setMapBbox] = useState("-126,24,-66,49");
+  const [mapZoom, setMapZoom] = useState(4);
   const [layerVisibility, setLayerVisibility] = useState(initialLayers);
   const [layerData, setLayerData] = useState<Partial<Record<LayerKey, LayerCollection>>>({});
+  const [propertyTaxLayerVisibility, setPropertyTaxLayerVisibility] = useState(initialPropertyTaxMapLayers);
+  const [propertyTaxPoints, setPropertyTaxPoints] = useState<PropertyTaxPointCollection | null>(null);
+  const [matchedRegridParcels, setMatchedRegridParcels] = useState<RegridParcelCollection>({
+    type: "FeatureCollection",
+    features: [],
+  });
+  const [propertyTaxMapError, setPropertyTaxMapError] = useState<string | null>(null);
+  const [regridLayerNotice, setRegridLayerNotice] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState("");
   const [filters, setFilters] = useState<QuestionAreaFilters>(DEFAULT_QA_FILTERS);
   const [filterOptions, setFilterOptions] = useState<QuestionAreaFilterOptions>(EMPTY_QA_FILTER_OPTIONS);
@@ -489,6 +578,13 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
   const [identifySelection, setIdentifySelection] = useState<IdentifySelection | null>(null);
+  const [regridIdentifyState, setRegridIdentifyState] = useState<RegridIdentifyState>({
+    status: "idle",
+    latlng: null,
+    result: null,
+    error: null,
+  });
+  const [selectedRegridParcel, setSelectedRegridParcel] = useState<SelectedRegridParcel | null>(null);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [supportWorkspaceTab, setSupportWorkspaceTab] = useState<SupportWorkspaceTab | null>(() => {
     return getVisibleSupportTabs(session.user.role)[0]?.id ?? null;
@@ -529,7 +625,18 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const canCommentOnQuestionAreas = hasPermission(session.user.role, "question_areas:comment");
   const canUploadQuestionAreaDocuments = hasPermission(session.user.role, "question_areas:upload_document");
   const canReadAtlas = hasPermission(session.user.role, "atlas_land_records:read");
+  const canReadPropertyTaxMap = hasPermission(session.user.role, "property_tax_map:read");
   const canReadPropertyTax = hasPermission(session.user.role, "property_tax:read");
+  const selectedPropertyTaxPointIds = useMemo(
+    () => new Set((selectedRegridParcel?.matches ?? []).map((match) => match.id)),
+    [selectedRegridParcel],
+  );
+  const handleViewportChange = useCallback((bbox: string, zoom: number) => {
+    startTransition(() => {
+      setMapBbox((current) => (areMapBboxesEqual(current, bbox) ? current : bbox));
+      setMapZoom((current) => (current === zoom ? current : zoom));
+    });
+  }, []);
   const atlasState = useAtlasQuery({
     token: session.token,
     questionAreaCode: selectedCode,
@@ -643,29 +750,35 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
   useEffect(() => {
     let alive = true;
+    const abortController = new AbortController();
     const params = buildQuestionAreaQueryParams(filters, mapBbox, "600");
 
-    apiRequest<QuestionAreaCollection>(`/question-areas?${params.toString()}`, {
-      token: session.token,
-    })
-      .then((payload) => {
-        if (!alive) {
-          return;
-        }
-
-        setQuestionAreas(payload);
-        if (payload.features.length === 1) {
-          setSelectedCode(payload.features[0]?.properties?.code ?? null);
-        }
+    const timeoutId = window.setTimeout(() => {
+      apiRequest<QuestionAreaCollection>(`/question-areas?${params.toString()}`, {
+        token: session.token,
+        signal: abortController.signal,
       })
-      .catch((error) => {
-        if (alive) {
-          showFeedback(error instanceof Error ? error.message : "Failed to load question areas.");
-        }
-      });
+        .then((payload) => {
+          if (!alive) {
+            return;
+          }
+
+          setQuestionAreas(payload);
+          if (payload.features.length === 1) {
+            setSelectedCode(payload.features[0]?.properties?.code ?? null);
+          }
+        })
+        .catch((error) => {
+          if (alive && !isAbortError(error)) {
+            showFeedback(error instanceof Error ? error.message : "Failed to load question areas.");
+          }
+        });
+    }, MAP_DATA_FETCH_DEBOUNCE_MS);
 
     return () => {
       alive = false;
+      window.clearTimeout(timeoutId);
+      abortController.abort();
     };
   }, [filters, mapBbox, session.token]);
 
@@ -680,37 +793,128 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     }
 
     let alive = true;
+    const abortController = new AbortController();
 
-    Promise.all(
-      visibleLayers.map(async (layerKey) => {
-        const payload = await apiRequest<LayerCollection>(
-          `/layers/${layerKey}?bbox=${encodeURIComponent(mapBbox)}`,
-          { token: session.token },
-        );
-        return [layerKey, payload] as const;
-      }),
-    )
-      .then((entries) => {
-        if (!alive) {
-          return;
-        }
+    const timeoutId = window.setTimeout(() => {
+      Promise.all(
+        visibleLayers.map(async (layerKey) => {
+          const payload = await apiRequest<LayerCollection>(
+            `/layers/${layerKey}?bbox=${encodeURIComponent(mapBbox)}`,
+            { token: session.token, signal: abortController.signal },
+          );
+          return [layerKey, payload] as const;
+        }),
+      )
+        .then((entries) => {
+          if (!alive) {
+            return;
+          }
 
-        const nextLayerData: Partial<Record<LayerKey, LayerCollection>> = {};
-        entries.forEach(([layerKey, payload]) => {
-          nextLayerData[layerKey] = payload;
+          const nextLayerData: Partial<Record<LayerKey, LayerCollection>> = {};
+          entries.forEach(([layerKey, payload]) => {
+            nextLayerData[layerKey] = payload;
+          });
+          setLayerData(nextLayerData);
+        })
+        .catch((error) => {
+          if (alive && !isAbortError(error)) {
+            showFeedback(error instanceof Error ? error.message : "Failed to load map layers.");
+          }
         });
-        setLayerData(nextLayerData);
-      })
-      .catch((error) => {
-        if (alive) {
-          showFeedback(error instanceof Error ? error.message : "Failed to load map layers.");
-        }
-      });
+    }, MAP_DATA_FETCH_DEBOUNCE_MS);
 
     return () => {
       alive = false;
+      window.clearTimeout(timeoutId);
+      abortController.abort();
     };
   }, [layerVisibility, mapBbox, session.token]);
+
+  useEffect(() => {
+    if (!canReadPropertyTaxMap) {
+      setPropertyTaxPoints(null);
+      setMatchedRegridParcels({ type: "FeatureCollection", features: [] });
+      setPropertyTaxMapError(null);
+      return;
+    }
+
+    const shouldFetchPropertyTaxPoints = propertyTaxLayerVisibility.propertyTaxPoints;
+    if (!shouldFetchPropertyTaxPoints) {
+      setPropertyTaxPoints(null);
+      setPropertyTaxMapError(null);
+      return;
+    }
+
+    let alive = true;
+    const abortController = new AbortController();
+    setPropertyTaxMapError(null);
+
+    const timeoutId = window.setTimeout(() => {
+      fetchPropertyTaxPoints({ bbox: mapBbox, token: session.token, signal: abortController.signal })
+        .then((nextPropertyTaxPoints) => {
+          if (!alive) {
+            return;
+          }
+
+          setPropertyTaxPoints(nextPropertyTaxPoints);
+        })
+        .catch((error) => {
+          if (alive && !isAbortError(error)) {
+            setPropertyTaxMapError(error instanceof Error ? error.message : "Failed to load property tax points.");
+          }
+        });
+    }, MAP_DATA_FETCH_DEBOUNCE_MS);
+
+    return () => {
+      alive = false;
+      window.clearTimeout(timeoutId);
+      abortController.abort();
+    };
+  }, [canReadPropertyTaxMap, mapBbox, propertyTaxLayerVisibility.propertyTaxPoints, session.token]);
+
+  useEffect(() => {
+    if (!canReadPropertyTaxMap || !propertyTaxLayerVisibility.regridParcels || mapZoom < PROPERTY_TAX_REGRID_MIN_ZOOM) {
+      setMatchedRegridParcels({ type: "FeatureCollection", features: [] });
+      return;
+    }
+
+    let alive = true;
+    const abortController = new AbortController();
+
+    const timeoutId = window.setTimeout(() => {
+      fetchRegridParcels({
+        bbox: mapBbox,
+        matchedOnly: true,
+        token: session.token,
+        zoom: mapZoom,
+        signal: abortController.signal,
+      })
+        .then((collection) => {
+          if (!alive) {
+            return;
+          }
+
+          setMatchedRegridParcels(collectMatchedRegridParcels(collection));
+        })
+        .catch((error) => {
+          if (alive && !isAbortError(error)) {
+            setMatchedRegridParcels({ type: "FeatureCollection", features: [] });
+          }
+        });
+    }, MAP_DATA_FETCH_DEBOUNCE_MS);
+
+    return () => {
+      alive = false;
+      window.clearTimeout(timeoutId);
+      abortController.abort();
+    };
+  }, [canReadPropertyTaxMap, mapBbox, mapZoom, propertyTaxLayerVisibility.regridParcels, session.token]);
+
+  useEffect(() => {
+    if (!canReadPropertyTaxMap || !propertyTaxLayerVisibility.regridParcels) {
+      setRegridLayerNotice(null);
+    }
+  }, [canReadPropertyTaxMap, propertyTaxLayerVisibility.regridParcels]);
 
   useEffect(() => {
     if (!identifySelection) {
@@ -978,6 +1182,63 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
     setIdentifySelection(features.length > 0 ? { features, index: 0 } : null);
   }
 
+  async function handleRegridParcelIdentify(
+    latlng: L.LatLngLiteral,
+    selectedFrom: SelectedRegridParcel["selectedFrom"] = "regrid-parcel",
+    clickedFeature?: RegridParcelFeature,
+  ) {
+    setIdentifySelection(null);
+    setRegridIdentifyState({
+      status: "loading",
+      latlng,
+      result: null,
+      error: null,
+    });
+    setSelectedRegridParcel(null);
+
+    if (!canReadPropertyTaxMap) {
+      const result = createFeatureOnlyRegridIdentifyResult(latlng, clickedFeature);
+      setSelectedRegridParcel(createSelectedRegridParcel(result, selectedFrom, clickedFeature));
+      setRegridIdentifyState({
+        status: "success",
+        latlng,
+        result,
+        error: null,
+      });
+      return;
+    }
+
+    try {
+      const result = await identifyRegridParcel(session.token, latlng);
+      setSelectedRegridParcel(createSelectedRegridParcel(result, selectedFrom, clickedFeature));
+      setRegridIdentifyState({
+        status: "success",
+        latlng,
+        result,
+        error: null,
+      });
+    } catch (error) {
+      setRegridIdentifyState({
+        status: "error",
+        latlng,
+        result: null,
+        error: error instanceof Error ? error.message : "Failed to identify Regrid parcel.",
+      });
+      setSelectedRegridParcel(null);
+    }
+  }
+
+  function handlePropertyTaxPointIdentify(point: PropertyTaxParcelPointProperties) {
+    if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) {
+      return;
+    }
+
+    void handleRegridParcelIdentify(
+      { lat: Number(point.latitude), lng: Number(point.longitude) },
+      "property-tax-point",
+    );
+  }
+
   function identifyLayerFeature(layerKey: LayerKey, feature: LayerFeature, latlng: L.LatLngLiteral) {
     const features = findIdentifiedFeatures(layerData, layerVisibility, latlng);
     const clickedIndex = features.findIndex(
@@ -1010,6 +1271,13 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
   function toggleLayer(layerKey: LayerKey) {
     setLayerVisibility((current) => ({
+      ...current,
+      [layerKey]: !current[layerKey],
+    }));
+  }
+
+  function togglePropertyTaxLayer(layerKey: PropertyTaxMapLayerKey) {
+    setPropertyTaxLayerVisibility((current) => ({
       ...current,
       [layerKey]: !current[layerKey],
     }));
@@ -1472,9 +1740,15 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 />
               </LayersControl.BaseLayer>
             </LayersControl>
-            <MapLegendControl layerVisibility={layerVisibility} onToggleLayer={toggleLayer} />
+            <MapLegendControl
+              canReadPropertyTaxMap={canReadPropertyTaxMap}
+              layerVisibility={layerVisibility}
+              onToggleLayer={toggleLayer}
+              onTogglePropertyTaxLayer={togglePropertyTaxLayer}
+              propertyTaxLayerVisibility={propertyTaxLayerVisibility}
+            />
             <MeasurementControl onMeasureActiveChange={setIsMeasuring} />
-            <MapViewportWatcher onChange={setMapBbox} />
+            <MapViewportWatcher onChange={handleViewportChange} />
             <MapIdentifyClickHandler
               disabled={isMeasuring}
               layerData={layerData}
@@ -1503,6 +1777,59 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
             ) : null}
             {supportWorkspaceTab === "tax-parcels" && canReadPropertyTax ? (
               <TaxParcelMapOverlays taxParcelQuery={taxParcelState.result} />
+            ) : null}
+
+            {canReadPropertyTaxMap && propertyTaxLayerVisibility.regridParcels ? (
+              <Pane name="regrid-parcels" style={{ zIndex: 360 }}>
+                <MapLayerErrorBoundary
+                  label="Regrid service layer"
+                  resetKey={`regrid-feature-service-${REGRID_FEATURE_SERVICE_URL || "unconfigured"}`}
+                >
+                  <RegridFeatureServiceLayer
+                    identifyDisabled={isMeasuring}
+                    onError={setPropertyTaxMapError}
+                    onIdentify={handleRegridParcelIdentify}
+                    onNotice={setRegridLayerNotice}
+                    zoom={mapZoom}
+                  />
+                </MapLayerErrorBoundary>
+              </Pane>
+            ) : null}
+
+            {canReadPropertyTaxMap && propertyTaxLayerVisibility.regridParcels && matchedRegridParcels.features.length > 0 ? (
+              <Pane name="matched-regrid-parcels" style={{ zIndex: 420 }}>
+                <MapLayerErrorBoundary
+                  label="Matched Regrid parcel layer"
+                  resetKey={`matched-regrid-parcels-${matchedRegridParcels.features.length}-${mapBbox}`}
+                >
+                  <MatchedRegridParcelOverlay
+                    data={matchedRegridParcels}
+                  />
+                </MapLayerErrorBoundary>
+              </Pane>
+            ) : null}
+
+            {selectedRegridParcel ? (
+              <Pane name="selected-regrid-parcel" style={{ zIndex: 425 }}>
+                <SelectedRegridParcelOverlay selectedParcel={selectedRegridParcel} />
+              </Pane>
+            ) : null}
+
+            {canReadPropertyTaxMap && propertyTaxLayerVisibility.propertyTaxPoints && propertyTaxPoints ? (
+              <Pane name="property-tax-points" style={{ zIndex: 430 }}>
+                <MapLayerErrorBoundary
+                  label="Property tax point layer"
+                  resetKey={`property-tax-points-${propertyTaxPoints.features.length}`}
+                >
+                  <PropertyTaxPointLayer
+                    data={propertyTaxPoints}
+                    mapBbox={mapBbox}
+                    matchedPointIds={selectedPropertyTaxPointIds}
+                    onIdentify={handlePropertyTaxPointIdentify}
+                    zoom={mapZoom}
+                  />
+                </MapLayerErrorBoundary>
+              </Pane>
             ) : null}
 
             <Pane name="management-areas" style={{ zIndex: 390 }}>
@@ -1538,6 +1865,30 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
               onClose={() => setIdentifySelection(null)}
               onCycle={cycleIdentifiedFeature}
             />
+          ) : null}
+          {regridIdentifyState.status !== "idle" ? (
+            <RegridIdentifyPanel
+              identifyState={regridIdentifyState}
+              onClose={() => {
+                setSelectedRegridParcel(null);
+                setRegridIdentifyState({
+                  status: "idle",
+                  latlng: null,
+                  result: null,
+                  error: null,
+                });
+              }}
+            />
+          ) : null}
+          {propertyTaxMapError ? (
+            <div className="map-layer-status map-layer-error" role="status">
+              {propertyTaxMapError}
+            </div>
+          ) : null}
+          {!propertyTaxMapError && regridLayerNotice ? (
+            <div className="map-layer-status map-layer-notice" role="status">
+              {regridLayerNotice}
+            </div>
           ) : null}
         </section>
 
@@ -1913,18 +2264,51 @@ function ReviewRecordSections({
   );
 }
 
-function MapViewportWatcher({ onChange }: { onChange: (bbox: string) => void }) {
+function MapViewportWatcher({ onChange }: { onChange: (bbox: string, zoom: number) => void }) {
   const map = useMap();
+  const lastViewportRef = useRef<{ bbox: string; zoom: number } | null>(null);
+  const timeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
-    onChange(map.getBounds().toBBoxString());
-  }, [map, onChange]);
+    function emitViewport() {
+      const nextViewport = {
+        bbox: map.getBounds().toBBoxString(),
+        zoom: map.getZoom(),
+      };
+      const previousViewport = lastViewportRef.current;
 
-  useMapEvents({
-    moveend(event) {
-      onChange(event.target.getBounds().toBBoxString());
-    },
-  });
+      if (
+        previousViewport
+        && previousViewport.zoom === nextViewport.zoom
+        && areMapBboxesEqual(previousViewport.bbox, nextViewport.bbox)
+      ) {
+        return;
+      }
+
+      lastViewportRef.current = nextViewport;
+      onChange(nextViewport.bbox, nextViewport.zoom);
+    }
+
+    function scheduleViewportEmit() {
+      if (timeoutRef.current !== null) {
+        window.clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = window.setTimeout(() => {
+        timeoutRef.current = null;
+        emitViewport();
+      }, MAP_VIEWPORT_DEBOUNCE_MS);
+    }
+
+    emitViewport();
+    map.on("moveend zoomend resize", scheduleViewportEmit);
+
+    return () => {
+      map.off("moveend zoomend resize", scheduleViewportEmit);
+      if (timeoutRef.current !== null) {
+        window.clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [map, onChange]);
 
   return null;
 }
@@ -2006,6 +2390,372 @@ function IdentifyGeoJsonLayer({
       }}
       style={(feature) => identifyFeatureStyle(layerKey, feature as LayerFeature | undefined, identifiedFeature)}
     />
+  );
+}
+
+function RegridFeatureServiceLayer({
+  identifyDisabled,
+  onError,
+  onIdentify,
+  onNotice,
+  zoom,
+}: {
+  identifyDisabled: boolean;
+  onError: (message: string | null) => void;
+  onIdentify: (
+    latlng: L.LatLngLiteral,
+    selectedFrom?: SelectedRegridParcel["selectedFrom"],
+    clickedFeature?: RegridParcelFeature,
+  ) => void;
+  onNotice: (message: string | null) => void;
+  zoom: number;
+}) {
+  const map = useMap();
+  const onIdentifyRef = useRef(onIdentify);
+  const identifyDisabledRef = useRef(identifyDisabled);
+  const onErrorRef = useRef(onError);
+  const onNoticeRef = useRef(onNotice);
+
+  useEffect(() => {
+    onIdentifyRef.current = onIdentify;
+  }, [onIdentify]);
+
+  useEffect(() => {
+    identifyDisabledRef.current = identifyDisabled;
+  }, [identifyDisabled]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
+  useEffect(() => {
+    onNoticeRef.current = onNotice;
+  }, [onNotice]);
+
+  useEffect(() => {
+    if (!REGRID_FEATURE_SERVICE_URL) {
+      onErrorRef.current(null);
+      onNoticeRef.current("Regrid FeatureServer layer is not configured. Set VITE_REGRID_FEATURE_SERVICE_URL to enable it.");
+      return;
+    }
+
+    if (zoom < PROPERTY_TAX_REGRID_MIN_ZOOM) {
+      onErrorRef.current(null);
+      onNoticeRef.current(null);
+      return;
+    }
+
+    const featureLayer = esriLeaflet.featureLayer({
+      cacheLayers: false,
+      fields: REGRID_FEATURE_SERVICE_FIELDS,
+      keepBuffer: 1,
+      minZoom: PROPERTY_TAX_REGRID_MIN_ZOOM,
+      pane: "regrid-parcels",
+      precision: 5,
+      simplifyFactor: 0.65,
+      style: () => regridParcelStyle,
+      updateInterval: 250,
+      updateWhenIdle: true,
+      url: REGRID_FEATURE_SERVICE_URL,
+    });
+
+    const handleClick = (event: RegridFeatureLayerEvent) => {
+      if (identifyDisabledRef.current || !event.latlng) {
+        return;
+      }
+
+      if (event.originalEvent) {
+        L.DomEvent.stopPropagation(event.originalEvent);
+      }
+      onIdentifyRef.current(event.latlng, "regrid-parcel", extractRegridFeature(event));
+    };
+
+    const handleLoading = () => {
+      onErrorRef.current(null);
+    };
+
+    const handleLoad = () => {
+      onErrorRef.current(null);
+      onNoticeRef.current(null);
+    };
+
+    const handleError = (event: RegridFeatureLayerEvent) => {
+      onNoticeRef.current(null);
+      onErrorRef.current(event.error?.message ?? event.message ?? "Failed to load Regrid FeatureServer layer.");
+    };
+
+    const handleDrawLimitExceeded = () => {
+      onErrorRef.current(null);
+      onNoticeRef.current("Regrid returned more parcel features than the map can draw here. Zoom in to inspect parcel fabric.");
+    };
+
+    featureLayer.on("click", handleClick);
+    featureLayer.on("loading", handleLoading);
+    featureLayer.on("load", handleLoad);
+    featureLayer.on("requesterror", handleError);
+    featureLayer.on("drawlimitexceeded", handleDrawLimitExceeded);
+    featureLayer.addTo(map);
+
+    return () => {
+      featureLayer.off("click", handleClick);
+      featureLayer.off("loading", handleLoading);
+      featureLayer.off("load", handleLoad);
+      featureLayer.off("requesterror", handleError);
+      featureLayer.off("drawlimitexceeded", handleDrawLimitExceeded);
+      featureLayer.removeFrom(map);
+    };
+  }, [map, zoom]);
+
+  return null;
+}
+
+function SelectedRegridParcelOverlay({ selectedParcel }: { selectedParcel: SelectedRegridParcel }) {
+  const feature: RegridParcelFeature = {
+    type: "Feature",
+    geometry: selectedParcel.geometry,
+    properties: selectedParcel.properties,
+  };
+
+  return (
+    <GeoJSON
+      key={`selected-regrid-parcel-${selectedParcel.parcelId ?? "unknown"}`}
+      data={feature}
+      onEachFeature={(selectedFeature, layer) => {
+        const label = regridParcelLabel(selectedFeature as RegridParcelFeature);
+        if (label) {
+          layer.bindTooltip(label, { direction: "top", opacity: 0.95, sticky: true });
+        }
+      }}
+      style={() => activeRegridParcelStyle}
+    />
+  );
+}
+
+function MatchedRegridParcelOverlay({ data }: { data: RegridParcelCollection }) {
+  const polygons = useMemo(() => matchedRegridPolygons(data), [data]);
+
+  return (
+    <>
+      {polygons.map((polygon) => (
+        <Polygon
+          key={polygon.key}
+          interactive={false}
+          pathOptions={matchedRegridParcelStyle}
+          positions={polygon.positions}
+        />
+      ))}
+    </>
+  );
+}
+
+class MapLayerErrorBoundary extends Component<
+  { children: ReactNode; label: string; resetKey: string },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidUpdate(previousProps: { resetKey: string }) {
+    if (this.state.error && previousProps.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error(`${this.props.label} failed to render.`, error, errorInfo);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="map-layer-error" role="status">
+          {this.props.label} failed to render. Toggle the layer off or move the map to retry.
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+function PropertyTaxPointLayer({
+  data,
+  matchedPointIds,
+  onIdentify,
+  zoom,
+}: {
+  data: PropertyTaxPointCollection;
+  mapBbox: string;
+  matchedPointIds: Set<number>;
+  onIdentify: (point: PropertyTaxParcelPointProperties) => void;
+  zoom: number;
+}) {
+  const map = useMap();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const hitTargetsRef = useRef<
+    Array<{
+      clusterId: number | null;
+      lat: number;
+      lng: number;
+      point: PropertyTaxParcelPointProperties | null;
+      radius: number;
+      x: number;
+      y: number;
+    }>
+  >([]);
+  const onIdentifyRef = useRef(onIdentify);
+  const matchedPointIdsRef = useRef(matchedPointIds);
+
+  const clusterIndex = useMemo(() => {
+    const renderableFeatures = data.features.filter(isRenderablePropertyTaxPointFeature);
+    const index = new Supercluster<PropertyTaxParcelPointProperties, PropertyTaxParcelPointProperties>({
+      maxZoom: PROPERTY_TAX_CLUSTER_MAX_ZOOM,
+      radius: 58,
+    });
+    index.load(renderableFeatures as Array<PointFeature<PropertyTaxParcelPointProperties>>);
+    return index;
+  }, [data]);
+
+  useEffect(() => {
+    onIdentifyRef.current = onIdentify;
+  }, [onIdentify]);
+
+  useEffect(() => {
+    matchedPointIdsRef.current = matchedPointIds;
+    hitTargetsRef.current = drawPropertyTaxCanvas(map, canvasRef.current, clusterIndex, matchedPointIdsRef.current);
+  }, [clusterIndex, map, matchedPointIds]);
+
+  useEffect(() => {
+    hitTargetsRef.current = drawPropertyTaxCanvas(map, canvasRef.current, clusterIndex, matchedPointIdsRef.current);
+  }, [clusterIndex, map, zoom]);
+
+  useEffect(() => {
+    const pane = map.getPane("property-tax-points") ?? map.getPanes().overlayPane;
+    const canvas = L.DomUtil.create("canvas", "property-tax-canvas-layer", pane);
+    canvasRef.current = canvas;
+
+    let animationFrame: number | null = null;
+
+    function redraw() {
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = null;
+        hitTargetsRef.current = drawPropertyTaxCanvas(
+          map,
+          canvas,
+          clusterIndex,
+          matchedPointIdsRef.current,
+        );
+      });
+    }
+
+    function handleClick(event: L.LeafletMouseEvent) {
+      const point = map.latLngToContainerPoint(event.latlng);
+      const x = point.x;
+      const y = point.y;
+      const target = findPropertyTaxHitTarget(hitTargetsRef.current, x, y);
+      if (!target) {
+        return;
+      }
+
+      L.DomEvent.stopPropagation(event.originalEvent);
+      if (target.point) {
+        onIdentifyRef.current(target.point);
+        return;
+      }
+
+      if (target.clusterId !== null) {
+        const expansionZoom = clusterIndex.getClusterExpansionZoom(target.clusterId);
+        map.setView([target.lat, target.lng], Math.max(map.getZoom() + 1, expansionZoom));
+      }
+    }
+
+    redraw();
+    map.on("click", handleClick);
+    map.on("move zoom zoomend moveend resize viewreset", redraw);
+
+    return () => {
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+      map.off("click", handleClick);
+      map.off("move zoom zoomend moveend resize viewreset", redraw);
+      canvas.remove();
+      canvasRef.current = null;
+      hitTargetsRef.current = [];
+    };
+  }, [clusterIndex, map]);
+
+  return null;
+}
+
+function RegridIdentifyPanel({
+  identifyState,
+  onClose,
+}: {
+  identifyState: RegridIdentifyState;
+  onClose: () => void;
+}) {
+  const result = identifyState.result;
+  const primaryMatch = result?.matches[0] ?? null;
+  const workbookRows = primaryMatch ? objectIdentifyRows(primaryMatch) : [];
+  const parcelRows = result?.regridParcel ? objectIdentifyRows(result.regridParcel.properties) : [];
+  const hasMatch = Boolean(result?.matchCount);
+  const title = hasMatch
+    ? firstKnownValue(workbookRows) ?? "Matched Workbook Parcel"
+    : "Regrid Parcel";
+
+  return (
+    <aside className="map-identify-panel regrid-identify-panel" aria-label="Regrid parcel identify result">
+      <div className="identify-panel-header">
+        <div className="identify-title-group">
+          <span className={`identify-layer-badge ${hasMatch ? "regrid-matched" : "regrid"}`}>
+            {hasMatch ? "Workbook Match" : "Regrid Parcel"}
+          </span>
+          <h2>{identifyState.status === "loading" ? "Identifying parcel..." : title}</h2>
+        </div>
+        <div className="identify-header-actions">
+          <button className="identify-close-button" onClick={onClose} title="Close identify panel" type="button">
+            x
+          </button>
+        </div>
+      </div>
+
+      {identifyState.status === "loading" ? (
+        <p className="panel-note">Checking the clicked Regrid parcel against workbook data.</p>
+      ) : null}
+      {identifyState.status === "error" ? (
+        <p className="tax-parcel-error-banner">{identifyState.error ?? "Failed to identify Regrid parcel."}</p>
+      ) : null}
+      {identifyState.status === "success" && !hasMatch ? (
+        <p className="regrid-no-match-state">
+          {result?.message ?? "No workbook match found for this Regrid parcel."}
+        </p>
+      ) : null}
+
+      {workbookRows.length > 0 ? <IdentifyFieldSection rows={workbookRows} title="Workbook Data" /> : null}
+      {result && result.matches.length > 1 ? (
+        <p className="panel-note">{result.matches.length.toLocaleString()} workbook matches found at this location.</p>
+      ) : null}
+      {parcelRows.length > 0 ? <IdentifyFieldSection rows={parcelRows} title="Regrid Attributes" /> : null}
+      {identifyState.latlng ? (
+        <IdentifyFieldSection
+          rows={[
+            {
+              key: "clicked_location",
+              label: "Clicked Location",
+              value: `${identifyState.latlng.lat.toFixed(5)}, ${identifyState.latlng.lng.toFixed(5)}`,
+            },
+          ]}
+          title="Identify"
+        />
+      ) : null}
+    </aside>
   );
 }
 
@@ -2424,6 +3174,372 @@ function configuredIdentifyRows(
   });
 }
 
+function objectIdentifyRows(properties: Record<string, unknown>): IdentifyFieldRow[] {
+  return Object.entries(properties)
+    .flatMap(([key, value]) => {
+      const formattedValue = formatIdentifyValue(value);
+      return formattedValue ? [{ key, label: humanize(key), value: formattedValue }] : [];
+    })
+    .slice(0, 24);
+}
+
+function createSelectedRegridParcel(
+  result: RegridIdentifyResult,
+  selectedFrom: SelectedRegridParcel["selectedFrom"],
+  fallbackFeature?: RegridParcelFeature,
+): SelectedRegridParcel | null {
+  const geometry = result.regridParcel?.geometry ?? fallbackFeature?.geometry;
+  if (!geometry) {
+    return null;
+  }
+
+  const properties = result.regridParcel?.properties ?? fallbackFeature?.properties ?? {};
+  return {
+    parcelId: regridParcelIdentity(properties),
+    geometry,
+    properties,
+    matches: result.matches,
+    selectedFrom,
+  };
+}
+
+function createFeatureOnlyRegridIdentifyResult(
+  latlng: L.LatLngLiteral,
+  clickedFeature?: RegridParcelFeature,
+): RegridIdentifyResult {
+  return {
+    clicked: { latitude: latlng.lat, longitude: latlng.lng },
+    regridParcel: clickedFeature ?? null,
+    matches: [],
+    matchCount: 0,
+    message: clickedFeature
+      ? "Workbook matching is not available for this account."
+      : "No Regrid parcel attributes were returned for this click.",
+  };
+}
+
+function regridParcelLabel(feature: RegridParcelFeature) {
+  const properties = feature.properties;
+  return [
+    properties.parcelnumb,
+    properties.account_number,
+    properties.ll_uuid,
+    properties.owner,
+    properties.address,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function regridParcelIdentity(properties: RegridParcelProperties) {
+  const value = properties.parcelId ?? properties.id ?? properties.ll_uuid ?? properties.parcelnumb;
+  if (typeof value === "string") {
+    return value.trim() || null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+}
+
+function collectMatchedRegridParcels(collection: RegridParcelCollection): RegridParcelCollection {
+  return {
+    ...collection,
+    features: collection.features.filter((feature) =>
+      Boolean(feature.properties?.matched)
+      && isPolygonGeometry(feature.geometry)
+      && hasFiniteCoordinatePair(feature.geometry.coordinates)
+    ),
+  };
+}
+
+function matchedRegridPolygons(collection: RegridParcelCollection) {
+  return collection.features.flatMap((feature, featureIndex) => {
+    const featureKey = regridParcelIdentity(feature.properties ?? {}) ?? `matched-regrid-${featureIndex}`;
+    const geometry = feature.geometry;
+
+    if (geometry.type === "Polygon") {
+      return [{
+        key: featureKey,
+        positions: polygonToLatLngPositions(geometry.coordinates as PolygonCoordinates),
+      }];
+    }
+
+    if (geometry.type === "MultiPolygon") {
+      return (geometry.coordinates as MultiPolygonCoordinates).map((polygon, polygonIndex) => ({
+        key: `${featureKey}-${polygonIndex}`,
+        positions: polygonToLatLngPositions(polygon),
+      }));
+    }
+
+    return [];
+  });
+}
+
+function polygonToLatLngPositions(polygon: PolygonCoordinates): LatLngExpression[][] {
+  return polygon.map((ring) =>
+    ring
+      .filter((coordinate) => isFiniteCoordinatePair(coordinate[0], coordinate[1]))
+      .map(([lng, lat]) => [lat, lng] as [number, number]),
+  );
+}
+
+function extractRegridFeature(event: RegridFeatureLayerEvent): RegridParcelFeature | undefined {
+  const feature = event.feature ?? event.layer?.feature;
+  if (feature?.type === "Feature" && feature.geometry) {
+    return feature;
+  }
+  return undefined;
+}
+
+function parseMapBbox(bbox: string): [number, number, number, number] | null {
+  const parts = bbox.split(",").map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) {
+    return null;
+  }
+
+  const [west, south, east, north] = parts;
+  if (west >= east || south >= north) {
+    return null;
+  }
+
+  return [west, south, east, north];
+}
+
+function areMapBboxesEqual(leftBbox: string, rightBbox: string) {
+  const left = parseMapBbox(leftBbox);
+  const right = parseMapBbox(rightBbox);
+  if (!left || !right) {
+    return leftBbox === rightBbox;
+  }
+
+  return left.every((value, index) => Math.abs(value - right[index]) < 0.000001);
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function isRenderablePropertyTaxPointFeature(
+  feature: Feature<Point, PropertyTaxParcelPointProperties>,
+): feature is PointFeature<PropertyTaxParcelPointProperties> {
+  const coordinates = feature.geometry?.coordinates;
+  return (
+    feature.type === "Feature"
+    && feature.geometry?.type === "Point"
+    && Array.isArray(coordinates)
+    && isFiniteCoordinatePair(coordinates[0], coordinates[1])
+  );
+}
+
+function isFiniteCoordinatePair(lng: unknown, lat: unknown) {
+  return (
+    typeof lng === "number"
+    && typeof lat === "number"
+    && Number.isFinite(lng)
+    && Number.isFinite(lat)
+    && lng >= -180
+    && lng <= 180
+    && lat >= -90
+    && lat <= 90
+  );
+}
+
+function hasFiniteCoordinatePair(value: unknown): boolean {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+
+  if (
+    value.length >= 2
+    && typeof value[0] === "number"
+    && typeof value[1] === "number"
+    && isFiniteCoordinatePair(value[0], value[1])
+  ) {
+    return true;
+  }
+
+  return value.some((child) => hasFiniteCoordinatePair(child));
+}
+
+function isClusterFeature(
+  feature: ClusterFeature<PropertyTaxParcelPointProperties> | PointFeature<PropertyTaxParcelPointProperties>,
+): feature is ClusterFeature<PropertyTaxParcelPointProperties> {
+  return Boolean(feature.properties.cluster);
+}
+
+function clusterRadius(count: number) {
+  if (count >= 1000) {
+    return 22;
+  }
+  if (count >= 100) {
+    return 18;
+  }
+  if (count >= 10) {
+    return 14;
+  }
+  return 11;
+}
+
+function formatClusterCount(count: number) {
+  if (count >= 1000) {
+    return `${(count / 1000).toFixed(1)}k`;
+  }
+
+  return count.toLocaleString();
+}
+
+type PropertyTaxHitTarget = {
+  clusterId: number | null;
+  lat: number;
+  lng: number;
+  point: PropertyTaxParcelPointProperties | null;
+  radius: number;
+  x: number;
+  y: number;
+};
+
+function drawPropertyTaxCanvas(
+  map: L.Map,
+  canvas: HTMLCanvasElement | null,
+  clusterIndex: Supercluster<PropertyTaxParcelPointProperties, PropertyTaxParcelPointProperties>,
+  matchedPointIds: Set<number>,
+): PropertyTaxHitTarget[] {
+  if (!canvas) {
+    return [];
+  }
+
+  const size = map.getSize();
+  const density = window.devicePixelRatio || 1;
+  const width = Math.max(1, size.x);
+  const height = Math.max(1, size.y);
+
+  if (canvas.width !== Math.round(width * density) || canvas.height !== Math.round(height * density)) {
+    canvas.width = Math.round(width * density);
+    canvas.height = Math.round(height * density);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+  }
+
+  L.DomUtil.setPosition(canvas, map.containerPointToLayerPoint([0, 0]));
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return [];
+  }
+
+  context.setTransform(density, 0, 0, density, 0, 0);
+  context.clearRect(0, 0, width, height);
+
+  const bbox = parseMapBbox(map.getBounds().toBBoxString()) ?? [-180, -90, 180, 90];
+  const zoom = Math.floor(map.getZoom());
+  const features = clusterIndex.getClusters(bbox, zoom);
+  const targets: PropertyTaxHitTarget[] = [];
+  const pointFeatures: Array<PointFeature<PropertyTaxParcelPointProperties>> = [];
+
+  for (const feature of features) {
+    const [lng, lat] = feature.geometry.coordinates;
+    if (!isFiniteCoordinatePair(lng, lat)) {
+      continue;
+    }
+
+    const point = map.latLngToContainerPoint([lat, lng]);
+    if (point.x < -32 || point.x > width + 32 || point.y < -32 || point.y > height + 32) {
+      continue;
+    }
+
+    if (isClusterFeature(feature)) {
+      const count = Number(feature.properties.point_count ?? 0);
+      const radius = clusterRadius(count);
+      drawPropertyTaxCluster(context, point.x, point.y, radius, count);
+      targets.push({
+        clusterId: Number(feature.properties.cluster_id),
+        lat,
+        lng,
+        point: null,
+        radius: radius + 4,
+        x: point.x,
+        y: point.y,
+      });
+      continue;
+    }
+
+    pointFeatures.push(feature);
+  }
+
+  for (const feature of pointFeatures) {
+    const [lng, lat] = feature.geometry.coordinates;
+    const point = map.latLngToContainerPoint([lat, lng]);
+    const isMatchedPoint = matchedPointIds.has(feature.properties.id);
+    const radius = isMatchedPoint ? 7 : 5;
+    drawPropertyTaxPoint(context, point.x, point.y, radius, isMatchedPoint);
+    targets.push({
+      clusterId: null,
+      lat,
+      lng,
+      point: feature.properties,
+      radius: radius + 5,
+      x: point.x,
+      y: point.y,
+    });
+  }
+
+  return targets;
+}
+
+function drawPropertyTaxCluster(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  count: number,
+) {
+  context.beginPath();
+  context.arc(x, y, radius, 0, Math.PI * 2);
+  context.fillStyle = "rgba(245, 158, 11, 0.82)";
+  context.fill();
+  context.lineWidth = 2;
+  context.strokeStyle = "#854d0e";
+  context.stroke();
+
+  context.fillStyle = "#ffffff";
+  context.font = "700 12px Inter, system-ui, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(formatClusterCount(count), x, y + 0.5);
+}
+
+function drawPropertyTaxPoint(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  radius: number,
+  matched: boolean,
+) {
+  context.beginPath();
+  context.arc(x, y, radius, 0, Math.PI * 2);
+  context.fillStyle = matched ? "rgba(245, 158, 11, 0.96)" : "rgba(59, 130, 246, 0.82)";
+  context.fill();
+  context.lineWidth = matched ? 2.5 : 1.5;
+  context.strokeStyle = matched ? "#0f172a" : "#1e40af";
+  context.stroke();
+}
+
+function findPropertyTaxHitTarget(targets: PropertyTaxHitTarget[], x: number, y: number) {
+  let closestTarget: PropertyTaxHitTarget | null = null;
+  let closestDistance = Number.POSITIVE_INFINITY;
+
+  for (const target of targets) {
+    const distance = Math.hypot(target.x - x, target.y - y);
+    if (distance <= target.radius && distance < closestDistance) {
+      closestTarget = target;
+      closestDistance = distance;
+    }
+  }
+
+  return closestTarget;
+}
+
 function geometryMetadataRows(identifiedFeature: IdentifiedFeature): IdentifyFieldRow[] {
   const geometry = identifiedFeature.feature.geometry;
   const partCount = geometryPartCount(geometry);
@@ -2546,7 +3662,7 @@ function identifyOrderedFeatures(layerKey: LayerKey, collection: LayerCollection
   return [...orderedCollection.features].reverse() as LayerFeature[];
 }
 
-function featureContainsLatLng(feature: LayerFeature, latlng: L.LatLngLiteral) {
+function featureContainsLatLng(feature: Feature<Geometry, Record<string, unknown>>, latlng: L.LatLngLiteral) {
   const point: [number, number] = [latlng.lng, latlng.lat];
   const geometry = feature.geometry;
 
@@ -2660,11 +3776,17 @@ function MapFocus({
 }
 
 function MapLegendControl({
+  canReadPropertyTaxMap,
   layerVisibility,
   onToggleLayer,
+  onTogglePropertyTaxLayer,
+  propertyTaxLayerVisibility,
 }: {
+  canReadPropertyTaxMap: boolean;
   layerVisibility: Record<LayerKey, boolean>;
   onToggleLayer: (layerKey: LayerKey) => void;
+  onTogglePropertyTaxLayer: (layerKey: PropertyTaxMapLayerKey) => void;
+  propertyTaxLayerVisibility: PropertyTaxMapLayerVisibility;
 }) {
   const [collapsed, setCollapsed] = useState(true);
 
@@ -2750,10 +3872,50 @@ function MapLegendControl({
                 </div>
               );
             })}
+            {canReadPropertyTaxMap ? (
+              <>
+                <PropertyTaxLegendItem
+                  label="Regrid Parcels"
+                  swatch="regrid-parcels"
+                  visible={propertyTaxLayerVisibility.regridParcels}
+                  onToggle={() => onTogglePropertyTaxLayer("regridParcels")}
+                />
+                <PropertyTaxLegendItem
+                  label="Property Tax Points"
+                  swatch="property-tax-points"
+                  visible={propertyTaxLayerVisibility.propertyTaxPoints}
+                  onToggle={() => onTogglePropertyTaxLayer("propertyTaxPoints")}
+                />
+              </>
+            ) : null}
           </div>
         </div>
       ) : null}
     </MapControl>
+  );
+}
+
+function PropertyTaxLegendItem({
+  label,
+  onToggle,
+  swatch,
+  visible,
+}: {
+  label: string;
+  onToggle: () => void;
+  swatch: string;
+  visible: boolean;
+}) {
+  return (
+    <div className="legend-group">
+      <div className="legend-item">
+        <span className={`legend-swatch legend-swatch-${swatch}`} />
+        <span className="legend-label">{label}</span>
+        <button className="ghost-button legend-toggle" onClick={onToggle} type="button">
+          {visible ? "Hide" : "Show"}
+        </button>
+      </div>
+    </div>
   );
 }
 
