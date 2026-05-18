@@ -10,7 +10,6 @@ import type { ClusterFeature, PointFeature } from "supercluster";
 import {
   CircleMarker,
   GeoJSON,
-  LayersControl,
   MapContainer,
   Marker,
   Pane,
@@ -150,14 +149,26 @@ type IdentifyLayerConfig = {
   contextFields: IdentifyFieldConfig[];
 };
 
-type IdentifiedFeature = {
+type IdentifiedLayerFeature = {
+  kind: "layer";
   layerKey: LayerKey;
   feature: LayerFeature;
   latlng: L.LatLngLiteral;
 };
 
+type IdentifiedRegridFeature = {
+  kind: "regrid";
+  status: RegridIdentifyState["status"];
+  latlng: L.LatLngLiteral;
+  result: RegridIdentifyResult | null;
+  error: string | null;
+  selectedFrom: SelectedRegridParcel["selectedFrom"];
+};
+
+type IdentifyResultItem = IdentifiedLayerFeature | IdentifiedRegridFeature;
+
 type IdentifySelection = {
-  features: IdentifiedFeature[];
+  features: IdentifyResultItem[];
   index: number;
 };
 
@@ -549,6 +560,8 @@ const BASEMAPS = {
   },
 } as const;
 
+type BasemapKey = keyof typeof BASEMAPS;
+
 const POSITION_CLASSES: Record<ControlPosition, string> = {
   bottomleft: "leaflet-bottom leaflet-left",
   bottomright: "leaflet-bottom leaflet-right",
@@ -561,6 +574,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [questionAreas, setQuestionAreas] = useState<QuestionAreaCollection | null>(null);
   const [mapBbox, setMapBbox] = useState("-126,24,-66,49");
   const [mapZoom, setMapZoom] = useState(4);
+  const [activeBasemap, setActiveBasemap] = useState<BasemapKey>("osm");
+  const [mapLegendCollapsed, setMapLegendCollapsed] = useState(false);
   const [layerVisibility, setLayerVisibility] = useState(initialLayers);
   const [layerData, setLayerData] = useState<Partial<Record<LayerKey, LayerCollection>>>({});
   const [propertyTaxLayerVisibility, setPropertyTaxLayerVisibility] = useState(initialPropertyTaxMapLayers);
@@ -575,15 +590,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [filters, setFilters] = useState<QuestionAreaFilters>(DEFAULT_QA_FILTERS);
   const [filterOptions, setFilterOptions] = useState<QuestionAreaFilterOptions>(EMPTY_QA_FILTER_OPTIONS);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [filtersCollapsed, setFiltersCollapsed] = useState(true);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
   const [identifySelection, setIdentifySelection] = useState<IdentifySelection | null>(null);
-  const [regridIdentifyState, setRegridIdentifyState] = useState<RegridIdentifyState>({
-    status: "idle",
-    latlng: null,
-    result: null,
-    error: null,
-  });
   const [selectedRegridParcel, setSelectedRegridParcel] = useState<SelectedRegridParcel | null>(null);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [supportWorkspaceTab, setSupportWorkspaceTab] = useState<SupportWorkspaceTab | null>(() => {
@@ -604,6 +614,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadInputKey, setUploadInputKey] = useState(0);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
+  const identifyRequestId = useRef(0);
   const [busy, setBusy] = useState<BusyState>({
     summary: false,
     detail: false,
@@ -627,6 +638,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const canReadAtlas = hasPermission(session.user.role, "atlas_land_records:read");
   const canReadPropertyTaxMap = hasPermission(session.user.role, "property_tax_map:read");
   const canReadPropertyTax = hasPermission(session.user.role, "property_tax:read");
+  const canIdentifyVisibleRegridParcels =
+    canReadPropertyTaxMap && propertyTaxLayerVisibility.regridParcels && mapZoom >= PROPERTY_TAX_REGRID_MIN_ZOOM;
   const selectedPropertyTaxPointIds = useMemo(
     () => new Set((selectedRegridParcel?.matches ?? []).map((match) => match.id)),
     [selectedRegridParcel],
@@ -921,7 +934,14 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       return;
     }
 
-    const visibleFeatures = identifySelection.features.filter((identified) => layerVisibility[identified.layerKey]);
+    const visibleFeatures = identifySelection.features.filter((identified) =>
+      identified.kind === "layer"
+        ? layerVisibility[identified.layerKey]
+        : canReadPropertyTaxMap &&
+          (identified.selectedFrom === "property-tax-point"
+            ? propertyTaxLayerVisibility.propertyTaxPoints
+            : propertyTaxLayerVisibility.regridParcels),
+    );
     if (visibleFeatures.length === 0) {
       setIdentifySelection(null);
       return;
@@ -933,7 +953,13 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         index: Math.min(identifySelection.index, visibleFeatures.length - 1),
       });
     }
-  }, [identifySelection, layerVisibility]);
+  }, [
+    canReadPropertyTaxMap,
+    identifySelection,
+    layerVisibility,
+    propertyTaxLayerVisibility.propertyTaxPoints,
+    propertyTaxLayerVisibility.regridParcels,
+  ]);
 
   useEffect(() => {
     if (!selectedCode) {
@@ -1179,53 +1205,81 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
 
   function identifyFeaturesAtLocation(latlng: L.LatLngLiteral) {
     const features = findIdentifiedFeatures(layerData, layerVisibility, latlng);
+    if (canIdentifyVisibleRegridParcels) {
+      void identifyRegridAtLocation(latlng, "regrid-parcel", undefined, features, features.length > 0 ? 0 : undefined);
+      return;
+    }
+
     setIdentifySelection(features.length > 0 ? { features, index: 0 } : null);
+    setSelectedRegridParcel(null);
   }
 
-  async function handleRegridParcelIdentify(
+  async function identifyRegridAtLocation(
     latlng: L.LatLngLiteral,
     selectedFrom: SelectedRegridParcel["selectedFrom"] = "regrid-parcel",
     clickedFeature?: RegridParcelFeature,
+    baseFeatures: IdentifiedLayerFeature[] = findIdentifiedFeatures(layerData, layerVisibility, latlng),
+    initialIndex = baseFeatures.length,
   ) {
-    setIdentifySelection(null);
-    setRegridIdentifyState({
+    const requestId = identifyRequestId.current + 1;
+    identifyRequestId.current = requestId;
+    const loadingItem: IdentifiedRegridFeature = {
+      kind: "regrid",
       status: "loading",
       latlng,
       result: null,
       error: null,
-    });
+      selectedFrom,
+    };
+
+    setIdentifySelection({ features: [...baseFeatures, loadingItem], index: initialIndex });
     setSelectedRegridParcel(null);
 
     if (!canReadPropertyTaxMap) {
       const result = createFeatureOnlyRegridIdentifyResult(latlng, clickedFeature);
-      setSelectedRegridParcel(createSelectedRegridParcel(result, selectedFrom, clickedFeature));
-      setRegridIdentifyState({
+      const successItem: IdentifiedRegridFeature = {
+        ...loadingItem,
         status: "success",
-        latlng,
         result,
-        error: null,
-      });
+      };
+      setIdentifySelection({ features: [...baseFeatures, successItem], index: initialIndex });
+      setSelectedRegridParcel(createSelectedRegridParcel(result, selectedFrom, clickedFeature));
       return;
     }
 
     try {
       const result = await identifyRegridParcel(session.token, latlng);
-      setSelectedRegridParcel(createSelectedRegridParcel(result, selectedFrom, clickedFeature));
-      setRegridIdentifyState({
+      if (identifyRequestId.current !== requestId) {
+        return;
+      }
+      const successItem: IdentifiedRegridFeature = {
+        ...loadingItem,
         status: "success",
-        latlng,
         result,
-        error: null,
-      });
+      };
+      setIdentifySelection({ features: [...baseFeatures, successItem], index: initialIndex });
+      setSelectedRegridParcel(createSelectedRegridParcel(result, selectedFrom, clickedFeature));
     } catch (error) {
-      setRegridIdentifyState({
+      if (identifyRequestId.current !== requestId) {
+        return;
+      }
+      const errorMessage = error instanceof Error ? error.message : "Failed to identify Regrid parcel.";
+      const errorItem: IdentifiedRegridFeature = {
+        ...loadingItem,
         status: "error",
-        latlng,
-        result: null,
-        error: error instanceof Error ? error.message : "Failed to identify Regrid parcel.",
-      });
+        error: errorMessage,
+      };
+      setIdentifySelection({ features: [...baseFeatures, errorItem], index: initialIndex });
       setSelectedRegridParcel(null);
     }
+  }
+
+  function handleRegridParcelIdentify(
+    latlng: L.LatLngLiteral,
+    selectedFrom: SelectedRegridParcel["selectedFrom"] = "regrid-parcel",
+    clickedFeature?: RegridParcelFeature,
+  ) {
+    void identifyRegridAtLocation(latlng, selectedFrom, clickedFeature);
   }
 
   function handlePropertyTaxPointIdentify(point: PropertyTaxParcelPointProperties) {
@@ -1233,7 +1287,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       return;
     }
 
-    void handleRegridParcelIdentify(
+    void identifyRegridAtLocation(
       { lat: Number(point.latitude), lng: Number(point.longitude) },
       "property-tax-point",
     );
@@ -1247,13 +1301,16 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         identified.feature.properties.id === feature.properties.id,
     );
 
-    setIdentifySelection({
-      features:
-        features.length > 0
-          ? features
-          : [{ layerKey, feature, latlng }],
-      index: clickedIndex >= 0 ? clickedIndex : 0,
-    });
+    const layerFeatures = features.length > 0 ? features : [{ kind: "layer" as const, layerKey, feature, latlng }];
+    const layerIndex = clickedIndex >= 0 ? clickedIndex : 0;
+
+    if (canIdentifyVisibleRegridParcels) {
+      void identifyRegridAtLocation(latlng, "regrid-parcel", undefined, layerFeatures, layerIndex);
+      return;
+    }
+
+    setIdentifySelection({ features: layerFeatures, index: layerIndex });
+    setSelectedRegridParcel(null);
   }
 
   function cycleIdentifiedFeature(direction: -1 | 1) {
@@ -1299,7 +1356,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   }
 
   const filteredAreaCount = questionAreas?.features.length ?? 0;
-  const openQuestionAreas = (summary?.statuses.review ?? 0) + (summary?.statuses.active ?? 0);
   const selectedLocation = [selectedDetail?.county, selectedDetail?.state].filter(Boolean).join(", ");
   const selectedContext = selectedLocation;
   const selectedSupportTarget: AtlasTarget & TaxParcelTarget | null = selectedDetail
@@ -1312,7 +1368,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         title: selectedDetail.title,
       }
     : null;
-  const identifiedFeature = identifySelection?.features[identifySelection.index] ?? null;
+  const identifiedItem = identifySelection?.features[identifySelection.index] ?? null;
+  const identifiedLayerFeature = identifiedItem?.kind === "layer" ? identifiedItem : null;
 
   return (
     <main className="workspace-shell">
@@ -1321,12 +1378,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
           <div className="header-brand">
             <p className="eyebrow">QAViewer</p>
             <h1>NNC Review Workspace</h1>
-          </div>
-          <div className="header-summary-strip" aria-label="Workspace summary">
-            <HeaderSummaryChip label="Question Areas" value={summary?.questionAreas ?? "-"} />
-            <HeaderSummaryChip label="Open Review" value={summary ? openQuestionAreas : "-"} />
-            <HeaderSummaryChip label="Comments" value={summary?.comments ?? "-"} />
-            <HeaderSummaryChip label="Documents" value={summary?.documents ?? "-"} />
           </div>
           {selectedDetail ? (
             <div className="header-active-record">
@@ -1461,202 +1512,221 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 <section className="panel-section">
                   <div className="section-heading">
                     <h2>Search</h2>
-                    <span>Question areas only</span>
+                    <div className="section-heading-actions">
+                      <span>Question areas only</span>
+                      <button
+                        aria-controls="question-area-search-panel"
+                        aria-expanded={!filtersCollapsed}
+                        className="ghost-button compact-button filter-menu-toggle"
+                        onClick={() => setFiltersCollapsed((current) => !current)}
+                        type="button"
+                      >
+                        {filtersCollapsed ? "Show filters" : "Hide filters"}
+                      </button>
+                    </div>
                   </div>
                   <form className="search-stack" onSubmit={handleSearchSubmit}>
-                    <div className="search-box">
-                      <input
-                        className="search-input"
-                        onChange={(event) => setSearchInput(event.target.value)}
-                        placeholder="Search question area, tax parcel, owner, county..."
-                        type="text"
-                        value={searchInput}
-                      />
-                      {searchResults.length > 0 ? (
-                        <div className="search-results">
-                          {searchResults.map((result) => (
-                            <button
-                              key={`${result.type}-${result.id}`}
-                              className="search-result"
-                              onClick={() => selectQuestionArea(result.id)}
-                              type="button"
+                    <div
+                      className={`search-controls ${filtersCollapsed ? "collapsed" : ""}`}
+                      hidden={filtersCollapsed}
+                      id="question-area-search-panel"
+                    >
+                      <div className="search-box">
+                        <input
+                          className="search-input"
+                          onChange={(event) => setSearchInput(event.target.value)}
+                          placeholder="Search question area, tax parcel, owner, county..."
+                          type="text"
+                          value={searchInput}
+                        />
+                        {searchResults.length > 0 ? (
+                          <div className="search-results">
+                            {searchResults.map((result) => (
+                              <button
+                                key={`${result.type}-${result.id}`}
+                                className="search-result"
+                                onClick={() => selectQuestionArea(result.id)}
+                                type="button"
+                              >
+                                <strong>{result.id}</strong>
+                                <span>{result.label}</span>
+                                <span>{result.subtitle || "Question area"}</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="filter-menu">
+                        <div className="filter-grid">
+                          <label>
+                            Search field
+                            <select
+                              value={filters.field}
+                              onChange={(event) => updateFilters({ field: event.target.value as SearchField })}
                             >
-                              <strong>{result.id}</strong>
-                              <span>{result.label}</span>
-                              <span>{result.subtitle || "Question area"}</span>
-                            </button>
-                          ))}
+                              {SEARCH_FIELD_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Status
+                            <select
+                              value={filters.status}
+                              onChange={(event) => updateFilters({ status: event.target.value })}
+                            >
+                              <option value="all">All statuses</option>
+                              {STATUS_OPTIONS.map((status) => (
+                                <option key={status} value={status}>
+                                  {workflowLabel(status)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Priority
+                            <select
+                              value={filters.severity}
+                              onChange={(event) => updateFilters({ severity: event.target.value })}
+                            >
+                              <option value="all">All priorities</option>
+                              {SEVERITY_OPTIONS.map((severity) => (
+                                <option key={severity} value={severity}>
+                                  {humanize(severity)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Actionability
+                            <select
+                              value={filters.actionability}
+                              onChange={(event) =>
+                                updateFilters({ actionability: event.target.value as ActionabilityFilter })
+                              }
+                            >
+                              {ACTIONABILITY_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            State
+                            <select
+                              onChange={(event) => updateFilters({ state: event.target.value })}
+                              value={filters.state}
+                            >
+                              <option value="">All states</option>
+                              {withCurrentOption(filterOptions.states, filters.state).map((state) => (
+                                <option key={state} value={state}>
+                                  {state}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            County
+                            <select
+                              onChange={(event) => updateFilters({ county: event.target.value })}
+                              value={filters.county}
+                            >
+                              <option value="">All counties</option>
+                              {withCurrentOption(filterOptions.counties, filters.county).map((county) => (
+                                <option key={county} value={county}>
+                                  {county}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Property
+                            <select
+                              onChange={(event) => updateFilters({ propertyName: event.target.value })}
+                              value={filters.propertyName}
+                            >
+                              <option value="">All properties</option>
+                              {withCurrentOption(filterOptions.propertyNames, filters.propertyName).map((propertyName) => (
+                                <option key={propertyName} value={propertyName}>
+                                  {propertyName}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Reviewer
+                            <select
+                              onChange={(event) => updateFilters({ assignedReviewer: event.target.value })}
+                              value={filters.assignedReviewer}
+                            >
+                              <option value="">All reviewers</option>
+                              {withCurrentOption(filterOptions.assignedReviewers, filters.assignedReviewer).map((reviewer) => (
+                                <option key={reviewer} value={reviewer}>
+                                  {reviewer}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                         </div>
-                      ) : null}
-                    </div>
-                    <div className="filter-grid">
-                      <label>
-                        Search field
-                        <select
-                          value={filters.field}
-                          onChange={(event) => updateFilters({ field: event.target.value as SearchField })}
-                        >
-                          {SEARCH_FIELD_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Status
-                        <select
-                          value={filters.status}
-                          onChange={(event) => updateFilters({ status: event.target.value })}
-                        >
-                          <option value="all">All statuses</option>
-                          {STATUS_OPTIONS.map((status) => (
-                            <option key={status} value={status}>
-                              {workflowLabel(status)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Priority
-                        <select
-                          value={filters.severity}
-                          onChange={(event) => updateFilters({ severity: event.target.value })}
-                        >
-                          <option value="all">All priorities</option>
-                          {SEVERITY_OPTIONS.map((severity) => (
-                            <option key={severity} value={severity}>
-                              {humanize(severity)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Actionability
-                        <select
-                          value={filters.actionability}
-                          onChange={(event) =>
-                            updateFilters({ actionability: event.target.value as ActionabilityFilter })
-                          }
-                        >
-                          {ACTIONABILITY_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        State
-                        <select
-                          onChange={(event) => updateFilters({ state: event.target.value })}
-                          value={filters.state}
-                        >
-                          <option value="">All states</option>
-                          {withCurrentOption(filterOptions.states, filters.state).map((state) => (
-                            <option key={state} value={state}>
-                              {state}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        County
-                        <select
-                          onChange={(event) => updateFilters({ county: event.target.value })}
-                          value={filters.county}
-                        >
-                          <option value="">All counties</option>
-                          {withCurrentOption(filterOptions.counties, filters.county).map((county) => (
-                            <option key={county} value={county}>
-                              {county}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Property
-                        <select
-                          onChange={(event) => updateFilters({ propertyName: event.target.value })}
-                          value={filters.propertyName}
-                        >
-                          <option value="">All properties</option>
-                          {withCurrentOption(filterOptions.propertyNames, filters.propertyName).map((propertyName) => (
-                            <option key={propertyName} value={propertyName}>
-                              {propertyName}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Reviewer
-                        <select
-                          onChange={(event) => updateFilters({ assignedReviewer: event.target.value })}
-                          value={filters.assignedReviewer}
-                        >
-                          <option value="">All reviewers</option>
-                          {withCurrentOption(filterOptions.assignedReviewers, filters.assignedReviewer).map((reviewer) => (
-                            <option key={reviewer} value={reviewer}>
-                              {reviewer}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    <div className="filter-grid data-filter-grid">
-                      <label>
-                        Legal data
-                        <select
-                          value={filters.hasLegalData}
-                          onChange={(event) =>
-                            updateFilters({ hasLegalData: event.target.value as DataAvailabilityFilter })
-                          }
-                        >
-                          {DATA_AVAILABILITY_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Management data
-                        <select
-                          value={filters.hasManagementData}
-                          onChange={(event) =>
-                            updateFilters({ hasManagementData: event.target.value as DataAvailabilityFilter })
-                          }
-                        >
-                          {DATA_AVAILABILITY_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Client bill data
-                        <select
-                          value={filters.hasClientBillData}
-                          onChange={(event) =>
-                            updateFilters({ hasClientBillData: event.target.value as DataAvailabilityFilter })
-                          }
-                        >
-                          {DATA_AVAILABILITY_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    <div className="search-input-row">
-                      <button className="primary-button" type="submit">
-                        Apply filter
-                      </button>
-                      <button className="ghost-button" onClick={clearFilters} type="button">
-                        Clear
-                      </button>
+                        <div className="filter-grid data-filter-grid">
+                          <label>
+                            Legal data
+                            <select
+                              value={filters.hasLegalData}
+                              onChange={(event) =>
+                                updateFilters({ hasLegalData: event.target.value as DataAvailabilityFilter })
+                              }
+                            >
+                              {DATA_AVAILABILITY_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Management data
+                            <select
+                              value={filters.hasManagementData}
+                              onChange={(event) =>
+                                updateFilters({ hasManagementData: event.target.value as DataAvailabilityFilter })
+                              }
+                            >
+                              {DATA_AVAILABILITY_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Client bill data
+                            <select
+                              value={filters.hasClientBillData}
+                              onChange={(event) =>
+                                updateFilters({ hasClientBillData: event.target.value as DataAvailabilityFilter })
+                              }
+                            >
+                              {DATA_AVAILABILITY_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                      </div>
+                      <div className="search-input-row">
+                        <button className="primary-button" type="submit">
+                          Apply filter
+                        </button>
+                        <button className="ghost-button" onClick={clearFilters} type="button">
+                          Clear
+                        </button>
+                      </div>
                     </div>
                   </form>
                 </section>
@@ -1721,63 +1791,56 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
           </div>
         </aside>
 
-        <section className="map-panel">
-          <MapContainer
-            center={[39.5, -98.35]}
-            className="leaflet-shell"
-            scrollWheelZoom
-            zoom={4}
-          >
-            <LayersControl collapsed position="topright">
-              <LayersControl.BaseLayer checked name={BASEMAPS.osm.label}>
-                <TileLayer attribution={BASEMAPS.osm.attribution} url={BASEMAPS.osm.url} />
-              </LayersControl.BaseLayer>
-              <LayersControl.BaseLayer name={BASEMAPS.usgsImagery.label}>
+        <section className={`map-panel ${mapLegendCollapsed ? "legend-collapsed" : ""}`}>
+          <div className="map-canvas-shell">
+            <MapContainer
+              center={[39.5, -98.35]}
+              className="leaflet-shell"
+              scrollWheelZoom
+              zoom={4}
+            >
+              {activeBasemap === "osm" ? (
+                <TileLayer key="osm" attribution={BASEMAPS.osm.attribution} url={BASEMAPS.osm.url} />
+              ) : (
                 <TileLayer
+                  key="usgsImagery"
                   attribution={BASEMAPS.usgsImagery.attribution}
                   maxNativeZoom={BASEMAPS.usgsImagery.maxNativeZoom}
                   url={BASEMAPS.usgsImagery.url}
                 />
-              </LayersControl.BaseLayer>
-            </LayersControl>
-            <MapLegendControl
-              canReadPropertyTaxMap={canReadPropertyTaxMap}
-              layerVisibility={layerVisibility}
-              onToggleLayer={toggleLayer}
-              onTogglePropertyTaxLayer={togglePropertyTaxLayer}
-              propertyTaxLayerVisibility={propertyTaxLayerVisibility}
-            />
-            <MeasurementControl onMeasureActiveChange={setIsMeasuring} />
-            <MapViewportWatcher onChange={handleViewportChange} />
-            <MapIdentifyClickHandler
-              disabled={isMeasuring}
-              layerData={layerData}
-              layerVisibility={layerVisibility}
-              onIdentify={identifyFeaturesAtLocation}
-            />
-            <MapFocus geometry={selectedDetail?.geometry ?? null} targetKey={selectedDetail?.code ?? null} />
+              )}
+              <MeasurementControl onMeasureActiveChange={setIsMeasuring} />
+              <MapResizeWatcher watchKey={mapLegendCollapsed} />
+              <MapViewportWatcher onChange={handleViewportChange} />
+              <MapIdentifyClickHandler
+                disabled={isMeasuring}
+                layerData={layerData}
+                layerVisibility={layerVisibility}
+                onIdentify={identifyFeaturesAtLocation}
+              />
+              <MapFocus geometry={selectedDetail?.geometry ?? null} targetKey={selectedDetail?.code ?? null} />
 
-            <Pane name="land-records" style={{ zIndex: 380 }}>
-              {layerVisibility.land_records && layerData.land_records ? (
-                <>
-                  <IdentifyGeoJsonLayer
-                    data={layerData.land_records}
-                    identifiedFeature={identifiedFeature}
-                    identifyDisabled={isMeasuring}
-                    layerKey="land_records"
-                    onIdentify={identifyLayerFeature}
-                  />
-                  <LandRecordSvgPatterns patternKey={layerData.land_records.features.length} />
-                </>
+              <Pane name="land-records" style={{ zIndex: 380 }}>
+                {layerVisibility.land_records && layerData.land_records ? (
+                  <>
+                    <IdentifyGeoJsonLayer
+                      data={layerData.land_records}
+                      identifiedFeature={identifiedLayerFeature}
+                      identifyDisabled={isMeasuring}
+                      layerKey="land_records"
+                      onIdentify={identifyLayerFeature}
+                    />
+                    <LandRecordSvgPatterns patternKey={layerData.land_records.features.length} />
+                  </>
+                ) : null}
+              </Pane>
+
+              {supportWorkspaceTab === "atlas" && canReadAtlas ? (
+                <AtlasMapOverlays atlasQuery={atlasState.result} />
               ) : null}
-            </Pane>
-
-            {supportWorkspaceTab === "atlas" && canReadAtlas ? (
-              <AtlasMapOverlays atlasQuery={atlasState.result} />
-            ) : null}
-            {supportWorkspaceTab === "tax-parcels" && canReadPropertyTax ? (
-              <TaxParcelMapOverlays taxParcelQuery={taxParcelState.result} />
-            ) : null}
+              {supportWorkspaceTab === "tax-parcels" && canReadPropertyTax ? (
+                <TaxParcelMapOverlays taxParcelQuery={taxParcelState.result} />
+              ) : null}
 
             {canReadPropertyTaxMap && propertyTaxLayerVisibility.regridParcels ? (
               <Pane name="regrid-parcels" style={{ zIndex: 360 }}>
@@ -1837,7 +1900,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 <>
                   <IdentifyGeoJsonLayer
                     data={layerData.management_areas}
-                    identifiedFeature={identifiedFeature}
+                    identifiedFeature={identifiedLayerFeature}
                     identifyDisabled={isMeasuring}
                     layerKey="management_areas"
                     onIdentify={identifyLayerFeature}
@@ -1856,40 +1919,42 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 />
               ) : null}
             </Pane>
-          </MapContainer>
-          {identifiedFeature ? (
-            <IdentifyPanel
-              currentIndex={identifySelection?.index ?? 0}
-              identifiedFeature={identifiedFeature}
-              identifyCount={identifySelection?.features.length ?? 1}
-              onClose={() => setIdentifySelection(null)}
-              onCycle={cycleIdentifiedFeature}
-            />
-          ) : null}
-          {regridIdentifyState.status !== "idle" ? (
-            <RegridIdentifyPanel
-              identifyState={regridIdentifyState}
-              onClose={() => {
-                setSelectedRegridParcel(null);
-                setRegridIdentifyState({
-                  status: "idle",
-                  latlng: null,
-                  result: null,
-                  error: null,
-                });
-              }}
-            />
-          ) : null}
-          {propertyTaxMapError ? (
-            <div className="map-layer-status map-layer-error" role="status">
-              {propertyTaxMapError}
-            </div>
-          ) : null}
-          {!propertyTaxMapError && regridLayerNotice ? (
-            <div className="map-layer-status map-layer-notice" role="status">
-              {regridLayerNotice}
-            </div>
-          ) : null}
+            </MapContainer>
+            {identifiedItem ? (
+              <IdentifyPanel
+                currentIndex={identifySelection?.index ?? 0}
+                identifiedItem={identifiedItem}
+                identifyCount={identifySelection?.features.length ?? 1}
+                onClose={() => {
+                  setIdentifySelection(null);
+                  setSelectedRegridParcel(null);
+                }}
+                onCycle={cycleIdentifiedFeature}
+              />
+            ) : null}
+            {propertyTaxMapError ? (
+              <div className="map-layer-status map-layer-error" role="status">
+                {propertyTaxMapError}
+              </div>
+            ) : null}
+            {!propertyTaxMapError && regridLayerNotice ? (
+              <div className="map-layer-status map-layer-notice" role="status">
+                {regridLayerNotice}
+              </div>
+            ) : null}
+          </div>
+          <MapLegendRail
+            activeBasemap={activeBasemap}
+            basemaps={BASEMAPS}
+            canReadPropertyTaxMap={canReadPropertyTaxMap}
+            collapsed={mapLegendCollapsed}
+            layerVisibility={layerVisibility}
+            onBasemapChange={setActiveBasemap}
+            onCollapsedChange={setMapLegendCollapsed}
+            onToggleLayer={toggleLayer}
+            onTogglePropertyTaxLayer={togglePropertyTaxLayer}
+            propertyTaxLayerVisibility={propertyTaxLayerVisibility}
+          />
         </section>
 
         {hasSupportWorkspace ? (
@@ -1952,15 +2017,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         ) : null}
       </section>
     </main>
-  );
-}
-
-function HeaderSummaryChip({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="header-summary-chip">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 
@@ -2358,7 +2414,7 @@ function IdentifyGeoJsonLayer({
   onIdentify,
 }: {
   data: LayerCollection;
-  identifiedFeature: IdentifiedFeature | null;
+  identifiedFeature: IdentifiedLayerFeature | null;
   identifyDisabled: boolean;
   layerKey: LayerKey;
   onIdentify: (layerKey: LayerKey, feature: LayerFeature, latlng: L.LatLngLiteral) => void;
@@ -2694,71 +2750,6 @@ function PropertyTaxPointLayer({
   return null;
 }
 
-function RegridIdentifyPanel({
-  identifyState,
-  onClose,
-}: {
-  identifyState: RegridIdentifyState;
-  onClose: () => void;
-}) {
-  const result = identifyState.result;
-  const primaryMatch = result?.matches[0] ?? null;
-  const workbookRows = primaryMatch ? objectIdentifyRows(primaryMatch) : [];
-  const parcelRows = result?.regridParcel ? objectIdentifyRows(result.regridParcel.properties) : [];
-  const hasMatch = Boolean(result?.matchCount);
-  const title = hasMatch
-    ? firstKnownValue(workbookRows) ?? "Matched Workbook Parcel"
-    : "Regrid Parcel";
-
-  return (
-    <aside className="map-identify-panel regrid-identify-panel" aria-label="Regrid parcel identify result">
-      <div className="identify-panel-header">
-        <div className="identify-title-group">
-          <span className={`identify-layer-badge ${hasMatch ? "regrid-matched" : "regrid"}`}>
-            {hasMatch ? "Workbook Match" : "Regrid Parcel"}
-          </span>
-          <h2>{identifyState.status === "loading" ? "Identifying parcel..." : title}</h2>
-        </div>
-        <div className="identify-header-actions">
-          <button className="identify-close-button" onClick={onClose} title="Close identify panel" type="button">
-            x
-          </button>
-        </div>
-      </div>
-
-      {identifyState.status === "loading" ? (
-        <p className="panel-note">Checking the clicked Regrid parcel against workbook data.</p>
-      ) : null}
-      {identifyState.status === "error" ? (
-        <p className="tax-parcel-error-banner">{identifyState.error ?? "Failed to identify Regrid parcel."}</p>
-      ) : null}
-      {identifyState.status === "success" && !hasMatch ? (
-        <p className="regrid-no-match-state">
-          {result?.message ?? "No workbook match found for this Regrid parcel."}
-        </p>
-      ) : null}
-
-      {workbookRows.length > 0 ? <IdentifyFieldSection rows={workbookRows} title="Workbook Data" /> : null}
-      {result && result.matches.length > 1 ? (
-        <p className="panel-note">{result.matches.length.toLocaleString()} workbook matches found at this location.</p>
-      ) : null}
-      {parcelRows.length > 0 ? <IdentifyFieldSection rows={parcelRows} title="Regrid Attributes" /> : null}
-      {identifyState.latlng ? (
-        <IdentifyFieldSection
-          rows={[
-            {
-              key: "clicked_location",
-              label: "Clicked Location",
-              value: `${identifyState.latlng.lat.toFixed(5)}, ${identifyState.latlng.lng.toFixed(5)}`,
-            },
-          ]}
-          title="Identify"
-        />
-      ) : null}
-    </aside>
-  );
-}
-
 function LandRecordSvgPatterns({ patternKey }: { patternKey: number }) {
   const map = useMap();
 
@@ -3037,31 +3028,31 @@ function managementAreaDrawPriority(feature: LayerFeature): number {
 
 function IdentifyPanel({
   currentIndex,
-  identifiedFeature,
+  identifiedItem,
   identifyCount,
   onClose,
   onCycle,
 }: {
   currentIndex: number;
-  identifiedFeature: IdentifiedFeature;
+  identifiedItem: IdentifyResultItem;
   identifyCount: number;
   onClose: () => void;
   onCycle: (direction: -1 | 1) => void;
 }) {
-  const config = IDENTIFY_LAYER_CONFIG[identifiedFeature.layerKey];
-  const properties = identifiedFeature.feature.properties;
-  const primaryRows = configuredIdentifyRows(properties, config.primaryFields);
-  const attributeRows = configuredIdentifyRows(properties, config.attributeFields);
-  const contextRows = configuredIdentifyRows(properties, config.contextFields);
-  const metadataRows = geometryMetadataRows(identifiedFeature);
-  const title = firstKnownValue(primaryRows) ?? `${config.label} ${properties.id}`;
+  const header =
+    identifiedItem.kind === "layer"
+      ? layerIdentifyHeader(identifiedItem)
+      : regridIdentifyHeader(identifiedItem);
 
   return (
-    <aside className="map-identify-panel" aria-label={`${config.label} details`}>
+    <aside
+      className={`map-identify-panel${identifiedItem.kind === "regrid" ? " regrid-identify-panel" : ""}`}
+      aria-label={`${header.label} details`}
+    >
       <div className="identify-panel-header">
         <div className="identify-title-group">
-          <span className={`identify-layer-badge ${config.badgeClass}`}>{config.label}</span>
-          <h2>{title}</h2>
+          <span className={`identify-layer-badge ${header.badgeClass}`}>{header.label}</span>
+          <h2>{header.title}</h2>
         </div>
         <div className="identify-header-actions">
           <button className="identify-close-button" onClick={onClose} title="Close identify panel" type="button">
@@ -3084,12 +3075,100 @@ function IdentifyPanel({
         </div>
       ) : null}
 
+      {identifiedItem.kind === "layer" ? (
+        <LayerIdentifyDetails identifiedFeature={identifiedItem} />
+      ) : (
+        <RegridIdentifyDetails identifiedFeature={identifiedItem} />
+      )}
+    </aside>
+  );
+}
+
+function LayerIdentifyDetails({ identifiedFeature }: { identifiedFeature: IdentifiedLayerFeature }) {
+  const config = IDENTIFY_LAYER_CONFIG[identifiedFeature.layerKey];
+  const properties = identifiedFeature.feature.properties;
+  const primaryRows = configuredIdentifyRows(properties, config.primaryFields);
+  const attributeRows = configuredIdentifyRows(properties, config.attributeFields);
+  const contextRows = configuredIdentifyRows(properties, config.contextFields);
+  const metadataRows = geometryMetadataRows(identifiedFeature);
+
+  return (
+    <>
       <IdentifyFieldSection rows={primaryRows} title="Identifiers" />
       <IdentifyFieldSection rows={attributeRows} title="Attributes" />
       <IdentifyFieldSection rows={contextRows} title="Context" />
       <IdentifyFieldSection rows={metadataRows} title="Geometry" />
-    </aside>
+    </>
   );
+}
+
+function RegridIdentifyDetails({ identifiedFeature }: { identifiedFeature: IdentifiedRegridFeature }) {
+  const result = identifiedFeature.result;
+  const primaryMatch = result?.matches[0] ?? null;
+  const workbookRows = primaryMatch ? objectIdentifyRows(primaryMatch) : [];
+  const parcelRows = result?.regridParcel ? objectIdentifyRows(result.regridParcel.properties) : [];
+  const hasMatch = Boolean(result?.matchCount);
+
+  return (
+    <>
+      {identifiedFeature.status === "loading" ? (
+        <p className="panel-note">Checking the clicked Regrid parcel against workbook data.</p>
+      ) : null}
+      {identifiedFeature.status === "error" ? (
+        <p className="tax-parcel-error-banner">{identifiedFeature.error ?? "Failed to identify Regrid parcel."}</p>
+      ) : null}
+      {identifiedFeature.status === "success" && !hasMatch ? (
+        <p className="regrid-no-match-state">
+          {result?.message ?? "No workbook match found for this Regrid parcel."}
+        </p>
+      ) : null}
+
+      {workbookRows.length > 0 ? <IdentifyFieldSection rows={workbookRows} title="Workbook Data" /> : null}
+      {result && result.matches.length > 1 ? (
+        <p className="panel-note">{result.matches.length.toLocaleString()} workbook matches found at this location.</p>
+      ) : null}
+      {parcelRows.length > 0 ? <IdentifyFieldSection rows={parcelRows} title="Regrid Attributes" /> : null}
+      <IdentifyFieldSection
+        rows={[
+          {
+            key: "clicked_location",
+            label: "Clicked Location",
+            value: `${identifiedFeature.latlng.lat.toFixed(5)}, ${identifiedFeature.latlng.lng.toFixed(5)}`,
+          },
+        ]}
+        title="Identify"
+      />
+    </>
+  );
+}
+
+function layerIdentifyHeader(identifiedFeature: IdentifiedLayerFeature) {
+  const config = IDENTIFY_LAYER_CONFIG[identifiedFeature.layerKey];
+  const properties = identifiedFeature.feature.properties;
+  const primaryRows = configuredIdentifyRows(properties, config.primaryFields);
+
+  return {
+    badgeClass: config.badgeClass,
+    label: config.label,
+    title: firstKnownValue(primaryRows) ?? `${config.label} ${properties.id}`,
+  };
+}
+
+function regridIdentifyHeader(identifiedFeature: IdentifiedRegridFeature) {
+  const result = identifiedFeature.result;
+  const primaryMatch = result?.matches[0] ?? null;
+  const workbookRows = primaryMatch ? objectIdentifyRows(primaryMatch) : [];
+  const hasMatch = Boolean(result?.matchCount);
+  const label = hasMatch ? "Workbook Match" : "Regrid Parcel";
+  const title = hasMatch
+    ? firstKnownValue(workbookRows) ?? "Matched Workbook Parcel"
+    : "Regrid Parcel";
+
+  return {
+    badgeClass: hasMatch ? "regrid-matched" : "regrid",
+    label,
+    title: identifiedFeature.status === "loading" ? "Identifying parcel..." : title,
+  };
 }
 
 function IdentifyFieldSection({ rows, title }: { rows: IdentifyFieldRow[]; title: string }) {
@@ -3121,7 +3200,7 @@ function IdentifyFieldList({ rows }: { rows: IdentifyFieldRow[] }) {
 function identifyFeatureStyle(
   layerKey: LayerKey,
   feature: LayerFeature | undefined,
-  identifiedFeature: IdentifiedFeature | null,
+  identifiedFeature: IdentifiedLayerFeature | null,
 ): PathOptions {
   const baseStyle =
     layerKey === "land_records"
@@ -3540,7 +3619,7 @@ function findPropertyTaxHitTarget(targets: PropertyTaxHitTarget[], x: number, y:
   return closestTarget;
 }
 
-function geometryMetadataRows(identifiedFeature: IdentifiedFeature): IdentifyFieldRow[] {
+function geometryMetadataRows(identifiedFeature: IdentifiedLayerFeature): IdentifyFieldRow[] {
   const geometry = identifiedFeature.feature.geometry;
   const partCount = geometryPartCount(geometry);
   const vertexCount = geometryVertexCount(geometry);
@@ -3630,8 +3709,8 @@ function findIdentifiedFeatures(
   layerData: Partial<Record<LayerKey, LayerCollection>>,
   layerVisibility: Record<LayerKey, boolean>,
   latlng: L.LatLngLiteral,
-): IdentifiedFeature[] {
-  const identifiedFeatures: IdentifiedFeature[] = [];
+): IdentifiedLayerFeature[] {
+  const identifiedFeatures: IdentifiedLayerFeature[] = [];
 
   for (const layerKey of IDENTIFY_LAYER_ORDER) {
     if (!layerVisibility[layerKey]) {
@@ -3643,7 +3722,7 @@ function findIdentifiedFeatures(
 
     for (const feature of features) {
       if (isPolygonGeometry(feature.geometry) && featureContainsLatLng(feature, latlng)) {
-        identifiedFeatures.push({ layerKey, feature, latlng });
+        identifiedFeatures.push({ kind: "layer", layerKey, feature, latlng });
       }
     }
   }
@@ -3775,123 +3854,172 @@ function MapFocus({
   return null;
 }
 
-function MapLegendControl({
+function MapResizeWatcher({ watchKey }: { watchKey: unknown }) {
+  const map = useMap();
+
+  useEffect(() => {
+    map.invalidateSize();
+    const timer = window.setTimeout(() => map.invalidateSize(), 320);
+    return () => window.clearTimeout(timer);
+  }, [map, watchKey]);
+
+  return null;
+}
+
+function MapLegendRail({
+  activeBasemap,
+  basemaps,
   canReadPropertyTaxMap,
+  collapsed,
   layerVisibility,
+  onBasemapChange,
+  onCollapsedChange,
   onToggleLayer,
   onTogglePropertyTaxLayer,
   propertyTaxLayerVisibility,
 }: {
+  activeBasemap: BasemapKey;
+  basemaps: typeof BASEMAPS;
   canReadPropertyTaxMap: boolean;
+  collapsed: boolean;
   layerVisibility: Record<LayerKey, boolean>;
+  onBasemapChange: (basemap: BasemapKey) => void;
+  onCollapsedChange: (collapsed: boolean) => void;
   onToggleLayer: (layerKey: LayerKey) => void;
   onTogglePropertyTaxLayer: (layerKey: PropertyTaxMapLayerKey) => void;
   propertyTaxLayerVisibility: PropertyTaxMapLayerVisibility;
 }) {
-  const [collapsed, setCollapsed] = useState(true);
-
   return (
-    <MapControl className="map-control-shell legend-control" position="bottomright">
+    <aside
+      aria-label="Map legend and layers"
+      className={`map-legend-rail ${collapsed ? "is-collapsed" : "is-open"}`}
+    >
       <button
         aria-expanded={!collapsed}
-        className="map-control-toggle"
-        onClick={() => setCollapsed((current) => !current)}
-        title={collapsed ? "Expand map legend" : "Collapse map legend"}
+        className="map-legend-rail-toggle"
+        onClick={() => onCollapsedChange(!collapsed)}
+        title={collapsed ? "Expand legend" : "Collapse legend"}
         type="button"
       >
-        <span className="map-control-toggle-label">
-          <span className="map-control-toggle-title">Legend</span>
+        <span aria-hidden="true" className="map-legend-rail-toggle-icon">
+          {collapsed ? "<" : ">"}
         </span>
-        <span aria-hidden="true" className="map-control-toggle-icon">
-          {collapsed ? "+" : "-"}
+        <span className="map-legend-rail-toggle-label">
+          Legend
         </span>
       </button>
 
       {!collapsed ? (
-        <div className="map-control-panel">
-          <div className="map-control-heading">
-            <h3>Map Layers</h3>
-            <span>In-map legend</span>
-          </div>
-          <div className="legend-list map-legend-list">
-            {LEGEND_ITEMS.map((item) => {
-              const visible =
-                item.key === "qa_markers" ? true : layerVisibility[item.key as LayerKey];
+        <div className="map-legend-rail-content">
+          <section className="map-legend-section">
+            <div className="map-legend-heading">
+              <h3>Base Map</h3>
+              <span>Canvas</span>
+            </div>
+            <div className="basemap-choice-list" role="radiogroup" aria-label="Base map">
+              {(Object.entries(basemaps) as Array<[BasemapKey, (typeof BASEMAPS)[BasemapKey]]>).map(
+                ([key, basemap]) => (
+                  <button
+                    key={key}
+                    aria-checked={activeBasemap === key}
+                    className={`basemap-choice ${activeBasemap === key ? "active" : ""}`}
+                    onClick={() => onBasemapChange(key)}
+                    role="radio"
+                    type="button"
+                  >
+                    <span className={`basemap-swatch basemap-swatch-${key}`} />
+                    <span>{basemap.label}</span>
+                  </button>
+                ),
+              )}
+            </div>
+          </section>
 
-              return (
-                <div key={item.key} className="legend-group">
-                  <div className="legend-item">
-                    <span className={`legend-swatch legend-swatch-${item.swatch}`}>
-                      {item.key === "qa_markers" ? QA_ACTIONABILITY_META.normal.symbol : null}
-                    </span>
-                    <span className="legend-label">{item.label}</span>
-                    {item.toggleable ? (
-                      <button
-                        className="ghost-button legend-toggle"
-                        onClick={() => onToggleLayer(item.key as LayerKey)}
-                        type="button"
-                      >
-                        {visible ? "Hide" : "Show"}
-                      </button>
-                    ) : (
-                      <span className="legend-static">Always visible</span>
-                    )}
+          <section className="map-legend-section">
+            <div className="map-legend-heading">
+              <h3>Map Layers</h3>
+              <span>Legend</span>
+            </div>
+            <div className="legend-list map-legend-list">
+              {LEGEND_ITEMS.map((item) => {
+                const visible =
+                  item.key === "qa_markers" ? true : layerVisibility[item.key as LayerKey];
+
+                return (
+                  <div key={item.key} className="legend-group">
+                    <div className="legend-item">
+                      <span className={`legend-swatch legend-swatch-${item.swatch}`}>
+                        {item.key === "qa_markers" ? QA_ACTIONABILITY_META.normal.symbol : null}
+                      </span>
+                      <span className="legend-label">{item.label}</span>
+                      {item.toggleable ? (
+                        <button
+                          className="ghost-button legend-toggle"
+                          onClick={() => onToggleLayer(item.key as LayerKey)}
+                          type="button"
+                        >
+                          {visible ? "Hide" : "Show"}
+                        </button>
+                      ) : (
+                        <span className="legend-static">Always visible</span>
+                      )}
+                    </div>
+                    {item.key === "qa_markers" ? (
+                      <div className="legend-sublist">
+                        {QA_ACTIONABILITY_STATES.map((state) => (
+                          <div key={state} className="legend-item legend-item-indented">
+                            <span className={`legend-swatch legend-swatch-qa-marker qa-marker-${state}`}>
+                              {QA_ACTIONABILITY_META[state].symbol}
+                            </span>
+                            <span className="legend-label">{QA_ACTIONABILITY_META[state].label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {item.key === "land_records" ? (
+                      <div className="legend-sublist">
+                        {LAND_RECORD_LEGEND_ITEMS.map((recordType) => (
+                          <div key={recordType.key} className="legend-item legend-item-indented">
+                            <span className={`legend-swatch legend-swatch-${recordType.swatch}`} />
+                            <span className="legend-label">{recordType.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {item.key === "management_areas" ? (
+                      <div className="legend-sublist">
+                        {MANAGEMENT_AREA_LEGEND_ITEMS.map((managementArea) => (
+                          <div key={managementArea.key} className="legend-item legend-item-indented">
+                            <span className={`legend-swatch legend-swatch-${managementArea.swatch}`} />
+                            <span className="legend-label">{managementArea.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                  {item.key === "qa_markers" ? (
-                    <div className="legend-sublist">
-                      {QA_ACTIONABILITY_STATES.map((state) => (
-                        <div key={state} className="legend-item legend-item-indented">
-                          <span className={`legend-swatch legend-swatch-qa-marker qa-marker-${state}`}>
-                            {QA_ACTIONABILITY_META[state].symbol}
-                          </span>
-                          <span className="legend-label">{QA_ACTIONABILITY_META[state].label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {item.key === "land_records" ? (
-                    <div className="legend-sublist">
-                      {LAND_RECORD_LEGEND_ITEMS.map((recordType) => (
-                        <div key={recordType.key} className="legend-item legend-item-indented">
-                          <span className={`legend-swatch legend-swatch-${recordType.swatch}`} />
-                          <span className="legend-label">{recordType.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {item.key === "management_areas" ? (
-                    <div className="legend-sublist">
-                      {MANAGEMENT_AREA_LEGEND_ITEMS.map((managementArea) => (
-                        <div key={managementArea.key} className="legend-item legend-item-indented">
-                          <span className={`legend-swatch legend-swatch-${managementArea.swatch}`} />
-                          <span className="legend-label">{managementArea.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-            {canReadPropertyTaxMap ? (
-              <>
-                <PropertyTaxLegendItem
-                  label="Regrid Parcels"
-                  swatch="regrid-parcels"
-                  visible={propertyTaxLayerVisibility.regridParcels}
-                  onToggle={() => onTogglePropertyTaxLayer("regridParcels")}
-                />
-                <PropertyTaxLegendItem
-                  label="Property Tax Points"
-                  swatch="property-tax-points"
-                  visible={propertyTaxLayerVisibility.propertyTaxPoints}
-                  onToggle={() => onTogglePropertyTaxLayer("propertyTaxPoints")}
-                />
-              </>
-            ) : null}
-          </div>
+                );
+              })}
+              {canReadPropertyTaxMap ? (
+                <>
+                  <PropertyTaxLegendItem
+                    label="Regrid Parcels"
+                    swatch="regrid-parcels"
+                    visible={propertyTaxLayerVisibility.regridParcels}
+                    onToggle={() => onTogglePropertyTaxLayer("regridParcels")}
+                  />
+                  <PropertyTaxLegendItem
+                    label="Property Tax Points"
+                    swatch="property-tax-points"
+                    visible={propertyTaxLayerVisibility.propertyTaxPoints}
+                    onToggle={() => onTogglePropertyTaxLayer("propertyTaxPoints")}
+                  />
+                </>
+              ) : null}
+            </div>
+          </section>
         </div>
       ) : null}
-    </MapControl>
+    </aside>
   );
 }
 

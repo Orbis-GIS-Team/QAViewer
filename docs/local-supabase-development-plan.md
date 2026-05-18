@@ -4,14 +4,14 @@ Created: 2026-05-08
 
 ## Purpose
 
-Make QAViewer work locally while using Supabase as the durable database. This lets development continue against production-like data before the Vercel application deployment is complete.
+Make QAViewer work locally while using Supabase as the durable database. This lets development continue against production-like data before the Render application deployment is complete.
 
-This is the bridge between Supabase data migration and Vercel deployment.
+This is the bridge between Supabase data migration and Render deployment.
 
 Related plans:
 
 - `docs/supabase-data-migration-plan.md`
-- `docs/vercel-application-deployment-plan.md`
+- `docs/render-supabase-deployment-plan.md`
 - `docs/prepared-data-multitenant-postgres-plan.md`
 
 ## Target State
@@ -34,7 +34,7 @@ In scope:
 
 Out of scope:
 
-- Vercel deployment.
+- Render deployment.
 - Multi-tenant authorization.
 - Full Supabase Storage migration, unless already completed by the data migration phase.
 
@@ -63,7 +63,7 @@ DEMO_MODE=false
 FRONTEND_ORIGIN=http://localhost:5173
 ```
 
-For local long-running Node development, the direct connection can work. For serverless/Vercel runtime, use the pooled connection string.
+For local long-running Node development, the direct connection can work. For deployed Render runtime, use the runtime connection string selected for the API service.
 
 ## Implementation Steps
 
@@ -73,7 +73,7 @@ Update `.env.example` to document:
 
 - local Docker values
 - local Supabase values
-- Vercel production values
+- Render production values
 
 Do not commit real Supabase credentials.
 
@@ -178,4 +178,4 @@ QA_SMOKE_API_URL=http://localhost:3001/api npm run test:smoke
 
 ## Handoff To Multi-Tenant Work
 
-After local Supabase development and Vercel deployment are stable, start the multi-tenant implementation from `docs/prepared-data-multitenant-postgres-plan.md`.
+After local Supabase development and Render deployment are stable, start the multi-tenant implementation from `docs/prepared-data-multitenant-postgres-plan.md`.

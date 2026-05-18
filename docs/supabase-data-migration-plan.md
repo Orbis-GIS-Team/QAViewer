@@ -44,7 +44,7 @@ In scope:
 Out of scope:
 
 - Multi-tenant authorization.
-- Vercel deployment.
+- Render deployment.
 - Supabase Storage document migration, except for documenting the handoff point.
 - Supabase Auth/RLS adoption.
 
@@ -160,4 +160,4 @@ Update:
 
 ## Handoff To Next Plan
 
-After this plan is complete, the app should be ready for Vercel implementation work because the backend no longer depends on local ETL or local seed folders during startup.
+After this plan is complete, the app should be ready for Render implementation work because the backend no longer depends on local ETL or local seed folders during startup.

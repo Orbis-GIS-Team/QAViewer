@@ -12,7 +12,7 @@ Related plans:
 
 - `docs/supabase-data-migration-plan.md`
 - `docs/local-supabase-development-plan.md`
-- `docs/vercel-application-deployment-plan.md`
+- `docs/render-supabase-deployment-plan.md`
 - `docs/prepared-data-multitenant-postgres-plan.md`
 
 ## Core Principle
@@ -263,24 +263,24 @@ Expected result:
 
 The first Supabase-backed local test should use the restored prepared database as-is. Any later data preparation improvements should be validated as separate import/release work, not mixed into runtime boot.
 
-## Vercel Runtime Handoff
+## Render Runtime Handoff
 
 When deployed:
 
 ```text
-Vercel frontend/API -> Supabase Postgres/PostGIS
+Render frontend/API -> Supabase Postgres/PostGIS
 ```
 
 Production env:
 
 ```text
-DATABASE_URL=<supabase-pooled-connection-string>
+DATABASE_URL=<supabase-runtime-connection-string>
 STARTUP_DATA_MODE=validate
 DEMO_MODE=false
-FRONTEND_ORIGIN=https://<vercel-domain>
+FRONTEND_ORIGIN=https://<render-frontend-domain>
 ```
 
-No production Vercel function should run a data import.
+No production Render application startup should run a data import.
 
 ## Acceptance Criteria
 
@@ -290,7 +290,7 @@ No production Vercel function should run a data import.
 - API startup in Supabase mode performs validation only.
 - API startup in Supabase mode does not read `data/standardized`, `DataBuild`, `LR_Documents`, tax bill folders, or workbooks.
 - Local backend/frontend can run against Supabase data.
-- Vercel deployment can use the same Supabase database without importing data.
+- Render deployment can use the same Supabase database without importing data.
 - Destructive data reloads require explicit operator action.
 
 ## Follow-Up Work
@@ -300,4 +300,4 @@ After this plan is complete:
 - move document bytes to Supabase Storage
 - introduce tenant-scoped tables and memberships
 - add data release tracking
-- add Supabase/Vercel cost guardrails and monitoring
+- add Supabase/Render cost guardrails and monitoring

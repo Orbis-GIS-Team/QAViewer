@@ -2,6 +2,10 @@
 
 Created: 2026-05-08
 
+Status: Superseded for MVP hosting by `docs/render-supabase-deployment-plan.md`.
+
+This plan is retained for historical context. The current MVP deployment direction is Render for the frontend/API and Supabase for Postgres/PostGIS plus MVP document storage.
+
 ## Purpose
 
 Deploy QAViewer on Vercel after the database has been moved to Supabase and runtime ETL has been removed from application startup.
