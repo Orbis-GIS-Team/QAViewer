@@ -41,6 +41,8 @@ Legacy source-data and ETL preparation assets have been moved under `archive/leg
 
 ## Demo credentials
 
+These accounts are expected to exist in the prepared database when using the local demo dataset:
+
 - `admin@qaviewer.local` / `admin123!` - full admin and review access
 - `client@qaviewer.local` / `client123!` - viewer-only question-area access by default
 

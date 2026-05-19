@@ -1,9 +1,12 @@
 import { Router } from "express";
 
 import { query } from "../lib/db.js";
+import { requirePermission } from "../lib/rbac.js";
 import { buildQuestionAreaSearchClause, parseSearchField } from "../lib/search.js";
 
 const router = Router();
+
+router.use(requirePermission("question_areas:read"));
 
 router.get("/summary", async (_req, res) => {
   const [statusCounts, severityCounts, questionAreas, comments, documents] = await Promise.all([

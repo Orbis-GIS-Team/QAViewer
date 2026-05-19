@@ -116,17 +116,17 @@ Verification:
 - `cd backend && npm run build`
 - `cd frontend && npm run build`
 
-## Important Reset Note
+## Important Prepared Database Note
 
-This cutover is a schema break, not an in-place migration. Any existing local PostGIS volume seeded with the old schema must be reset before the rebuilt app can run correctly.
+This cutover is a schema break, not an in-place migration. Runtime startup is validation-only, so a local or hosted database must be restored or prepared with the current schema and data before the API can serve.
 
-Local reset workflow:
+Validation workflow:
 
 ```bash
-docker compose down -v
-docker compose up --build
+cd backend
+npm run db:validate
 ```
 
 ## Next Recommended Step
 
-The cutover plan is complete. The next useful thread would be end-to-end runtime validation with the Docker stack and smoke tests against a fresh PostGIS volume.
+The cutover plan is complete. The next useful thread would be end-to-end runtime validation against a restored prepared PostGIS database and smoke tests through the Docker stack.

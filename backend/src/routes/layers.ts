@@ -1,9 +1,12 @@
 import { Router } from "express";
 
 import { query } from "../lib/db.js";
+import { requirePermission } from "../lib/rbac.js";
 import { featureCollection, parseBbox } from "../lib/utils.js";
 
 const router = Router();
+
+router.use(requirePermission("question_areas:read"));
 
 const layerConfig = {
   land_records: {
