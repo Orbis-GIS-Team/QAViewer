@@ -44,7 +44,7 @@ const JWT_SECRET = "test-secret-for-vitest-do-not-use-in-prod";
 const app = createApp();
 
 function makeToken(
-  role: "admin" | "client" | "qa_reviewer" | "gis_team" | "land_records_team" = "admin",
+  role: "admin" | "client" | "qa_reviewer" | "gis_team" | "land_records_team" | "other" = "admin",
   id = 1,
 ) {
   return jwt.sign({ id, email: "user@test.com", name: "Tester", role }, JWT_SECRET, {
@@ -64,6 +64,7 @@ function stubQuery(...results: any[]) {
 
 const AUTH_ADMIN = { rows: [{ id: 1, email: "user@test.com", name: "Tester", role: "admin" }] };
 const AUTH_CLIENT = { rows: [{ id: 2, email: "client@test.com", name: "Client", role: "client" }] };
+const AUTH_OTHER = { rows: [{ id: 5, email: "other@test.com", name: "Other", role: "other" }] };
 const AUTH_REVIEWER = {
   rows: [{ id: 4, email: "reviewer@test.com", name: "Reviewer", role: "qa_reviewer" }],
 };
@@ -136,6 +137,30 @@ const qaDetailRow = {
   geometry: { type: "Point", coordinates: [0, 0] },
   centroid: { type: "Point", coordinates: [0, 0] },
 };
+
+describe("viewer route permissions", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("denies dashboard summary to authenticated users without question-area read access", async () => {
+    stubQuery(AUTH_OTHER);
+
+    const res = await request(app)
+      .get("/api/dashboard/summary")
+      .set("Authorization", `Bearer ${makeToken("other", 5)}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("denies overlay layers to authenticated users without question-area read access", async () => {
+    stubQuery(AUTH_OTHER);
+
+    const res = await request(app)
+      .get("/api/layers/land_records?bbox=-180,-90,180,90")
+      .set("Authorization", `Bearer ${makeToken("other", 5)}`);
+
+    expect(res.status).toBe(403);
+  });
+});
 
 describe("GET /api/question-areas", () => {
   beforeEach(() => vi.clearAllMocks());

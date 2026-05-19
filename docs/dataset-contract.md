@@ -155,24 +155,24 @@ Expected properties used by the seed loader:
 - `gis_acres`
 - `gis_hectares`
 
-## Manifest
+## Prepared database workflow
 
-`manifest.json` is hashed by the backend after seeding. If the manifest changes while the database is already populated, the backend fails fast and requires an explicit local reset/reseed.
+Runtime startup is validation-only. It expects the prepared PostGIS database at `DATABASE_URL`
+to already contain the active schema, users, and required viewer data.
 
-## Reset and reseed workflow
-
-After changing the standardized seed dataset or the schema:
-
-```bash
-docker compose down -v
-docker compose up --build
-```
-
-Then verify:
+After changing the standardized dataset or schema, restore or prepare the database through an
+explicit operator workflow outside API startup, then verify it:
 
 ```bash
 cd backend
-npm run test:smoke
+npm run db:validate
+```
+
+For the current NNC questionnaire workbook, the explicit replacement command is:
+
+```bash
+cd backend
+npm run db:replace-question-areas -- ../DataBuild/PTA_SpatialOverlayResults_NNC_Timber_13May2026.xlsx
 ```
 
 ## Historical note

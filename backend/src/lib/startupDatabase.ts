@@ -14,15 +14,6 @@ const REQUIRED_TABLES = [
   "question_areas",
   "land_records",
   "management_areas",
-  "atlas_land_records",
-  "atlas_documents",
-  "atlas_document_links",
-  "atlas_featureless_docs",
-  "atlas_document_manifest",
-  "atlas_import_rejects",
-  "tax_parcels",
-  "property_tax_parcel_points",
-  "tax_bill_manifest",
   "comments",
   "documents",
 ] as const;
@@ -34,15 +25,39 @@ const REQUIRED_DATA_TABLES = [
 ] as const;
 
 const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
-  property_tax_parcel_points: ["coordinate_status", "geom"],
   question_areas: [
+    "id",
+    "code",
+    "source_layer",
+    "status",
+    "severity",
     "actionability_state",
+    "title",
+    "summary",
+    "description",
+    "county",
+    "state",
+    "parcel_code",
+    "owner_name",
+    "property_name",
+    "tract_name",
+    "fund_name",
+    "land_services",
+    "tax_bill_acres",
+    "gis_acres",
     "spatial_overlay_notes",
     "legal_description",
     "risk",
     "latitude",
     "longitude",
     "questionnaire_source",
+    "exists_in_legal_layer",
+    "exists_in_management_layer",
+    "exists_in_client_tabular_bill_data",
+    "assigned_reviewer",
+    "search_keywords",
+    "raw_properties",
+    "geom",
   ],
   land_records: [
     "objectid",
@@ -85,7 +100,14 @@ const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
 const OPTIONAL_DATA_GROUPS = [
   {
     name: "Atlas",
-    tables: ["atlas_land_records", "atlas_documents", "atlas_document_manifest"],
+    tables: [
+      "atlas_land_records",
+      "atlas_documents",
+      "atlas_document_links",
+      "atlas_featureless_docs",
+      "atlas_document_manifest",
+      "atlas_import_rejects",
+    ],
   },
   {
     name: "tax parcel",
@@ -232,6 +254,19 @@ async function assertAdminUserExists(client: Queryable): Promise<void> {
 
 async function warnAboutOptionalData(client: Queryable): Promise<void> {
   for (const group of OPTIONAL_DATA_GROUPS) {
+    const existingTables = await getExistingTables(client, [...group.tables]);
+    const missingTables = group.tables.filter((table) => !existingTables.has(table));
+
+    if (missingTables.length > 0) {
+      console.warn(
+        [
+          `Startup validation warning: optional ${group.name} prepared tables are missing: ${missingTables.join(", ")}.`,
+          "Related support panels may be unavailable, but viewer core data can still serve.",
+        ].join(" "),
+      );
+      continue;
+    }
+
     const counts = await getTableCounts(client, [...group.tables]);
     const populatedTables = group.tables.filter((table) => (counts[table] ?? 0) > 0);
 
@@ -251,6 +286,21 @@ async function warnAboutOptionalData(client: Queryable): Promise<void> {
       );
     }
   }
+}
+
+async function getExistingTables(
+  client: Queryable,
+  tables: readonly string[],
+): Promise<Set<string>> {
+  const result = await client.query<{ table_name: string; exists: boolean }>(
+    `
+      SELECT table_name, to_regclass('public.' || table_name) IS NOT NULL AS exists
+      FROM unnest($1::text[]) AS table_name
+    `,
+    [[...tables]],
+  );
+
+  return new Set(result.rows.filter((row) => row.exists).map((row) => row.table_name));
 }
 
 async function getTableCounts(
