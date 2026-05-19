@@ -79,6 +79,76 @@ cd backend
 npm run db:validate
 ```
 
+## Supabase dev database handoff
+
+The first Supabase migration path copies the already-prepared local Docker PostGIS database into a Supabase dev project. It does not rebuild data from source GIS files, workbooks, or document folders.
+
+The current dev project created for this workflow is:
+
+- Supabase project: `QAViewer Dev`
+- Project ref: `lfkuwbcmdlhkefnmdcsj`
+- Region: `us-east-1`
+- Organization: `Orbis GIS`
+
+Create a local dump from the running Docker database:
+
+```bash
+cd backend
+npm run db:dump:prepared
+```
+
+Restore that dump into Supabase with the direct database URL from the Supabase dashboard:
+
+```bash
+cd backend
+SUPABASE_DIRECT_DATABASE_URL="<supabase-direct-url>" npm run db:restore:supabase
+DATABASE_URL="<supabase-runtime-or-direct-url>" npm run db:validate
+DATABASE_URL="<supabase-runtime-or-direct-url>" npm run db:counts
+```
+
+The restore helper defaults to `PREPARED_RESTORE_MODE=app-data`, which truncates and restores only the QAViewer runtime tables in dependency order. If the direct database hostname is IPv6-only from Docker, use Supabase's Session pooler connection string for `SUPABASE_DIRECT_DATABASE_URL`. Use the pooled/runtime connection string for normal app runtime and deployed services.
+
+The expected prepared source counts for this first dev migration are:
+
+```text
+users: 5
+question_areas: 77
+land_records: 1316
+management_areas: 340
+atlas_land_records: 1693
+atlas_documents: 497
+atlas_document_links: 2703
+atlas_document_manifest: 497
+atlas_import_rejects: 609
+tax_parcels: 6
+tax_bill_manifest: 8
+property_tax_parcel_points: 4606
+comments: 0
+documents: 0
+```
+
+To run the local app against Supabase:
+
+```text
+DATABASE_URL=<supabase-runtime-or-direct-url>
+DATABASE_SSL_REJECT_UNAUTHORIZED=false
+STARTUP_DATA_MODE=validate
+DEMO_MODE=false
+FRONTEND_ORIGIN=http://localhost:5173
+```
+
+Use the Supabase owner/runtime database connection for the backend. The Supabase migrations enable RLS on public runtime tables as Data API defense-in-depth, but the Express API is still the application authorization boundary and connects as the database owner/service role.
+
+Then run:
+
+```bash
+cd backend
+npm run dev
+
+cd ../frontend
+npm run dev
+```
+
 If an older prepared database is missing question-area actionability symbols, apply the explicit compatibility update before validation:
 
 ```bash
@@ -93,6 +163,8 @@ The active app runtime reads prepared PostGIS tables. The old seed files, DataBu
 ## Database replacement workflow
 
 Runtime startup does not rebuild data. To replace local or Supabase data, restore a prepared PostGIS database dump or run an explicit future import command outside API startup.
+
+Restores are operator actions. They should never be hidden inside `npm run dev`, API startup, or Docker startup.
 
 ## Smoke tests
 

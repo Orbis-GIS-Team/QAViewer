@@ -11,6 +11,8 @@ frontend/dist
 backend/uploads/*
 !backend/uploads/.gitkeep
 *.log
+*.dump
+*.backup
 
 # Exclude oversized geodatabase file and local build artifacts
 BTG_PTV_Implementation.gdb/a00000012.gdbtable

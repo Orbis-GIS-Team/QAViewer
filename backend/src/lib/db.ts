@@ -2,9 +2,36 @@ import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
 
 import { config } from "../config.js";
 
-export const pool = new Pool({
-  connectionString: config.databaseUrl,
-});
+function buildPoolConfig(): ConstructorParameters<typeof Pool>[0] {
+  const parsed = new URL(config.databaseUrl);
+  const sslMode = parsed.searchParams.get("sslmode");
+  parsed.searchParams.delete("sslmode");
+  parsed.searchParams.delete("uselibpqcompat");
+
+  const needsSsl =
+    sslMode === "require" ||
+    sslMode === "verify-ca" ||
+    sslMode === "verify-full" ||
+    parsed.hostname.endsWith(".supabase.co") ||
+    parsed.hostname.includes(".pooler.supabase.com");
+
+  if (!needsSsl || sslMode === "disable") {
+    return {
+      connectionString: parsed.toString(),
+    };
+  }
+
+  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "true";
+
+  return {
+    connectionString: parsed.toString(),
+    ssl: {
+      rejectUnauthorized,
+    },
+  };
+}
+
+export const pool = new Pool(buildPoolConfig());
 
 export async function query<T extends QueryResultRow>(
   text: string,

@@ -36,6 +36,15 @@ current populated local PostGIS database
   -> frontend/API read Supabase data
 ```
 
+Current dev project for the first proof:
+
+```text
+Name: QAViewer Dev
+Project ref: lfkuwbcmdlhkefnmdcsj
+Organization: Orbis GIS (mpcactsemsrbqujvzcyn)
+Region: us-east-1
+```
+
 Longer-term prepared-package flow:
 
 ```text
@@ -108,9 +117,22 @@ pg_restore --no-owner --no-acl --dbname <supabase-direct-url> qaviewer-prepared.
 
 Exact commands should be adjusted for local Docker credentials, Supabase connection mode, and whether extensions/schema are created before restore.
 
-## Import Command Design
+Repo helper commands:
 
-After the database-copy path is working, add explicit import commands under `backend`:
+```bash
+cd backend
+npm run db:dump:prepared
+
+SUPABASE_DIRECT_DATABASE_URL="<supabase-direct-url>" npm run db:restore:supabase
+DATABASE_URL="<supabase-runtime-or-direct-url>" npm run db:validate
+DATABASE_URL="<supabase-runtime-or-direct-url>" npm run db:counts
+```
+
+`db:dump:prepared` reads from the running local Docker PostGIS container by default. `db:restore:supabase` intentionally requires an operator-provided Supabase database connection string. It defaults to `PREPARED_RESTORE_MODE=app-data`, which truncates and restores only QAViewer runtime tables in dependency order. If the direct host is IPv6-only from Docker, use the Supabase Session pooler URL for restore. Use a pooled/runtime connection string for normal API runtime after the restore is complete.
+
+## Future Import Command Design
+
+The current migration path uses the prepared database dump/restore flow above. If source-package reload tooling is needed later, add explicit import commands under `backend`:
 
 ```bash
 npm run db:migrate
@@ -124,13 +146,7 @@ The first implementation can reuse existing loader code. The important change is
 
 These commands are still useful, but they are not the critical first step if the local PostGIS database is already accepted as the prepared dataset.
 
-## Runtime Startup Modes
-
-Add:
-
-```text
-STARTUP_DATA_MODE=validate|legacy-seed
-```
+## Runtime Startup Mode
 
 ### `validate`
 
@@ -146,15 +162,7 @@ Behavior:
 - never read source data folders
 - never import or replace application data
 
-### `legacy-seed`
-
-Local Docker demo only.
-
-Behavior:
-
-- preserve current local seed/reseed behavior
-- import repo-owned data into local Docker PostGIS
-- remain useful for demos and isolated development
+`STARTUP_DATA_MODE` currently supports `validate` only. Legacy seed/import code has been archived and should not be part of normal startup.
 
 ## Application Changes
 
@@ -173,10 +181,7 @@ await waitForDatabase();
 await runStartupDatabaseStep();
 ```
 
-Where `runStartupDatabaseStep()` does:
-
-- `validate`: run readiness checks only
-- `legacy-seed`: run local demo schema/seed compatibility path
+Where `runStartupDatabaseStep()` runs readiness checks only.
 
 ## Validation Checks
 
@@ -239,10 +244,13 @@ Local `.env` for Supabase-backed runtime:
 
 ```text
 DATABASE_URL=<supabase-connection-string>
+DATABASE_SSL_REJECT_UNAUTHORIZED=false
 STARTUP_DATA_MODE=validate
 DEMO_MODE=false
 FRONTEND_ORIGIN=http://localhost:5173
 ```
+
+Use the Supabase owner/runtime database connection for the Express API. The migration enables RLS on public runtime tables without browser-facing policies because QAViewer does not use the Supabase Data API as its application surface; all user authorization stays behind the API.
 
 Run:
 
@@ -286,7 +294,7 @@ No production Render application startup should run a data import.
 
 - There is a documented prepared-data handoff flow into Supabase.
 - Current populated local PostGIS data can be copied/restored into Supabase as the prepared runtime dataset.
-- Current repo data can be loaded into Supabase through explicit commands when reload tooling is needed.
+- Current prepared database dumps can be restored into Supabase through explicit commands.
 - API startup in Supabase mode performs validation only.
 - API startup in Supabase mode does not read `data/standardized`, `DataBuild`, `LR_Documents`, tax bill folders, or workbooks.
 - Local backend/frontend can run against Supabase data.

@@ -1,0 +1,16 @@
+alter table public.users enable row level security;
+alter table public.question_areas enable row level security;
+alter table public.seed_metadata enable row level security;
+alter table public.land_records enable row level security;
+alter table public.management_areas enable row level security;
+alter table public.atlas_land_records enable row level security;
+alter table public.atlas_documents enable row level security;
+alter table public.atlas_document_links enable row level security;
+alter table public.atlas_featureless_docs enable row level security;
+alter table public.atlas_document_manifest enable row level security;
+alter table public.atlas_import_rejects enable row level security;
+alter table public.tax_parcels enable row level security;
+alter table public.tax_bill_manifest enable row level security;
+alter table public.property_tax_parcel_points enable row level security;
+alter table public.comments enable row level security;
+alter table public.documents enable row level security;

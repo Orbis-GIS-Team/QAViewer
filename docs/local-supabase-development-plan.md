@@ -58,12 +58,40 @@ Used for production-like local development:
 
 ```text
 DATABASE_URL=<supabase-pooled-or-direct-dev-connection>
+DATABASE_SSL_REJECT_UNAUTHORIZED=false
 STARTUP_DATA_MODE=validate
 DEMO_MODE=false
 FRONTEND_ORIGIN=http://localhost:5173
 ```
 
 For local long-running Node development, the direct connection can work. For deployed Render runtime, use the runtime connection string selected for the API service.
+The backend expects an owner/service database connection. RLS is enabled on public runtime tables to keep accidental Supabase Data API access closed; app authorization remains in the Express API.
+
+Current dev proof target:
+
+```text
+Supabase project: QAViewer Dev
+Project ref: lfkuwbcmdlhkefnmdcsj
+Region: us-east-1
+```
+
+Use the Supabase session pooler connection string only for controlled restore/migration work when the direct host is IPv6-only from the local machine or Docker:
+
+```bash
+cd backend
+SUPABASE_DIRECT_DATABASE_URL="<supabase-direct-url>" npm run db:restore:supabase
+```
+
+The restore helper defaults to `PREPARED_RESTORE_MODE=app-data` after migrations have created the Supabase schema.
+
+Use `DATABASE_URL` for validation and runtime:
+
+```bash
+cd backend
+DATABASE_URL="<supabase-runtime-or-direct-url>" npm run db:validate
+DATABASE_URL="<supabase-runtime-or-direct-url>" npm run db:counts
+npm run dev
+```
 
 ## Implementation Steps
 
@@ -79,29 +107,29 @@ Do not commit real Supabase credentials.
 
 ### 2. Run Migrations Against Supabase
 
-From local machine:
+Apply the SQL files in `supabase/migrations/` to the Supabase project before restoring data. The current dev project has already applied:
+
+- `20260519151703_enable_postgis_pg_trgm`
+- `20260519152255_baseline_schema`
+- `20260519152351_enable_runtime_table_rls`
+
+### 3. Restore Current Single-Tenant Data
+
+Restore the prepared database dump with the repo helper:
 
 ```bash
 cd backend
-npm run db:migrate
+SUPABASE_DIRECT_DATABASE_URL="<supabase-session-pooler-or-direct-url>" npm run db:restore:supabase
+DATABASE_URL="<supabase-runtime-url>" npm run db:validate
+DATABASE_URL="<supabase-runtime-url>" npm run db:counts
 ```
-
-Then validate:
-
-```bash
-npm run db:validate
-```
-
-### 3. Load Current Single-Tenant Data
-
-Run the explicit load commands from the Supabase data migration plan.
 
 Confirm:
 
 - question area count matches local expected count
 - land records count matches expected count
 - management areas count matches expected count
-- Atlas/tax parcel metadata loads if still part of current runtime
+- Atlas and tax parcel support table counts match the prepared dump
 
 ### 4. Run Local Backend Against Supabase
 
