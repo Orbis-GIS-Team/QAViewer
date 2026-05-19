@@ -84,6 +84,12 @@ const minimalQaRow = {
   property_name: null,
   tract_name: null,
   fund_name: null,
+  risk: "medium",
+  spatial_overlay_notes: "A test question area",
+  legal_description: "Test legal description",
+  latitude: 0,
+  longitude: 0,
+  questionnaire_source: "test.xlsx:NNC Timber",
   assigned_reviewer: null,
   exists_in_legal_layer: true,
   exists_in_management_layer: false,
@@ -108,8 +114,20 @@ const qaDetailRow = {
   primary_parcel_code: null,
   primary_owner_name: null,
   property_name: null,
+  owner_name: "L&C TREE FARMS LLC",
+  parcel_code: "PARCEL-001",
   analysis_name: null,
   tract_name: null,
+  fund_name: null,
+  land_services: "Needs review",
+  tax_bill_acres: 10,
+  gis_acres: 11,
+  spatial_overlay_notes: "summary",
+  legal_description: "Test legal description",
+  risk: "medium",
+  latitude: 0,
+  longitude: 0,
+  questionnaire_source: "test.xlsx:NNC Timber",
   assigned_reviewer: null,
   source_layers: [],
   related_parcels: [],
@@ -140,6 +158,8 @@ describe("GET /api/question-areas", () => {
     expect(res.body.features[0].properties).toHaveProperty("code", "QA-001");
     expect(res.body.features[0].properties).toHaveProperty("status", "review");
     expect(res.body.features[0].properties).toHaveProperty("actionabilityState", "normal");
+    expect(res.body.features[0].properties).toHaveProperty("risk", "medium");
+    expect(res.body.features[0].properties).toHaveProperty("spatialOverlayNotes", "A test question area");
     expect(res.body.features[0].properties).toHaveProperty("existsInLegalLayer", true);
     expect(res.body.features[0].properties).toHaveProperty("existsInManagementLayer", false);
     expect(res.body.features[0].properties).toHaveProperty("existsInClientTabularBillData", null);
@@ -249,6 +269,10 @@ describe("GET /api/question-areas/export.xlsx", () => {
     land_services: "Needs legal review",
     tax_bill_acres: 12.3,
     gis_acres: 12.1,
+    spatial_overlay_notes: "Overlay mismatch note",
+    legal_description: "Legal description text",
+    risk: "High",
+    questionnaire_source: "test.xlsx:NNC Timber",
     assigned_reviewer: "Ada",
     exists_in_legal_layer: true,
     exists_in_management_layer: false,

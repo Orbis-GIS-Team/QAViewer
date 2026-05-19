@@ -10,6 +10,7 @@
     "db:apply-actionability": "tsx src/db/applyActionabilityStates.ts",
     "db:apply-user-roles": "tsx src/db/applyUserRoles.ts",
     "db:import-property-tax-points": "tsx src/db/importPropertyTaxParcelPoints.ts",
+    "db:replace-question-areas": "tsx src/db/replaceQuestionAreasFromWorkbook.ts",
     "db:validate": "tsx src/db/validate.ts",
     "test": "vitest run",
     "test:watch": "vitest",

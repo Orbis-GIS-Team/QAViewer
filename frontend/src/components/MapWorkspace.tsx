@@ -116,6 +116,15 @@ type QuestionAreaProperties = {
   propertyName: string | null;
   tractName: string | null;
   fundName: string | null;
+  spatialOverlayNotes: string | null;
+  legalDescription: string | null;
+  risk: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  questionnaireSource: string | null;
+  taxBillAcres: number | null;
+  gisAcres: number | null;
+  landServices: string | null;
   assignedReviewer: string | null;
   existsInLegalLayer: boolean | null;
   existsInManagementLayer: boolean | null;
@@ -195,6 +204,12 @@ type QuestionAreaDetail = {
   propertyName: string | null;
   tractName: string | null;
   fundName: string | null;
+  spatialOverlayNotes: string | null;
+  legalDescription: string | null;
+  risk: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  questionnaireSource: string | null;
   landServices: string | null;
   taxBillAcres: number | null;
   gisAcres: number | null;
@@ -2144,18 +2159,20 @@ function ReviewRecordSections({
           <DetailItem label="Tract">{selectedDetail.tractName ?? "None"}</DetailItem>
           <DetailItem label="Fund">{selectedDetail.fundName ?? "None"}</DetailItem>
         </dl>
-        {selectedDetail.landServices ? (
-          <div className="qa-reason">
-            <dt>Land Services Note</dt>
-            <dd>{selectedDetail.landServices}</dd>
-          </div>
-        ) : null}
       </section>
 
       <section className="panel-section">
+        <div className="section-heading">
+          <h2>Questionnaire</h2>
+        </div>
         <dl className="detail-grid">
+          <DetailItem label="Questionnaire Source">{formatTextValue(selectedDetail.questionnaireSource)}</DetailItem>
+          <DetailItem label="Risk">{formatRisk(selectedDetail.risk)}</DetailItem>
+          <DetailItem label="Latitude" mono>{formatCoordinate(selectedDetail.latitude)}</DetailItem>
+          <DetailItem label="Longitude" mono>{formatCoordinate(selectedDetail.longitude)}</DetailItem>
           <DetailItem label="Tax Bill Acres" mono>{formatMetric(selectedDetail.taxBillAcres)}</DetailItem>
           <DetailItem label="GIS Acres" mono>{formatMetric(selectedDetail.gisAcres)}</DetailItem>
+          <DetailItem label="Land Services">{formatTextValue(selectedDetail.landServices)}</DetailItem>
           <DetailItem label="Legal/Deed Evidence">{formatBoolean(selectedDetail.existsInLegalLayer)}</DetailItem>
           <DetailItem label="Management Data">
             {formatBoolean(selectedDetail.existsInManagementLayer)}
@@ -2164,6 +2181,16 @@ function ReviewRecordSections({
             {formatBoolean(selectedDetail.existsInClientTabularBillData)}
           </DetailItem>
           <DetailItem label="Assigned Reviewer">{selectedDetail.assignedReviewer ?? "Unassigned"}</DetailItem>
+        </dl>
+        <dl className="qa-questionnaire-notes">
+          <div className="qa-reason">
+            <dt>Spatial Overlay Notes</dt>
+            <dd>{formatTextValue(selectedDetail.spatialOverlayNotes)}</dd>
+          </div>
+          <div className="qa-reason">
+            <dt>Legal Description</dt>
+            <dd>{formatTextValue(selectedDetail.legalDescription)}</dd>
+          </div>
         </dl>
       </section>
 
@@ -4442,6 +4469,26 @@ function formatMetric(value: number | null | undefined) {
   return Number(value).toLocaleString(undefined, {
     maximumFractionDigits: 2,
   });
+}
+
+function formatCoordinate(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+    return "None";
+  }
+
+  return Number(value).toLocaleString(undefined, {
+    maximumFractionDigits: 6,
+  });
+}
+
+function formatTextValue(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : "None";
+}
+
+function formatRisk(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? humanize(trimmed) : "Unspecified";
 }
 
 function formatDistance(value: number, unit: MeasureUnit) {

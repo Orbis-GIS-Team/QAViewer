@@ -42,6 +42,10 @@ export function buildQuestionAreaSearchClause(
         OR COALESCE(${alias}.property_name, '') ILIKE ${placeholder}
         OR COALESCE(${alias}.tract_name, '') ILIKE ${placeholder}
         OR COALESCE(${alias}.fund_name, '') ILIKE ${placeholder}
+        OR COALESCE(${alias}.spatial_overlay_notes, '') ILIKE ${placeholder}
+        OR COALESCE(${alias}.land_services, '') ILIKE ${placeholder}
+        OR COALESCE(${alias}.legal_description, '') ILIKE ${placeholder}
+        OR COALESCE(${alias}.risk, '') ILIKE ${placeholder}
         OR COALESCE(${alias}.search_keywords, '') ILIKE ${placeholder}
       `;
   }

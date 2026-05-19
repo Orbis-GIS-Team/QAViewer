@@ -241,6 +241,11 @@ function safeReportValue(value: string | number | null) {
   return value ?? "";
 }
 
+function formatRisk(value: string | null) {
+  const text = String(value ?? "").trim();
+  return text || "Unspecified";
+}
+
 router.get("/", requirePermission("question_areas:read"), async (req, res) => {
   const { params, whereClause } = buildQuestionAreaWhereClause(req);
   const rawLimit = Number(req.query.limit ?? 500);
@@ -260,6 +265,15 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
     property_name: string | null;
     tract_name: string | null;
     fund_name: string | null;
+    risk: string | null;
+    spatial_overlay_notes: string | null;
+    legal_description: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    questionnaire_source: string | null;
+    tax_bill_acres: number | null;
+    gis_acres: number | null;
+    land_services: string | null;
     assigned_reviewer: string | null;
     exists_in_legal_layer: boolean | null;
     exists_in_management_layer: boolean | null;
@@ -281,6 +295,15 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
         property_name,
         tract_name,
         fund_name,
+        risk,
+        spatial_overlay_notes,
+        legal_description,
+        latitude,
+        longitude,
+        questionnaire_source,
+        tax_bill_acres,
+        gis_acres,
+        land_services,
         assigned_reviewer,
         exists_in_legal_layer,
         exists_in_management_layer,
@@ -313,6 +336,15 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
           propertyName: row.property_name,
           tractName: row.tract_name,
           fundName: row.fund_name,
+          risk: row.risk,
+          spatialOverlayNotes: row.spatial_overlay_notes,
+          legalDescription: row.legal_description,
+          latitude: row.latitude,
+          longitude: row.longitude,
+          questionnaireSource: row.questionnaire_source,
+          taxBillAcres: row.tax_bill_acres,
+          gisAcres: row.gis_acres,
+          landServices: row.land_services,
           assignedReviewer: row.assigned_reviewer,
           existsInLegalLayer: row.exists_in_legal_layer,
           existsInManagementLayer: row.exists_in_management_layer,
@@ -389,6 +421,10 @@ router.get("/export.xlsx", requirePermission("question_areas:read"), async (req,
     land_services: string | null;
     tax_bill_acres: number | null;
     gis_acres: number | null;
+    spatial_overlay_notes: string | null;
+    legal_description: string | null;
+    risk: string | null;
+    questionnaire_source: string | null;
     assigned_reviewer: string | null;
     exists_in_legal_layer: boolean | null;
     exists_in_management_layer: boolean | null;
@@ -415,12 +451,16 @@ router.get("/export.xlsx", requirePermission("question_areas:read"), async (req,
         land_services,
         tax_bill_acres,
         gis_acres,
+        spatial_overlay_notes,
+        legal_description,
+        risk,
+        questionnaire_source,
         assigned_reviewer,
         exists_in_legal_layer,
         exists_in_management_layer,
         exists_in_client_tabular_bill_data,
-        ST_X(geom) AS longitude,
-        ST_Y(geom) AS latitude
+        COALESCE(longitude, ST_X(geom)) AS longitude,
+        COALESCE(latitude, ST_Y(geom)) AS latitude
       FROM question_areas qa
       ${whereClause}
       ORDER BY code
@@ -433,9 +473,11 @@ router.get("/export.xlsx", requirePermission("question_areas:read"), async (req,
     "Question Area ID": row.code,
     Status: row.status,
     Priority: row.severity,
+    Risk: formatRisk(row.risk),
     Actionability: row.actionability_state,
     Title: row.title,
     Summary: row.summary,
+    "Spatial Overlay Notes": safeReportValue(row.spatial_overlay_notes),
     Description: safeReportValue(row.description),
     County: safeReportValue(row.county),
     State: safeReportValue(row.state),
@@ -445,6 +487,7 @@ router.get("/export.xlsx", requirePermission("question_areas:read"), async (req,
     Tract: safeReportValue(row.tract_name),
     Fund: safeReportValue(row.fund_name),
     "Land Services Note": safeReportValue(row.land_services),
+    "Legal Description": safeReportValue(row.legal_description),
     "Tax Bill Acres": safeReportValue(row.tax_bill_acres),
     "GIS Acres": safeReportValue(row.gis_acres),
     "Assigned Reviewer": safeReportValue(row.assigned_reviewer),
@@ -453,6 +496,7 @@ router.get("/export.xlsx", requirePermission("question_areas:read"), async (req,
     "In Client Bill Data": formatExportBoolean(row.exists_in_client_tabular_bill_data),
     Longitude: safeReportValue(row.longitude),
     Latitude: safeReportValue(row.latitude),
+    "Questionnaire Source": safeReportValue(row.questionnaire_source),
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -534,6 +578,12 @@ router.get("/:code", requirePermission("question_areas:read"), async (req, res) 
     land_services: string | null;
     tax_bill_acres: number | null;
     gis_acres: number | null;
+    spatial_overlay_notes: string | null;
+    legal_description: string | null;
+    risk: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    questionnaire_source: string | null;
     exists_in_legal_layer: boolean | null;
     exists_in_management_layer: boolean | null;
     exists_in_client_tabular_bill_data: boolean | null;
@@ -562,6 +612,12 @@ router.get("/:code", requirePermission("question_areas:read"), async (req, res) 
         land_services,
         tax_bill_acres,
         gis_acres,
+        spatial_overlay_notes,
+        legal_description,
+        risk,
+        latitude,
+        longitude,
+        questionnaire_source,
         exists_in_legal_layer,
         exists_in_management_layer,
         exists_in_client_tabular_bill_data,
@@ -634,6 +690,12 @@ router.get("/:code", requirePermission("question_areas:read"), async (req, res) 
     landServices: row.land_services,
     taxBillAcres: row.tax_bill_acres,
     gisAcres: row.gis_acres,
+    spatialOverlayNotes: row.spatial_overlay_notes,
+    legalDescription: row.legal_description,
+    risk: row.risk,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    questionnaireSource: row.questionnaire_source,
     existsInLegalLayer: row.exists_in_legal_layer,
     existsInManagementLayer: row.exists_in_management_layer,
     existsInClientTabularBillData: row.exists_in_client_tabular_bill_data,

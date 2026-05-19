@@ -35,7 +35,15 @@ const REQUIRED_DATA_TABLES = [
 
 const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
   property_tax_parcel_points: ["coordinate_status", "geom"],
-  question_areas: ["actionability_state"],
+  question_areas: [
+    "actionability_state",
+    "spatial_overlay_notes",
+    "legal_description",
+    "risk",
+    "latitude",
+    "longitude",
+    "questionnaire_source",
+  ],
   land_records: [
     "objectid",
     "state",

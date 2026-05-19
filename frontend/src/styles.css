@@ -2135,6 +2135,12 @@ textarea {
   color: #78350f;
 }
 
+.qa-questionnaire-notes {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 0;
+}
+
 .map-panel {
   position: relative;
   display: grid;

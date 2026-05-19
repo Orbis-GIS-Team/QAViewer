@@ -56,6 +56,12 @@ Expected properties used by the active app:
 - `land_services`
 - `tax_bill_acres`
 - `gis_acres`
+- `spatial_overlay_notes`
+- `legal_description`
+- `risk`
+- `latitude`
+- `longitude`
+- `questionnaire_source`
 - `exists_in_legal_layer`
 - `exists_in_management_layer`
 - `exists_in_client_tabular_bill_data`
@@ -63,6 +69,12 @@ Expected properties used by the active app:
 - `search_keywords`
 
 Additional source properties may be retained in the file and are stored in `raw_properties`.
+
+The canonical questionnaire source for the current NNC review dataset is
+`DataBuild/PTA_SpatialOverlayResults_NNC_Timber_13May2026.xlsx`, sheet `NNC Timber`.
+The `Delta South` and `Quercus` sheets are subset views and are not imported separately.
+Use `npm run db:replace-question-areas -- <workbook-path>` from `backend/` for the explicit
+maintenance replacement workflow. API startup remains validation-only and does not import this workbook.
 
 ## `land_records`
 

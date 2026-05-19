@@ -58,6 +58,12 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       land_services TEXT,
       tax_bill_acres DOUBLE PRECISION,
       gis_acres DOUBLE PRECISION,
+      spatial_overlay_notes TEXT,
+      legal_description TEXT,
+      risk TEXT,
+      latitude DOUBLE PRECISION,
+      longitude DOUBLE PRECISION,
+      questionnaire_source TEXT,
       exists_in_legal_layer BOOLEAN,
       exists_in_management_layer BOOLEAN,
       exists_in_client_tabular_bill_data BOOLEAN,
@@ -73,6 +79,16 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
   await client.query(`
     ALTER TABLE question_areas
     ADD COLUMN IF NOT EXISTS actionability_state TEXT
+  `);
+
+  await client.query(`
+    ALTER TABLE question_areas
+    ADD COLUMN IF NOT EXISTS spatial_overlay_notes TEXT,
+    ADD COLUMN IF NOT EXISTS legal_description TEXT,
+    ADD COLUMN IF NOT EXISTS risk TEXT,
+    ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS questionnaire_source TEXT
   `);
 
   await client.query(`
@@ -451,6 +467,9 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
     CREATE INDEX IF NOT EXISTS question_areas_status_idx ON question_areas (status);
     CREATE INDEX IF NOT EXISTS question_areas_severity_idx ON question_areas (severity);
     CREATE INDEX IF NOT EXISTS question_areas_actionability_state_idx ON question_areas (actionability_state);
+    CREATE UNIQUE INDEX IF NOT EXISTS question_areas_parcel_code_unique_idx
+      ON question_areas (parcel_code)
+      WHERE parcel_code IS NOT NULL;
     CREATE INDEX IF NOT EXISTS atlas_land_records_property_name_idx ON atlas_land_records (property_name);
     CREATE INDEX IF NOT EXISTS atlas_land_records_fund_name_idx ON atlas_land_records (fund_name);
     CREATE INDEX IF NOT EXISTS tax_parcels_parcel_id_idx ON tax_parcels (parcel_id);
