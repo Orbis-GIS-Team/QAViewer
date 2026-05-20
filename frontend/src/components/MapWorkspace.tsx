@@ -475,7 +475,7 @@ const IDENTIFY_LAYER_CONFIG: Record<LayerKey, IdentifyLayerConfig> = {
       { key: "lr_type", label: "LR Type" },
       { key: "doctype", label: "Document Type" },
       { key: "lr_status", label: "LR Status" },
-      { key: "tax_confirm", label: "Tax Confirmed" },
+      { key: "docname", label: "Document Name" },
     ],
     contextFields: [
       { key: "propertyname", label: "Property" },
@@ -483,7 +483,6 @@ const IDENTIFY_LAYER_CONFIG: Record<LayerKey, IdentifyLayerConfig> = {
       { key: "fundname", label: "Fund" },
       { key: "county", label: "County" },
       { key: "state", label: "State" },
-      { key: "regionname", label: "Region" },
       { key: "deedacres", label: "Deed Acres" },
       { key: "gisacres", label: "GIS Acres" },
     ],
@@ -513,9 +512,42 @@ const IDENTIFY_LAYER_CONFIG: Record<LayerKey, IdentifyLayerConfig> = {
       { key: "tillable_acres", label: "Tillable Acres" },
       { key: "gis_acres", label: "GIS Acres" },
       { key: "effective_date", label: "Effective Date" },
+      { key: "original_acquisition_date", label: "Original Acquisition Date" },
+      { key: "full_disposition_date", label: "Full Disposition Date" },
     ],
   },
 };
+
+const PROPERTY_TAX_POINT_IDENTIFY_FIELDS: IdentifyFieldConfig[] = [
+  { key: "parcelCode", label: "Parcel Code" },
+  { key: "accountNumber", label: "Account Number" },
+  { key: "gisAcres", label: "GIS Acres" },
+  { key: "state", label: "State" },
+  { key: "county", label: "County" },
+  { key: "propertyName", label: "Property Name" },
+  { key: "tractName", label: "Tract Name" },
+  { key: "parcelStatus", label: "Parcel Status" },
+  { key: "taxProgram", label: "Tax Program" },
+  { key: "exemptionEnrollmentDate", label: "Exemption Enrollment Date" },
+  { key: "exemptionExpirationDate", label: "Exemption Expiration Date" },
+  { key: "exemptionEligibilityDate", label: "Exemption Eligibility Date" },
+  { key: "ownershipType", label: "Ownership Type" },
+  { key: "purchaseDate", label: "Purchase Date" },
+  { key: "ownerName", label: "Owner Name" },
+  { key: "description", label: "Description" },
+  { key: "notes", label: "Notes" },
+  { key: "landUseType", label: "Land Use Type" },
+];
+
+const REGRID_PARCEL_IDENTIFY_FIELDS: IdentifyFieldConfig[] = [
+  { key: "parcelNumber", label: "Parcel Number" },
+  { key: "account_number", label: "Account Number" },
+  { key: "ownerName", label: "Owner" },
+  { key: "address", label: "Address" },
+  { key: "county", label: "County" },
+  { key: "state2", label: "State" },
+  { key: "ll_gisacre", label: "GIS Acres" },
+];
 
 const landRecordStyle: PathOptions = {
   color: "#0070ff",
@@ -2138,6 +2170,7 @@ function ReviewRecordSections({
         </div>
         <p className="summary-copy">{selectedDetail.summary}</p>
         <dl className="detail-grid">
+          <DetailItem label="Question Area Code" mono>{selectedDetail.code}</DetailItem>
           <DetailItem label="Tax Parcel Code" mono>{selectedDetail.parcelCode ?? "None"}</DetailItem>
           <DetailItem label="Record Owner">{selectedDetail.ownerName ?? "Unknown"}</DetailItem>
           <DetailItem label="County">{selectedDetail.county ?? "Unknown"}</DetailItem>
@@ -2153,10 +2186,7 @@ function ReviewRecordSections({
           <h2>Questionnaire</h2>
         </div>
         <dl className="detail-grid">
-          <DetailItem label="Questionnaire Source">{formatTextValue(selectedDetail.questionnaireSource)}</DetailItem>
           <DetailItem label="Risk">{formatRisk(selectedDetail.risk)}</DetailItem>
-          <DetailItem label="Latitude" mono>{formatCoordinate(selectedDetail.latitude)}</DetailItem>
-          <DetailItem label="Longitude" mono>{formatCoordinate(selectedDetail.longitude)}</DetailItem>
           <DetailItem label="Tax Bill Acres" mono>{formatMetric(selectedDetail.taxBillAcres)}</DetailItem>
           <DetailItem label="GIS Acres" mono>{formatMetric(selectedDetail.gisAcres)}</DetailItem>
           <DetailItem label="Land Services">{formatTextValue(selectedDetail.landServices)}</DetailItem>
@@ -2167,7 +2197,9 @@ function ReviewRecordSections({
           <DetailItem label="In Client Bill Data">
             {formatBoolean(selectedDetail.existsInClientTabularBillData)}
           </DetailItem>
-          <DetailItem label="Assigned Reviewer">{selectedDetail.assignedReviewer ?? "Unassigned"}</DetailItem>
+          {canReviewQuestionAreas || canAssignQuestionAreas ? (
+            <DetailItem label="Assigned Reviewer">{selectedDetail.assignedReviewer ?? "Unassigned"}</DetailItem>
+          ) : null}
         </dl>
         <dl className="qa-questionnaire-notes">
           <div className="qa-reason">
@@ -2177,6 +2209,10 @@ function ReviewRecordSections({
           <div className="qa-reason">
             <dt>Legal Description</dt>
             <dd>{formatTextValue(selectedDetail.legalDescription)}</dd>
+          </div>
+          <div className="qa-reason">
+            <dt>Review Notes</dt>
+            <dd>{formatTextValue(selectedDetail.description)}</dd>
           </div>
         </dl>
       </section>
@@ -3101,17 +3137,45 @@ function IdentifyPanel({
 function LayerIdentifyDetails({ identifiedFeature }: { identifiedFeature: IdentifiedLayerFeature }) {
   const config = IDENTIFY_LAYER_CONFIG[identifiedFeature.layerKey];
   const properties = identifiedFeature.feature.properties;
-  const primaryRows = configuredIdentifyRows(properties, config.primaryFields);
-  const attributeRows = configuredIdentifyRows(properties, config.attributeFields);
-  const contextRows = configuredIdentifyRows(properties, config.contextFields);
-  const metadataRows = geometryMetadataRows(identifiedFeature);
+  let primaryRows = configuredIdentifyRows(properties, config.primaryFields);
+  let attributeRows = configuredIdentifyRows(properties, config.attributeFields);
+  let contextRows = configuredIdentifyRows(properties, config.contextFields);
+
+  if (identifiedFeature.layerKey === "management_areas" && primaryRows.length + attributeRows.length + contextRows.length <= 2) {
+    const fallbackRows = objectIdentifyRows(properties).filter((row) =>
+      [
+        "property_code",
+        "property_name",
+        "portfolio",
+        "status",
+        "fund_name",
+        "management_type",
+        "investment_manager",
+        "business_unit",
+        "crops",
+        "county",
+        "state",
+        "region",
+        "country",
+        "gross_acres",
+        "tillable_acres",
+        "gis_acres",
+        "effective_date",
+        "original_acquisition_date",
+        "full_disposition_date",
+      ].includes(row.key),
+    );
+
+    primaryRows = fallbackRows.slice(0, 3);
+    attributeRows = fallbackRows.slice(3, 9);
+    contextRows = fallbackRows.slice(9);
+  }
 
   return (
     <>
       <IdentifyFieldSection rows={primaryRows} title="Identifiers" />
       <IdentifyFieldSection rows={attributeRows} title="Attributes" />
       <IdentifyFieldSection rows={contextRows} title="Context" />
-      <IdentifyFieldSection rows={metadataRows} title="Geometry" />
     </>
   );
 }
@@ -3119,8 +3183,10 @@ function LayerIdentifyDetails({ identifiedFeature }: { identifiedFeature: Identi
 function RegridIdentifyDetails({ identifiedFeature }: { identifiedFeature: IdentifiedRegridFeature }) {
   const result = identifiedFeature.result;
   const primaryMatch = result?.matches[0] ?? null;
-  const workbookRows = primaryMatch ? objectIdentifyRows(primaryMatch) : [];
-  const parcelRows = result?.regridParcel ? objectIdentifyRows(result.regridParcel.properties) : [];
+  const workbookRows = primaryMatch ? configuredIdentifyRows(primaryMatch, PROPERTY_TAX_POINT_IDENTIFY_FIELDS) : [];
+  const parcelRows = result?.regridParcel
+    ? configuredIdentifyRows(result.regridParcel.properties, REGRID_PARCEL_IDENTIFY_FIELDS)
+    : [];
   const hasMatch = Boolean(result?.matchCount);
 
   return (
@@ -3137,11 +3203,18 @@ function RegridIdentifyDetails({ identifiedFeature }: { identifiedFeature: Ident
         </p>
       ) : null}
 
-      {workbookRows.length > 0 ? <IdentifyFieldSection rows={workbookRows} title="Workbook Data" /> : null}
+      {result ? (
+        <div className="regrid-highlight-bar">
+          <span className="regrid-highlight-pill">{hasMatch ? "Matched" : "Regrid Only"}</span>
+          <strong>{hasMatch ? "Regrid parcel matched workbook tax-point data" : "Viewing Regrid parcel data"}</strong>
+        </div>
+      ) : null}
+
+      {workbookRows.length > 0 ? <IdentifyFieldSection rows={workbookRows} title="Tax Point Data" /> : null}
       {result && result.matches.length > 1 ? (
         <p className="panel-note">{result.matches.length.toLocaleString()} workbook matches found at this location.</p>
       ) : null}
-      {parcelRows.length > 0 ? <IdentifyFieldSection rows={parcelRows} title="Regrid Attributes" /> : null}
+      {parcelRows.length > 0 ? <IdentifyFieldSection rows={parcelRows} title="Regrid Parcel" /> : null}
       <IdentifyFieldSection
         rows={[
           {
@@ -3258,11 +3331,11 @@ function managementAreaStyleForFeature(feature: LayerFeature | undefined): PathO
 }
 
 function configuredIdentifyRows(
-  properties: LayerFeatureProperties,
+  properties: Record<string, unknown>,
   fields: IdentifyFieldConfig[],
 ): IdentifyFieldRow[] {
   return fields.flatMap((field) => {
-    const value = formatIdentifyValue(properties[field.key]);
+    const value = formatIdentifyValue(resolveIdentifyProperty(properties, field.key));
     return value ? [{ key: field.key, label: field.label, value }] : [];
   });
 }
@@ -3681,6 +3754,41 @@ function formatIdentifyValue(value: unknown): string | null {
   }
 
   return serialized.length > 180 ? `${serialized.slice(0, 177)}...` : serialized;
+}
+
+function resolveIdentifyProperty(properties: Record<string, unknown>, key: string): unknown {
+  const candidates = new Set<string>([
+    key,
+    toSnakeCase(key),
+    toCamelCase(key),
+    key.toLowerCase(),
+  ]);
+
+  for (const candidate of candidates) {
+    if (candidate in properties) {
+      return properties[candidate];
+    }
+  }
+
+  const normalizedTarget = key.replace(/[_\\s-]/g, "").toLowerCase();
+  for (const [propertyKey, propertyValue] of Object.entries(properties)) {
+    if (propertyKey.replace(/[_\\s-]/g, "").toLowerCase() === normalizedTarget) {
+      return propertyValue;
+    }
+  }
+
+  return undefined;
+}
+
+function toCamelCase(value: string) {
+  return value.replace(/[_-]([a-z])/g, (_match, letter: string) => letter.toUpperCase());
+}
+
+function toSnakeCase(value: string) {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[\\s-]+/g, "_")
+    .toLowerCase();
 }
 
 function geometryPartCount(geometry: Geometry) {

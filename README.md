@@ -22,15 +22,18 @@ The backend also supports tax parcel and Atlas land-record views from prepared d
 ## Run with Docker
 
 1. Copy `.env.example` to `.env` if you need to override runtime defaults.
-2. Start the stack against the existing Docker PostGIS volume:
+2. Set `DATABASE_URL` in `.env` to the prepared Supabase/Postgres runtime database.
+3. Start the app containers:
 
 ```bash
 docker compose up --build
 ```
 
-By default the API uses `STARTUP_DATA_MODE=validate`, which validates the already-prepared database and does not import seed/source files during startup.
+The compose stack now runs `api` and `web` only. It does not start a local PostGIS container. The API uses `STARTUP_DATA_MODE=validate`, which validates the already-prepared database and does not import seed/source files during startup.
 
-3. Open:
+Local Docker remains the recommended development workflow even when the hosted pilot runs on Render. Docker Compose uses `API_PORT=3001`; the deployed Render web service uses Render's injected `PORT`.
+
+4. Open:
 
 - Web app: `http://localhost:5173`
 - API health: `http://localhost:3001/api/health`
@@ -148,6 +151,51 @@ npm run dev
 cd ../frontend
 npm run dev
 ```
+
+## Render deployment
+
+The intended client-pilot deployment is:
+
+- Render Static Site for `frontend`
+- Render paid Web Service for `backend`
+- Supabase Postgres/PostGIS for runtime data
+- Supabase Storage for durable document bytes
+
+Frontend settings:
+
+```text
+Root Directory: frontend
+Build Command: npm install && npm run build
+Publish Directory: dist
+VITE_API_BASE_URL=https://<render-api-host>/api
+```
+
+Backend settings:
+
+```text
+Root Directory: backend
+Runtime: Node
+Build Command: npm install && npm run build
+Start Command: npm run start
+Health Check Path: /api/health
+Plan: Starter or higher for client pilot use
+```
+
+Backend environment:
+
+```text
+DATABASE_URL=<supabase-runtime-connection>
+JWT_SECRET=<strong-production-secret>
+STARTUP_DATA_MODE=validate
+DEMO_MODE=false
+API_HOST=0.0.0.0
+FRONTEND_ORIGIN=https://<render-frontend-host>
+DATABASE_SSL_REJECT_UNAUTHORIZED=false
+```
+
+The backend accepts Render's injected `PORT`; keep `API_PORT` for local overrides only. Do not use the current development Dockerfiles as Render production images without changing them to build and start production output.
+
+Before client sharing, move document bytes out of `backend/uploads` and package-local paths into durable storage. The deployment plan tracks this as Supabase Storage work in `docs/render-supabase-deployment-plan.md`.
 
 If an older prepared database is missing question-area actionability symbols, apply the explicit compatibility update before validation:
 

@@ -149,7 +149,7 @@ GitHub issues updated with migration status:
 
 ## Next Steps
 
-1. Rotate/reset the Supabase DB password if not already done. The old password was pasted into the previous chat and should be treated as exposed.
+1. Supabase DB password rotation is complete as of 2026-05-20. Do not record the refreshed password in repository files or docs.
 
 2. After password rotation:
 

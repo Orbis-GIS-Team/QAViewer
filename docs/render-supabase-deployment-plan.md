@@ -13,7 +13,7 @@ This plan replaces the earlier Vercel-first deployment direction for the MVP. Th
 - Supabase hosts Postgres/PostGIS.
 - Supabase Storage hosts MVP document/PDF files.
 
-The goal is to keep the deployment easy to operate, avoid serverless API rewrites, and preserve a clean path to Azure later if the application graduates beyond MVP/client pilot use.
+The goal is to keep the deployment easy to operate, avoid serverless API rewrites, preserve the existing local Docker development workflow, and keep a clean path to Azure later if the application graduates beyond MVP/client pilot use.
 
 ## Related Plans
 
@@ -30,6 +30,14 @@ Use Render for application hosting and Supabase for durable data.
 Render is preferred over Vercel for the MVP API because QAViewer already has a normal Express backend and Docker-first local architecture. A Render web service can run the API as a long-running process without adapting it to serverless functions.
 
 Supabase is preferred for the MVP database because QAViewer needs managed Postgres with PostGIS. Supabase Storage is acceptable for MVP document storage as long as document volume and egress stay within moderate pilot usage. If PDF volume or download traffic grows beyond that, move document bytes to Cloudflare R2 or, later, Azure Blob Storage.
+
+Paid Render hosting is the intended client-pilot path. The free web-service tier is useful only for throwaway smoke tests because it spins down when idle and its filesystem is ephemeral. For client sharing, use at least a paid Render web service plan so the API stays warm and predictable. The frontend can remain a Render Static Site unless usage or team requirements force a higher tier.
+
+The repository may remain private. Render deployment should use the Render GitHub App with access granted to the private QAViewer repository.
+
+Local Docker development remains supported and should stay the default day-to-day developer workflow. Docker Compose runs the backend and frontend dev servers against the prepared Supabase/Postgres `DATABASE_URL`; hosted Render services are the pilot deployment target, not a replacement for local development.
+
+Use Git-backed Render services so hosted deployments follow the normal GitHub workflow. Each Render service should link to the deployment branch, initially `main` unless a separate `production` branch is introduced. Render auto-deploys from the linked branch by default, so pushes or merges to that branch rebuild and redeploy the affected service. Keep auto-deploy enabled for the pilot unless CI gating is added, then switch to deploy after checks pass.
 
 ## Target State
 
@@ -74,6 +82,23 @@ Out of scope:
 - Large-scale document archive design beyond keeping storage swappable.
 
 ## Implementation Phases
+
+### 0. Configure GitHub-Backed Render Deploys
+
+- Keep the QAViewer repository private if desired.
+- Install or configure the Render GitHub App with access to the QAViewer repository.
+- Create separate Render services for the monorepo:
+
+```text
+frontend -> Render Static Site, root directory frontend
+backend  -> Render Web Service, root directory backend
+```
+
+- Link both services to the same deployment branch, initially `main`.
+- Leave auto-deploy enabled so pushes or merges to the linked branch redeploy the service.
+- Prefer root-directory scoping so frontend-only changes redeploy only the static site and backend-only changes redeploy only the API.
+- Use manual deploys only for controlled rollback/retry cases.
+- If CI is added, configure Render auto-deploys to wait for CI checks before deploying.
 
 ### 1. Prepare Supabase Project
 
@@ -128,6 +153,7 @@ Current production risk:
 
 - Uploaded question-area documents are written to `backend/uploads`.
 - Atlas document content may still resolve to local package paths depending on the prepared data.
+- Tax-bill document content may still resolve to local package paths depending on the prepared data.
 
 MVP target:
 
@@ -160,14 +186,17 @@ Use a Render Web Service for `backend`.
 Recommended first deployment shape:
 
 ```text
-Runtime: Docker or Node
+Runtime: Node
 Root: backend
 Build: npm install && npm run build
 Start: npm run start
 Health check: /api/health
+Plan: Starter or higher for client pilot use
+Branch: main unless a production branch is introduced
+Auto-deploy: enabled
 ```
 
-If using the repository-level Dockerfile path, configure Render to build from `backend/Dockerfile`.
+Do not use the current backend Dockerfile for production Render deployment without changing it first. It is intentionally development-oriented for local Docker Compose and starts `npm run dev`. If using Docker on Render later, create a production Dockerfile that builds TypeScript and starts `npm run start`.
 
 Production API environment:
 
@@ -177,17 +206,17 @@ JWT_SECRET=<strong-production-secret>
 STARTUP_DATA_MODE=validate
 DEMO_MODE=false
 API_HOST=0.0.0.0
-API_PORT=<Render-provided-or-expected-port>
 FRONTEND_ORIGIN=https://<render-frontend-host>
 SUPABASE_URL=<supabase-project-url>
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
 SUPABASE_STORAGE_BUCKET=qaviewer-documents
+DATABASE_SSL_REJECT_UNAUTHORIZED=false
 ```
 
 Important API requirements:
 
 - Bind to `0.0.0.0`.
-- Respect Render's provided port if Render injects `PORT`.
+- Respect Render's provided `PORT`. The backend accepts `API_PORT` for local/dev overrides and falls back to `PORT` for hosted Render runtime.
 - Do not depend on local source-data folders.
 - Do not depend on `backend/uploads` for durable production files.
 
@@ -201,6 +230,9 @@ Recommended settings:
 Root Directory: frontend
 Build Command: npm install && npm run build
 Publish Directory: dist
+Plan: Static Site unless traffic/team requirements require an upgrade
+Branch: main unless a production branch is introduced
+Auto-deploy: enabled
 ```
 
 Frontend environment:
@@ -249,6 +281,7 @@ QA_SMOKE_API_URL=https://<render-api-host>/api npm run test:smoke
 - Set exact `FRONTEND_ORIGIN`; do not allow wildcard CORS.
 - Keep Supabase Storage bucket private.
 - Restrict Supabase service role key to backend environment only.
+- Supabase DB password rotation is complete as of 2026-05-20; use only the refreshed secret in local `.env`, Render, and any restore/runtime profiles.
 - Add rate limiting for login, exports, and document downloads.
 - Add document download audit logging before broad client use.
 - Enable Supabase spend cap/cost alerts.
@@ -260,10 +293,12 @@ QA_SMOKE_API_URL=https://<render-api-host>/api npm run test:smoke
 
 Expected MVP cost model:
 
-- Render static site: low fixed/free tier depending on chosen plan.
-- Render web service: fixed service tier.
+- Render static site: static-site tier unless traffic/team requirements require an upgrade.
+- Render web service: paid fixed service tier; use Starter or higher before client sharing.
 - Supabase project: fixed base plan plus metered overages.
 - Supabase Storage: acceptable while document storage and egress are moderate.
+
+Avoid relying on a free Render web service for the client pilot. The API should not spin down while a client is reviewing records, and local uploaded files are not durable on Render's ephemeral filesystem.
 
 Moderate Supabase Storage usage for this MVP means roughly:
 
@@ -283,11 +318,14 @@ Current overlays are served from PostGIS through API bbox-filtered GeoJSON endpo
 ## Acceptance Criteria
 
 - Supabase contains the prepared QAViewer runtime database.
+- Render services are connected to the private GitHub repository through the Render GitHub App.
+- Backend and frontend services auto-deploy from the selected deployment branch.
 - API starts in `STARTUP_DATA_MODE=validate` against Supabase.
-- API is deployed on Render as a web service.
+- API is deployed on Render as a paid web service.
 - Frontend is deployed on Render as a static site.
 - Frontend points at the Render API.
 - API CORS allows only the Render frontend origin.
+- Local Docker Compose still runs backend and frontend dev services against the configured `DATABASE_URL`.
 - Documents are not durably stored in `backend/uploads` in production.
 - Supabase Storage upload/download works for question-area documents.
 - Main authenticated reviewer workflow works from the Render frontend URL.
@@ -297,5 +335,6 @@ Current overlays are served from PostGIS through API bbox-filtered GeoJSON endpo
 
 - Whether to use Render Postgres instead of Supabase if the team decides it wants one vendor for app and database hosting.
 - Whether Atlas package documents should be migrated to Supabase Storage in the same pass as uploaded question-area documents or handled as a separate migration.
+- Whether tax-bill PDFs should migrate to Supabase Storage in the same pass as uploaded question-area and Atlas documents or remain disabled/deferred for pilot.
 - Whether to keep demo users for pilot access or replace them with explicit named client accounts before sharing.
 - Whether to add a staging Supabase project before production client data is loaded.

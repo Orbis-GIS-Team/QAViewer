@@ -1,31 +1,18 @@
 services:
-  db:
-    image: postgis/postgis:16-3.4
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-qaviewer}
-      POSTGRES_USER: ${POSTGRES_USER:-qaviewer}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qaviewer}
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-
   api:
     build:
       context: .
       dockerfile: backend/Dockerfile
     restart: unless-stopped
-    depends_on:
-      - db
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgres://qaviewer:qaviewer@db:5432/qaviewer}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the prepared Supabase/Postgres runtime database.}
       JWT_SECRET: ${JWT_SECRET:-local-dev-secret-do-not-use-in-production}
       STARTUP_DATA_MODE: ${STARTUP_DATA_MODE:-validate}
       DEMO_MODE: ${DEMO_MODE:-true}
       API_HOST: ${API_HOST:-0.0.0.0}
       API_PORT: 3001
-      FRONTEND_ORIGIN: http://localhost:5173
+      DATABASE_SSL_REJECT_UNAUTHORIZED: ${DATABASE_SSL_REJECT_UNAUTHORIZED:-false}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       PROPERTY_TAX_PARCEL_WORKBOOK_PATH: ${PROPERTY_TAX_PARCEL_WORKBOOK_PATH:-/workspace/PropertyTax Map implementation/ParcelsListingReport.xlsx}
       REGRID_FEATURE_SERVICE_URL: ${REGRID_FEATURE_SERVICE_URL:-}
       PROPERTY_TAX_REGRID_MIN_ZOOM: ${PROPERTY_TAX_REGRID_MIN_ZOOM:-12}
@@ -58,6 +45,5 @@ services:
       - frontend_node_modules:/workspace/frontend/node_modules
 
 volumes:
-  pgdata:
   backend_node_modules:
   frontend_node_modules:

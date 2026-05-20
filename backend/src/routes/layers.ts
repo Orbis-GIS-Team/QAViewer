@@ -20,7 +20,8 @@ const layerConfig = {
   management_areas: {
     table: "management_areas",
     idExpression: "id",
-    propertiesExpression: "raw_properties",
+    propertiesExpression:
+      "COALESCE(raw_properties, '{}'::jsonb) || (to_jsonb(management_areas) - 'id' - 'geom' - 'raw_properties')",
     geometryExpression: "ST_AsGeoJSON(geom, 5)::jsonb",
     orderBy: "id",
     limit: 3000,

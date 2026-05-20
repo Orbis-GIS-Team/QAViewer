@@ -40,7 +40,7 @@ function parseIntegerEnv(name: string, value: string | undefined, fallback: numb
 }
 
 export const config = {
-  apiPort: Number(process.env.API_PORT ?? 3001),
+  apiPort: parseIntegerEnv("API_PORT/PORT", process.env.API_PORT ?? process.env.PORT, 3001),
   apiHost: process.env.API_HOST ?? "0.0.0.0",
   databaseUrl:
     process.env.DATABASE_URL ?? "postgres://qaviewer:qaviewer@localhost:5432/qaviewer",
