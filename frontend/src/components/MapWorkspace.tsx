@@ -2168,7 +2168,6 @@ function ReviewRecordSections({
         <div className="section-heading primary-heading">
           <h2>{selectedDetail.title}</h2>
         </div>
-        <p className="summary-copy">{selectedDetail.summary}</p>
         <dl className="detail-grid">
           <DetailItem label="Question Area Code" mono>{selectedDetail.code}</DetailItem>
           <DetailItem label="Tax Parcel Code" mono>{selectedDetail.parcelCode ?? "None"}</DetailItem>
@@ -2182,14 +2181,19 @@ function ReviewRecordSections({
       </section>
 
       <section className="panel-section">
-        <div className="section-heading">
-          <h2>Questionnaire</h2>
-        </div>
-        <dl className="detail-grid">
-          <DetailItem label="Risk">{formatRisk(selectedDetail.risk)}</DetailItem>
+        <dl className="acres-summary-grid">
           <DetailItem label="Tax Bill Acres" mono>{formatMetric(selectedDetail.taxBillAcres)}</DetailItem>
           <DetailItem label="GIS Acres" mono>{formatMetric(selectedDetail.gisAcres)}</DetailItem>
-          <DetailItem label="Land Services">{formatTextValue(selectedDetail.landServices)}</DetailItem>
+        </dl>
+        <div className="services-spotlight">
+          <div className="services-spotlight-header">
+            <span className="services-spotlight-eyebrow">Primary Direction</span>
+            <h3>Land Service Guidance</h3>
+          </div>
+          <p className="services-spotlight-copy">{formatTextValue(selectedDetail.landServices)}</p>
+        </div>
+        <dl className="detail-grid detail-grid-secondary">
+          <DetailItem label="Risk">{formatRisk(selectedDetail.risk)}</DetailItem>
           <DetailItem label="Legal/Deed Evidence">{formatBoolean(selectedDetail.existsInLegalLayer)}</DetailItem>
           <DetailItem label="Management Data">
             {formatBoolean(selectedDetail.existsInManagementLayer)}

@@ -3511,6 +3511,78 @@ textarea:focus {
   overflow-wrap: anywhere;
 }
 
+.acres-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+  margin: 0;
+}
+
+.acres-summary-grid div {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 8px;
+  background: rgba(233, 248, 246, 0.72);
+}
+
+.acres-summary-grid dt {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+  color: #5f6f68;
+}
+
+.acres-summary-grid dd {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--primary);
+}
+
+.detail-grid-secondary {
+  margin-top: 0;
+}
+
+.services-spotlight {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px;
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(233, 248, 246, 0.96) 0%, rgba(244, 247, 244, 0.98) 100%);
+  box-shadow: 0 10px 24px -20px rgba(15, 118, 110, 0.45);
+}
+
+.services-spotlight-header {
+  display: grid;
+  gap: 4px;
+}
+
+.services-spotlight-eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.services-spotlight-header h3 {
+  font-size: 1.1rem;
+  line-height: 1.2;
+  color: var(--primary);
+}
+
+.services-spotlight-copy {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: #20312c;
+  white-space: pre-wrap;
+}
+
 .qa-reason,
 .atlas-record-remark,
 .tax-parcel-note-card {
