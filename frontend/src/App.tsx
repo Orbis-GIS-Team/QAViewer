@@ -126,7 +126,10 @@ export default function App() {
   async function handleLogin(credentials: { email: string; password: string }) {
     const payload = await apiRequest<Session>("/auth/login", {
       method: "POST",
-      body: credentials,
+      body: {
+        email: credentials.email.trim(),
+        password: credentials.password,
+      },
     });
     setSession(payload);
     persistSession(payload);

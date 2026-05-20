@@ -425,41 +425,6 @@ strong {
   margin-bottom: 32px;
 }
 
-.demo-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 16px;
-  margin: 24px 0;
-}
-
-.demo-pill {
-  padding: 12px 16px;
-  background: white;
-  border: 1px solid var(--panel-edge);
-  border-radius: var(--radius);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  text-align: left;
-  transition: all 0.2s;
-}
-
-.demo-pill:hover {
-  border-color: var(--accent);
-  background: var(--bg);
-}
-
-.demo-pill span {
-  font-size: 0.8125rem;
-  font-weight: 700;
-  color: var(--primary);
-}
-
-.demo-pill small {
-  font-size: 0.6875rem;
-  color: var(--muted);
-}
-
 .stat-card {
   padding: 16px 20px;
   background: var(--panel);
@@ -3175,16 +3140,6 @@ textarea {
 
 .login-card .eyebrow {
   color: var(--accent);
-}
-
-.demo-pill {
-  background: #fffefb;
-  border-color: rgba(31, 41, 37, 0.12);
-}
-
-.demo-pill:hover {
-  background: #edf7f5;
-  border-color: rgba(15, 118, 110, 0.34);
 }
 
 .workspace-header {

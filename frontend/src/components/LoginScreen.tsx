@@ -4,14 +4,9 @@ type LoginScreenProps = {
   onLogin: (credentials: { email: string; password: string }) => Promise<void>;
 };
 
-const DEMO_ACCOUNTS = [
-  { label: "Admin", email: "admin@qaviewer.local", password: "admin123!" },
-  { label: "Client", email: "client@qaviewer.local", password: "client123!" },
-];
-
 export function LoginScreen({ onLogin }: LoginScreenProps) {
-  const [email, setEmail] = useState(DEMO_ACCOUNTS[1].email);
-  const [password, setPassword] = useState(DEMO_ACCOUNTS[1].password);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -39,31 +34,23 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           with land records and management areas available as supporting map context.
         </p>
 
-        <div className="demo-grid">
-          {DEMO_ACCOUNTS.map((account) => (
-            <button
-              key={account.email}
-              className="demo-pill"
-              type="button"
-              onClick={() => {
-                setEmail(account.email);
-                setPassword(account.password);
-              }}
-            >
-              <span>{account.label}</span>
-              <small>{account.email}</small>
-            </button>
-          ))}
-        </div>
-
         <form className="login-form" onSubmit={handleSubmit}>
           <label>
             Email
-            <input value={email} onChange={(event) => setEmail(event.target.value)} />
+            <input
+              autoComplete="username"
+              inputMode="email"
+              required
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
           </label>
           <label>
             Password
             <input
+              autoComplete="current-password"
+              required
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}

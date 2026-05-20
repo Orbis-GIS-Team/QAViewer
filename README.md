@@ -29,6 +29,15 @@ The backend also supports tax parcel and Atlas land-record views from prepared d
 docker compose up --build
 ```
 
+The compose stack talks to whatever database `DATABASE_URL` points at in your local `.env`. For the current setup, that should be the Supabase runtime/pooler connection string, not a local Postgres container.
+
+The dev containers mount source code and keep `node_modules` in Docker volumes. Because of that, dependency changes can drift from older volumes. The compose services now run `npm install` on startup to self-heal after package changes. If a container still behaves oddly after dependency or lockfile changes, reset the dev volumes explicitly:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
 The compose stack now runs `api` and `web` only. It does not start a local PostGIS container. The API uses `STARTUP_DATA_MODE=validate`, which validates the already-prepared database and does not import seed/source files during startup.
 
 Local Docker remains the recommended development workflow even when the hosted pilot runs on Render. Docker Compose uses `API_PORT=3001`; the deployed Render web service uses Render's injected `PORT`.
@@ -145,12 +154,17 @@ Use the Supabase owner/runtime database connection for the backend. The Supabase
 Then run:
 
 ```bash
-cd backend
-npm run dev
-
-cd ../frontend
-npm run dev
+docker compose up --build
 ```
+
+That keeps local development aligned with the deployed architecture:
+
+- Local Docker: frontend + API containers on your machine
+- Supabase: shared runtime database and optional document storage
+- GitHub: source control and deployment trigger
+- Render: hosted frontend/API built from pushed commits and its own environment variables
+
+The important boundary is that local `.env` drives local Docker only, while Render environment variables drive hosted services only. Pushing code to GitHub should deploy application changes, not overwrite your local database settings.
 
 ## Render deployment
 
