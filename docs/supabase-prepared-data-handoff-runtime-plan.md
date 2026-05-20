@@ -305,7 +305,7 @@ No production Render application startup should run a data import.
 
 After this plan is complete:
 
-- move document bytes to Supabase Storage
+- migrate Atlas package documents, tax-bill PDFs, source workbooks, or spreadsheet packages only if the pilot later needs hosted package document access; Postgres dump/restore does not include object-storage bytes
 - introduce tenant-scoped tables and memberships
 - add data release tracking
 - add Supabase/Render cost guardrails and monitoring

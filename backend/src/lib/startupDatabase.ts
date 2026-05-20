@@ -1,8 +1,6 @@
-import fs from "node:fs/promises";
-
 import type { PoolClient, QueryResultRow } from "pg";
 
-import { config } from "../config.js";
+import { ensureDocumentStorageReady } from "./documentStorage.js";
 import { ROLES } from "./rbac.js";
 
 type Queryable = {
@@ -116,7 +114,7 @@ const OPTIONAL_DATA_GROUPS = [
 ] as const;
 
 export async function runStartupDatabaseStep(client: PoolClient): Promise<void> {
-  await fs.mkdir(config.uploadsDir, { recursive: true });
+  await ensureDocumentStorageReady();
   await validatePreparedDatabase(client);
 }
 

@@ -16,7 +16,7 @@ The backend also supports tax parcel and Atlas land-record views from prepared d
 - `archive/legacy-etl-2026-05-09/`: archived legacy source-data and seed-loader assets
 - `backend/`: API, auth, PostGIS schema, validation, comments, and document endpoints
 - `frontend/`: review workspace and admin UI
-- `backend/uploads/`: uploaded document storage
+- `backend/uploads/`: local-dev fallback storage for uploaded question-area documents
 - `docs/nnc-cutover-plan.md`: phased NNC cutover record and remaining cleanup tasks
 
 ## Run with Docker
@@ -191,11 +191,14 @@ DEMO_MODE=false
 API_HOST=0.0.0.0
 FRONTEND_ORIGIN=https://<render-frontend-host>
 DATABASE_SSL_REJECT_UNAUTHORIZED=false
+SUPABASE_URL=<supabase-project-url>
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+SUPABASE_STORAGE_BUCKET=qaviewer-documents
 ```
 
-The backend accepts Render's injected `PORT`; keep `API_PORT` for local overrides only. Do not use the current development Dockerfiles as Render production images without changing them to build and start production output.
+The backend accepts Render's injected `PORT`; keep `API_PORT` for local overrides only. Do not use the current development Dockerfiles as Render production images without changing them to build and start production output. Keep `SUPABASE_SERVICE_ROLE_KEY` only in the backend Render service; never expose it to the frontend.
 
-Before client sharing, move document bytes out of `backend/uploads` and package-local paths into durable storage. The deployment plan tracks this as Supabase Storage work in `docs/render-supabase-deployment-plan.md`.
+Question-area uploads use `backend/src/lib/documentStorage.ts`. Local/dev runs without Supabase Storage env vars continue writing to `backend/uploads`; hosted Render should set all three Supabase Storage env vars so new uploads are stored in the private bucket. Atlas package documents, tax-bill PDFs, source workbooks, and spreadsheet packages are not migrated or stored by this path for the pilot.
 
 If an older prepared database is missing question-area actionability symbols, apply the explicit compatibility update before validation:
 
@@ -240,6 +243,6 @@ Set `QA_SMOKE_API_URL` to target a non-default API base URL.
 - The backend validates prepared PostGIS data by default and does not import source files during normal startup.
 - `STARTUP_DATA_MODE` currently supports `validate` only.
 - Legacy source-data and seed-loader assets are kept in `archive/legacy-etl-2026-05-09/` for reference.
-- Documents are stored in `backend/uploads`.
+- Question-area upload metadata is stored in Postgres. File bytes are stored in `backend/uploads` for local/dev fallback or in Supabase Storage when the backend has `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_STORAGE_BUCKET`.
 - Admin users can switch between the review workspace and the administration console from the header.
 - Older parcel-centered architecture notes are retained only as archived reference documents and should not be treated as the current implementation source of truth.

@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 
 import { Router, type Request } from "express";
@@ -6,9 +5,14 @@ import multer from "multer";
 import * as XLSX from "xlsx";
 import { z } from "zod";
 
-import { config } from "../config.js";
 import { loadAtlasQuestionAreaView, normalizeAtlasBufferFeet } from "../lib/atlas.js";
 import { query } from "../lib/db.js";
+import {
+  deleteDocumentObject,
+  downloadDocumentObject,
+  makeQuestionAreaDocumentKey,
+  uploadDocumentObject,
+} from "../lib/documentStorage.js";
 import { hasPermission, requirePermission } from "../lib/rbac.js";
 import { buildQuestionAreaSearchClause, parseSearchField } from "../lib/search.js";
 import {
@@ -47,15 +51,7 @@ const ALLOWED_EXTENSIONS = new Set([
 ]);
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, callback) => {
-      callback(null, config.uploadsDir);
-    },
-    filename: (_req, file, callback) => {
-      const extension = path.extname(file.originalname).toLowerCase();
-      callback(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${extension}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 25 * 1024 * 1024,
   },
@@ -860,12 +856,19 @@ router.post("/:code/documents", requirePermission("question_areas:upload_documen
 
   const area = questionArea.rows[0];
   if (!area) {
-    await fs.unlink(req.file.path).catch(() => undefined);
     res.status(404).json({ message: "Question area not found." });
     return;
   }
 
+  const storedName = makeQuestionAreaDocumentKey(String(req.params.code), req.file.originalname);
+
   try {
+    await uploadDocumentObject({
+      key: storedName,
+      buffer: req.file.buffer,
+      contentType: req.file.mimetype || null,
+    });
+
     const result = await query<{
       id: number;
       original_name: string;
@@ -881,7 +884,7 @@ router.post("/:code/documents", requirePermission("question_areas:upload_documen
       [
         area.id,
         req.file.originalname,
-        req.file.filename,
+        storedName,
         req.file.mimetype,
         req.file.size,
         req.user.id,
@@ -897,7 +900,7 @@ router.post("/:code/documents", requirePermission("question_areas:upload_documen
       downloadUrl: `/api/question-areas/documents/${result.rows[0].id}/download`,
     });
   } catch (dbError) {
-    await fs.unlink(req.file.path).catch(() => undefined);
+    await deleteDocumentObject(storedName).catch(() => undefined);
     throw dbError;
   }
 });
@@ -917,15 +920,17 @@ router.get("/documents/:id/download", requirePermission("question_areas:read"), 
     return;
   }
 
-  const filePath = path.join(config.uploadsDir, document.stored_name);
-  try {
-    await fs.access(filePath);
-  } catch {
+  const stored = await downloadDocumentObject(document.stored_name);
+  if (!stored) {
     res.status(404).json({ message: "Document file is missing from storage." });
     return;
   }
 
-  res.download(filePath, document.original_name);
+  if (stored.contentType) {
+    res.type(stored.contentType);
+  }
+  res.attachment(document.original_name);
+  res.send(stored.buffer);
 });
 
 export default router;

@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
@@ -20,6 +23,7 @@
     "test:smoke": "tsx --test src/smoke.test.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
     "@types/shapefile": "^0.6.4",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",

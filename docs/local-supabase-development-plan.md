@@ -36,7 +36,7 @@ Out of scope:
 
 - Render deployment.
 - Multi-tenant authorization.
-- Full Supabase Storage migration, unless already completed by the data migration phase.
+- Bulk Supabase Storage migration for Atlas documents, tax-bill PDFs, source workbooks, or spreadsheet packages.
 
 ## Environment Profiles
 
@@ -102,6 +102,7 @@ Update `.env.example` to document:
 - local Docker values
 - local Supabase values
 - Render production values
+- optional Supabase Storage values for question-area uploads
 
 Do not commit real Supabase credentials.
 
@@ -172,7 +173,8 @@ Check:
 - Atlas panel
 - tax parcel panel
 - export
-- document metadata/download behavior depending on storage migration state
+- question-area document upload/download behavior with either local `backend/uploads` fallback or Supabase Storage env vars
+- Atlas/tax-bill package document routes remain deferred unless their files are explicitly migrated later
 
 ### 7. Add Smoke Test Target
 

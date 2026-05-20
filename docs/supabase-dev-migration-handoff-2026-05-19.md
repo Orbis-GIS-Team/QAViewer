@@ -166,5 +166,6 @@ GitHub issues updated with migration status:
 - The direct host `db.lfkuwbcmdlhkefnmdcsj.supabase.co` resolved IPv6-only from this machine and was not usable from Docker.
 - The correct pooler host shown in the dashboard was `aws-1-us-east-1.pooler.supabase.com`, not `aws-0-us-east-1.pooler.supabase.com`.
 - Use `DATABASE_SSL_REJECT_UNAUTHORIZED=false` for local Node `pg` connections through the Supabase pooler.
-- Supabase Storage migration is still out of scope and remains future work.
+- Supabase Storage support has been added for new question-area uploads only. Configure `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_STORAGE_BUCKET` on the backend to store new upload bytes in a private bucket. If those variables are omitted, local/dev uploads continue to use `backend/uploads`.
+- Atlas package documents, tax-bill PDFs, source workbooks, and spreadsheet packages are not migrated or stored in this pass; treat them as deferred for the pilot.
 - Source-data loader commands are still future work; this pass used dump/restore first.

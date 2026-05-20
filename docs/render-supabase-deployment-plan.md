@@ -149,19 +149,22 @@ Runtime startup must remain validation-only. It must not import GIS packages, Ex
 
 ### 3. Move Runtime Documents Off Local Disk
 
-Current production risk:
+Current implementation:
 
-- Uploaded question-area documents are written to `backend/uploads`.
-- Atlas document content may still resolve to local package paths depending on the prepared data.
-- Tax-bill document content may still resolve to local package paths depending on the prepared data.
+- Uploaded question-area documents go through `backend/src/lib/documentStorage.ts`.
+- If `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_STORAGE_BUCKET` are all set, the API stores new question-area upload bytes in the private Supabase Storage bucket and stores the storage object key in `documents.stored_name`.
+- If those variables are omitted, local Docker/dev keeps writing upload bytes under `backend/uploads`.
+- Partial Supabase Storage configuration is invalid and should fail startup.
 
-MVP target:
+Pilot target:
 
 - Store document metadata in Postgres.
 - Store file bytes in Supabase Storage.
 - Store storage keys, not public URLs, in database rows.
-- Generate download/preview URLs through the API.
+- Generate download URLs through the API.
 - Keep buckets private.
+- Do not migrate Atlas package documents, tax-bill PDFs, source workbooks, or spreadsheet packages in this pass.
+- Hosted Render Atlas/tax-bill package document preview/download remains deferred unless a later explicit object-storage migration loads those files and updates the package routes to use the storage adapter.
 
 Recommended environment variables:
 
@@ -177,7 +180,7 @@ Recommended implementation boundary:
 backend/src/lib/documentStorage.ts
 ```
 
-That module should own upload, download, signed URL, delete, and existence checks. Route handlers should not know whether the backing store is local disk, Supabase Storage, R2, or Azure Blob Storage.
+That module owns question-area upload, download, delete, and local/Supabase selection. Route handlers should not know whether the backing store is local disk, Supabase Storage, R2, or Azure Blob Storage.
 
 ### 4. Deploy API To Render
 
@@ -219,6 +222,7 @@ Important API requirements:
 - Respect Render's provided `PORT`. The backend accepts `API_PORT` for local/dev overrides and falls back to `PORT` for hosted Render runtime.
 - Do not depend on local source-data folders.
 - Do not depend on `backend/uploads` for durable production files.
+- Keep Atlas/tax-bill package document routes out of the pilot acceptance path unless those object files are explicitly migrated later.
 
 ### 5. Deploy Frontend To Render
 
@@ -334,7 +338,7 @@ Current overlays are served from PostGIS through API bbox-filtered GeoJSON endpo
 ## Open Questions
 
 - Whether to use Render Postgres instead of Supabase if the team decides it wants one vendor for app and database hosting.
-- Whether Atlas package documents should be migrated to Supabase Storage in the same pass as uploaded question-area documents or handled as a separate migration.
-- Whether tax-bill PDFs should migrate to Supabase Storage in the same pass as uploaded question-area and Atlas documents or remain disabled/deferred for pilot.
+- Atlas package documents are deferred for the pilot; migrate them only through a later explicit object-storage package workflow.
+- Tax-bill PDFs are deferred for the pilot; migrate them only through a later explicit object-storage package workflow.
 - Whether to keep demo users for pilot access or replace them with explicit named client accounts before sharing.
 - Whether to add a staging Supabase project before production client data is loaded.

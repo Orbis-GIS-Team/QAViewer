@@ -72,4 +72,7 @@ export const config = {
   ),
   seedDir: path.join(repoRoot, "data", "standardized"),
   uploadsDir: path.join(backendDir, "uploads"),
+  supabaseUrl: process.env.SUPABASE_URL ?? "",
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+  supabaseStorageBucket: process.env.SUPABASE_STORAGE_BUCKET ?? "",
 };
