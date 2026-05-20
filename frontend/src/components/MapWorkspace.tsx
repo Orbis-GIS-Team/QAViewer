@@ -1410,35 +1410,22 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       <header className="workspace-header">
         <div className="header-main">
           <div className="header-brand">
-            <p className="eyebrow">QAViewer</p>
-            <h1>NNC Review Workspace</h1>
+            <h1>Question Land Services Review Console</h1>
           </div>
           {selectedDetail ? (
             <div className="header-active-record">
               <div className="header-active-record-label">
-                <span className="eyebrow">Active Review</span>
                 <strong>{selectedDetail.code}</strong>
               </div>
               <div className="header-active-record-copy">
                 <span>{selectedDetail.title}</span>
                 <small>{selectedContext || "Question area selected"}</small>
               </div>
-              <div className="header-active-record-badges">
-                <BadgeDescriptor
-                  label="Workflow status"
-                  value={workflowLabel(selectedDetail.status)}
-                  badgeClass={workflowBadgeClass(selectedDetail.status)}
-                />
-                <BadgeDescriptor
-                  label="Severity level"
-                  value={humanize(selectedDetail.severity)}
-                  badgeClass={severityBadgeClass(selectedDetail.severity)}
-                />
-                <BadgeDescriptor
-                  label="Action needed"
-                  value={actionabilityLabel(selectedDetail.actionabilityState)}
-                  badgeClass={actionabilityBadgeClass(selectedDetail.actionabilityState)}
-                />
+              <div className="header-active-record-risk">
+                <span className="header-risk-label">Risk</span>
+                <span className={`badge ${severityBadgeClass(selectedDetail.severity)}`}>
+                  {humanize(selectedDetail.severity)}
+                </span>
               </div>
             </div>
           ) : null}
@@ -1592,19 +1579,21 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                       </div>
                       <div className="filter-menu">
                         <div className="filter-grid">
-                          <label>
-                            Search field
-                            <select
-                              value={filters.field}
-                              onChange={(event) => updateFilters({ field: event.target.value as SearchField })}
-                            >
-                              {SEARCH_FIELD_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
+                          {canReviewQuestionAreas || canAssignQuestionAreas ? (
+                            <label>
+                              Search field
+                              <select
+                                value={filters.field}
+                                onChange={(event) => updateFilters({ field: event.target.value as SearchField })}
+                              >
+                                {SEARCH_FIELD_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ) : null}
                           <label>
                             Status
                             <select
@@ -1620,12 +1609,12 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                             </select>
                           </label>
                           <label>
-                            Priority
+                            Risk
                             <select
                               value={filters.severity}
                               onChange={(event) => updateFilters({ severity: event.target.value })}
                             >
-                              <option value="all">All priorities</option>
+                              <option value="all">All risks</option>
                               {SEVERITY_OPTIONS.map((severity) => (
                                 <option key={severity} value={severity}>
                                   {humanize(severity)}
@@ -1690,20 +1679,22 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                               ))}
                             </select>
                           </label>
-                          <label>
-                            Reviewer
-                            <select
-                              onChange={(event) => updateFilters({ assignedReviewer: event.target.value })}
-                              value={filters.assignedReviewer}
-                            >
-                              <option value="">All reviewers</option>
-                              {withCurrentOption(filterOptions.assignedReviewers, filters.assignedReviewer).map((reviewer) => (
-                                <option key={reviewer} value={reviewer}>
-                                  {reviewer}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
+                          {canReviewQuestionAreas || canAssignQuestionAreas ? (
+                            <label>
+                              Reviewer
+                              <select
+                                onChange={(event) => updateFilters({ assignedReviewer: event.target.value })}
+                                value={filters.assignedReviewer}
+                              >
+                                <option value="">All reviewers</option>
+                                {withCurrentOption(filterOptions.assignedReviewers, filters.assignedReviewer).map((reviewer) => (
+                                  <option key={reviewer} value={reviewer}>
+                                    {reviewer}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ) : null}
                         </div>
                         <div className="filter-grid data-filter-grid">
                           <label>
@@ -1797,17 +1788,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                           <div className="list-card-body">
                             <div className="user-card-head">
                               <strong>{properties.code}</strong>
-                              <span className="list-card-badges">
-                                <span className={`badge ${workflowBadgeClass(properties.status)}`}>
-                                  {workflowLabel(properties.status)}
-                                </span>
-                                <span className={`badge ${severityBadgeClass(properties.severity)}`}>
-                                  {humanize(properties.severity)}
-                                </span>
-                                <span className={`badge ${actionabilityBadgeClass(properties.actionabilityState)}`}>
-                                  {actionabilityLabel(properties.actionabilityState)}
-                                </span>
-                              </span>
+                              <span className="list-card-risk">Risk: {humanize(properties.severity)}</span>
                             </div>
                             <span className="list-card-title">{properties.title}</span>
                             <span className="list-card-subtitle">{subtitle || properties.summary}</span>
@@ -2051,15 +2032,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
         ) : null}
       </section>
     </main>
-  );
-}
-
-function BadgeDescriptor({ label, value, badgeClass }: { label: string; value: string; badgeClass: string }) {
-  return (
-    <div className="header-badge-card">
-      <span className="header-badge-label">{label}</span>
-      <span className={`badge ${badgeClass}`}>{value}</span>
-    </div>
   );
 }
 

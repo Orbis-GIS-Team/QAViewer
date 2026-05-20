@@ -27,12 +27,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   return (
     <main className="login-shell">
       <section className="login-card">
-        <p className="eyebrow">Question Area Review Web App</p>
-        <h1>Review spatial mismatches without leaving the map.</h1>
-        <p className="lead">
-          This workspace is seeded from the standardized NNC dataset and centered on question areas
-          with land records and management areas available as supporting map context.
-        </p>
+        <h1>Question Area Reviewer</h1>
 
         <form className="login-form" onSubmit={handleSubmit}>
           <label>
