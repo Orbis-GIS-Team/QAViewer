@@ -352,7 +352,10 @@ function normalizeRegridIdentifyResult(result: RegridIdentifyResult): RegridIden
     matched: result.matchCount > 0,
     workbook,
     parcel: parcelProperties,
-    message: result.matchCount > 0 ? null : "No workbook match found for this Regrid parcel.",
+    message:
+      result.matchCount > 0
+        ? null
+        : "No Property Tax Administration tax record matched this Regrid parcel.",
   };
 }
 

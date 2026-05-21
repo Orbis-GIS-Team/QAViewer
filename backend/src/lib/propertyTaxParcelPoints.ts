@@ -381,7 +381,10 @@ export async function identifyRegridParcelAtPoint(latitude: number, longitude: n
     matches,
     matchCount: matches.length,
     joinMethod: "point-in-polygon",
-    message: matches.length > 0 ? null : "No workbook points found inside this Regrid parcel.",
+    message:
+      matches.length > 0
+        ? null
+        : "No Property Tax Administration tax records found inside this Regrid parcel.",
   };
 }
 

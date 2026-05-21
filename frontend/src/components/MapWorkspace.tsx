@@ -179,6 +179,14 @@ type IdentifyFieldRow = {
   key: string;
   label: string;
   value: string;
+  wide?: boolean;
+};
+
+type IdentifyPanelHeader = {
+  badgeClass: string;
+  label: string;
+  title: string;
+  subtitle?: string | null;
 };
 
 type QuestionAreaDetail = {
@@ -460,10 +468,22 @@ const MANAGEMENT_AREA_LEGEND_ITEMS: ManagementLegendItem[] = [
 ];
 const IDENTIFY_LAYER_ORDER: LayerKey[] = ["management_areas", "land_records"];
 
+const LAND_RECORD_IDENTIFY_WIDE_KEYS = new Set(["current_owner", "previous_owner", "fundname", "docname"]);
+const PROPERTY_TAX_ADMIN_SOURCE_LABEL = "Property Tax Administration";
+const REGRID_PARCEL_SOURCE_LABEL = "Regrid Parcel";
+const PROPERTY_TAX_IDENTIFY_WIDE_KEYS = new Set([
+  "ownerName",
+  "propertyName",
+  "tractName",
+  "description",
+  "notes",
+]);
+const REGRID_IDENTIFY_WIDE_KEYS = new Set(["ownerName", "address"]);
+
 const IDENTIFY_LAYER_CONFIG: Record<LayerKey, IdentifyLayerConfig> = {
   land_records: {
-    label: "Land Record",
-    badgeClass: "land-records",
+    label: "Atlas Land Records",
+    badgeClass: "atlas-land-records",
     primaryFields: [
       { key: "taxparcelnum", label: "Tax Parcel Number" },
       { key: "lr_number", label: "LR Number" },
@@ -474,7 +494,6 @@ const IDENTIFY_LAYER_CONFIG: Record<LayerKey, IdentifyLayerConfig> = {
       { key: "previous_owner", label: "Previous Owner" },
       { key: "lr_type", label: "LR Type" },
       { key: "doctype", label: "Document Type" },
-      { key: "lr_status", label: "LR Status" },
       { key: "docname", label: "Document Name" },
     ],
     contextFields: [
@@ -3069,20 +3088,39 @@ function IdentifyPanel({
     identifiedItem.kind === "layer"
       ? layerIdentifyHeader(identifiedItem)
       : regridIdentifyHeader(identifiedItem);
+  const panelClassName = [
+    "map-identify-panel",
+    identifiedItem.kind === "regrid" ? "regrid-identify-panel property-tax-identify-panel" : "",
+    identifiedItem.kind === "layer" && identifiedItem.layerKey === "land_records" ? "atlas-land-records-identify-panel" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <aside
-      className={`map-identify-panel${identifiedItem.kind === "regrid" ? " regrid-identify-panel" : ""}`}
-      aria-label={`${header.label} details`}
-    >
+    <aside className={panelClassName} aria-label={`${header.label} details`}>
       <div className="identify-panel-header">
         <div className="identify-title-group">
-          <span className={`identify-layer-badge ${header.badgeClass}`}>{header.label}</span>
-          <h2>{header.title}</h2>
+          <span
+            className={`identify-layer-badge ${header.badgeClass}${
+              identifiedItem.kind === "layer" || identifiedItem.kind === "regrid" ? " identify-layer-badge--title-case" : ""
+            }`}
+          >
+            {header.label}
+          </span>
+          <div className="identify-heading-copy">
+            <h2>{header.title}</h2>
+            {header.subtitle ? <p className="identify-subtitle">{header.subtitle}</p> : null}
+          </div>
         </div>
         <div className="identify-header-actions">
-          <button className="identify-close-button" onClick={onClose} title="Close identify panel" type="button">
-            x
+          <button
+            aria-label="Close identify panel"
+            className="identify-close-button"
+            onClick={onClose}
+            title="Close identify panel"
+            type="button"
+          >
+            &times;
           </button>
         </div>
       </div>
@@ -3147,68 +3185,122 @@ function LayerIdentifyDetails({ identifiedFeature }: { identifiedFeature: Identi
     contextRows = fallbackRows.slice(9);
   }
 
-  return (
-    <>
-      <IdentifyFieldSection rows={primaryRows} title="Identifiers" />
-      <IdentifyFieldSection rows={attributeRows} title="Attributes" />
-      <IdentifyFieldSection rows={contextRows} title="Context" />
-    </>
-  );
+  const excludedKeys = new Set<string>();
+  if (identifiedFeature.layerKey === "land_records") {
+    excludedKeys.add("lr_number");
+    if (formatIdentifyValue(resolveIdentifyProperty(properties, "lr_type"))) {
+      excludedKeys.add("lr_type");
+    }
+    if (formatIdentifyValue(resolveIdentifyProperty(properties, "doctype"))) {
+      excludedKeys.add("doctype");
+    }
+  }
+
+  const rows = [...primaryRows, ...attributeRows, ...contextRows]
+    .filter((row) => !excludedKeys.has(row.key))
+    .map((row) => ({
+      ...row,
+      wide: identifiedFeature.layerKey === "land_records" && LAND_RECORD_IDENTIFY_WIDE_KEYS.has(row.key),
+    }));
+
+  return <IdentifyFieldList rows={rows} />;
 }
 
 function RegridIdentifyDetails({ identifiedFeature }: { identifiedFeature: IdentifiedRegridFeature }) {
   const result = identifiedFeature.result;
   const primaryMatch = result?.matches[0] ?? null;
-  const workbookRows = primaryMatch ? configuredIdentifyRows(primaryMatch, PROPERTY_TAX_POINT_IDENTIFY_FIELDS) : [];
+  const propertyTaxRows = primaryMatch
+    ? configuredIdentifyRows(primaryMatch, PROPERTY_TAX_POINT_IDENTIFY_FIELDS).map((row) => ({
+        ...row,
+        wide: PROPERTY_TAX_IDENTIFY_WIDE_KEYS.has(row.key),
+      }))
+    : [];
   const parcelRows = result?.regridParcel
-    ? configuredIdentifyRows(result.regridParcel.properties, REGRID_PARCEL_IDENTIFY_FIELDS)
+    ? configuredIdentifyRows(result.regridParcel.properties, REGRID_PARCEL_IDENTIFY_FIELDS).map((row) => ({
+        ...row,
+        wide: REGRID_IDENTIFY_WIDE_KEYS.has(row.key),
+      }))
     : [];
   const hasMatch = Boolean(result?.matchCount);
 
   return (
     <>
       {identifiedFeature.status === "loading" ? (
-        <p className="panel-note">Checking the clicked Regrid parcel against workbook data.</p>
+        <p className="panel-note">
+          Checking this Regrid parcel against Property Tax Administration tax records.
+        </p>
       ) : null}
       {identifiedFeature.status === "error" ? (
         <p className="tax-parcel-error-banner">{identifiedFeature.error ?? "Failed to identify Regrid parcel."}</p>
       ) : null}
       {identifiedFeature.status === "success" && !hasMatch ? (
         <p className="regrid-no-match-state">
-          {result?.message ?? "No workbook match found for this Regrid parcel."}
+          {result?.message ??
+            "No Property Tax Administration tax record matched this Regrid parcel at the clicked location."}
         </p>
       ) : null}
 
       {result ? (
-        <div className="regrid-highlight-bar">
-          <span className="regrid-highlight-pill">{hasMatch ? "Matched" : "Regrid Only"}</span>
-          <strong>{hasMatch ? "Regrid parcel matched workbook tax-point data" : "Viewing Regrid parcel data"}</strong>
+        <div className="regrid-identify-summary">
+          <p>
+            {hasMatch
+              ? "This view combines internal property tax administration records with assessor parcel attributes from Regrid."
+              : "Regrid parcel attributes are shown below. No matching Property Tax Administration tax record was found at this location."}
+          </p>
         </div>
       ) : null}
 
-      {workbookRows.length > 0 ? <IdentifyFieldSection rows={workbookRows} title="Tax Point Data" /> : null}
-      {result && result.matches.length > 1 ? (
-        <p className="panel-note">{result.matches.length.toLocaleString()} workbook matches found at this location.</p>
+      {propertyTaxRows.length > 0 ? (
+        <IdentifySourceSection
+          description="Tax point and parcel attributes maintained in the property tax administration system."
+          rows={propertyTaxRows}
+          sourceBadge="Internal system"
+          title={`${PROPERTY_TAX_ADMIN_SOURCE_LABEL} tax records`}
+          tone="property-tax"
+        />
       ) : null}
-      {parcelRows.length > 0 ? <IdentifyFieldSection rows={parcelRows} title="Regrid Parcel" /> : null}
-      <IdentifyFieldSection
-        rows={[
-          {
-            key: "clicked_location",
-            label: "Clicked Location",
-            value: `${identifiedFeature.latlng.lat.toFixed(5)}, ${identifiedFeature.latlng.lng.toFixed(5)}`,
-          },
-        ]}
-        title="Identify"
-      />
+      {result && result.matches.length > 1 ? (
+        <p className="panel-note identify-source-note">
+          {result.matches.length.toLocaleString()} Property Tax Administration records found at this location.
+        </p>
+      ) : null}
+      {parcelRows.length > 0 ? (
+        <IdentifySourceSection
+          description="Boundary and assessor attributes returned by the Regrid parcel service."
+          rows={parcelRows}
+          sourceBadge="External parcel service"
+          title={REGRID_PARCEL_SOURCE_LABEL}
+          tone="regrid"
+        />
+      ) : null}
+      <div className="identify-context-footer">
+        <span className="identify-context-label">Clicked location</span>
+        <span className="identify-context-value">
+          {identifiedFeature.latlng.lat.toFixed(5)}, {identifiedFeature.latlng.lng.toFixed(5)}
+        </span>
+      </div>
     </>
   );
 }
 
-function layerIdentifyHeader(identifiedFeature: IdentifiedLayerFeature) {
+function layerIdentifyHeader(identifiedFeature: IdentifiedLayerFeature): IdentifyPanelHeader {
   const config = IDENTIFY_LAYER_CONFIG[identifiedFeature.layerKey];
   const properties = identifiedFeature.feature.properties;
   const primaryRows = configuredIdentifyRows(properties, config.primaryFields);
+
+  if (identifiedFeature.layerKey === "land_records") {
+    const lrNumber = formatIdentifyValue(resolveIdentifyProperty(properties, "lr_number"));
+    const lrType = formatIdentifyValue(resolveIdentifyProperty(properties, "lr_type"));
+    const documentType = formatIdentifyValue(resolveIdentifyProperty(properties, "doctype"));
+    const subtitle = [lrType, documentType].filter(Boolean).join(" · ");
+
+    return {
+      badgeClass: config.badgeClass,
+      label: config.label,
+      title: lrNumber ?? firstKnownValue(primaryRows) ?? `${config.label} ${properties.id}`,
+      subtitle: subtitle || null,
+    };
+  }
 
   return {
     badgeClass: config.badgeClass,
@@ -3217,21 +3309,37 @@ function layerIdentifyHeader(identifiedFeature: IdentifiedLayerFeature) {
   };
 }
 
-function regridIdentifyHeader(identifiedFeature: IdentifiedRegridFeature) {
+function regridIdentifyHeader(identifiedFeature: IdentifiedRegridFeature): IdentifyPanelHeader {
   const result = identifiedFeature.result;
   const primaryMatch = result?.matches[0] ?? null;
-  const workbookRows = primaryMatch ? objectIdentifyRows(primaryMatch) : [];
+  const propertyTaxRows = primaryMatch ? objectIdentifyRows(primaryMatch) : [];
   const hasMatch = Boolean(result?.matchCount);
-  const label = hasMatch ? "Workbook Match" : "Regrid Parcel";
+  const regridProperties = result?.regridParcel?.properties;
+  const label = hasMatch ? PROPERTY_TAX_ADMIN_SOURCE_LABEL : REGRID_PARCEL_SOURCE_LABEL;
   const title = hasMatch
-    ? firstKnownValue(workbookRows) ?? "Matched Workbook Parcel"
-    : "Regrid Parcel";
+    ? firstKnownValue(propertyTaxRows) ?? "Matched tax record"
+    : regridParcelIdentifyTitle(regridProperties) ?? REGRID_PARCEL_SOURCE_LABEL;
 
   return {
     badgeClass: hasMatch ? "regrid-matched" : "regrid",
     label,
     title: identifiedFeature.status === "loading" ? "Identifying parcel..." : title,
+    subtitle: hasMatch
+      ? "Matched to this Regrid parcel"
+      : "Assessor parcel data from Regrid",
   };
+}
+
+function regridParcelIdentifyTitle(properties: RegridParcelProperties | undefined) {
+  if (!properties) {
+    return null;
+  }
+
+  return (
+    formatIdentifyValue(resolveIdentifyProperty(properties as Record<string, unknown>, "parcelNumber")) ??
+    formatIdentifyValue(resolveIdentifyProperty(properties as Record<string, unknown>, "parcelnumb")) ??
+    formatIdentifyValue(resolveIdentifyProperty(properties as Record<string, unknown>, "account_number"))
+  );
 }
 
 function IdentifyFieldSection({ rows, title }: { rows: IdentifyFieldRow[]; title: string }) {
@@ -3247,17 +3355,60 @@ function IdentifyFieldSection({ rows, title }: { rows: IdentifyFieldRow[]; title
   );
 }
 
-function IdentifyFieldList({ rows }: { rows: IdentifyFieldRow[] }) {
+function IdentifySourceSection({
+  description,
+  rows,
+  sourceBadge,
+  title,
+  tone,
+}: {
+  description: string;
+  rows: IdentifyFieldRow[];
+  sourceBadge: string;
+  title: string;
+  tone: "property-tax" | "regrid";
+}) {
+  if (rows.length === 0) {
+    return null;
+  }
+
   return (
+    <section className={`identify-source-section identify-source-section--${tone}`}>
+      <div className="identify-source-header">
+        <span className={`identify-source-badge identify-source-badge--${tone} identify-layer-badge--title-case`}>
+          {sourceBadge}
+        </span>
+        <div className="identify-source-heading">
+          <h3>{title}</h3>
+          <p className="identify-source-description">{description}</p>
+        </div>
+      </div>
+      <IdentifyFieldList embedded rows={rows} />
+    </section>
+  );
+}
+
+function IdentifyFieldList({ rows, embedded = false }: { rows: IdentifyFieldRow[]; embedded?: boolean }) {
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const grid = (
     <dl className="identify-field-grid">
       {rows.map((row) => (
-        <div key={row.key}>
+        <div key={row.key} className={row.wide ? "identify-field-wide" : undefined}>
           <dt>{row.label}</dt>
           <dd>{row.value}</dd>
         </div>
       ))}
     </dl>
   );
+
+  if (embedded) {
+    return grid;
+  }
+
+  return <div className="identify-details">{grid}</div>;
 }
 
 function identifyFeatureStyle(
@@ -3355,7 +3506,7 @@ function createFeatureOnlyRegridIdentifyResult(
     matches: [],
     matchCount: 0,
     message: clickedFeature
-      ? "Workbook matching is not available for this account."
+      ? "Property Tax Administration matching is not available for this account."
       : "No Regrid parcel attributes were returned for this click.",
   };
 }
