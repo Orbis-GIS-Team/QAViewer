@@ -71,11 +71,9 @@ const upload = multer({
 
 const VALID_STATUSES = ["review", "active", "resolved", "hold"] as const;
 const VALID_SEVERITIES = ["high", "medium", "low"] as const;
-const VALID_ACTIONABILITY_STATES = ["normal", "high_pain", "no_parcel_data", "in_progress"] as const;
 const DATA_AVAILABILITY_FILTERS = ["available", "missing", "unknown"] as const;
 const EXPORT_LIMIT = 10_000;
 
-type QuestionActionabilityState = (typeof VALID_ACTIONABILITY_STATES)[number];
 type DataAvailabilityFilter = (typeof DATA_AVAILABILITY_FILTERS)[number];
 type QuestionAreaWhereClause = {
   whereClause: string;
@@ -123,50 +121,6 @@ function addBooleanAvailabilityFilter(
   }
 }
 
-function addActionabilityFilter(clauses: string[], value: unknown) {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  switch (normalized) {
-    case "open":
-      clauses.push(`qa.status IN ('review', 'active')`);
-      break;
-    case "closed":
-      clauses.push(`qa.status IN ('resolved', 'hold')`);
-      break;
-    case "assigned":
-      clauses.push(`NULLIF(BTRIM(qa.assigned_reviewer), '') IS NOT NULL`);
-      break;
-    case "unassigned":
-      clauses.push(`NULLIF(BTRIM(qa.assigned_reviewer), '') IS NULL`);
-      break;
-    case "needs_data":
-      clauses.push(`(
-        qa.exists_in_legal_layer IS NOT TRUE
-        OR qa.exists_in_management_layer IS NOT TRUE
-        OR qa.exists_in_client_tabular_bill_data IS NOT TRUE
-      )`);
-      break;
-    case "ready":
-      clauses.push(`(
-        qa.exists_in_legal_layer IS TRUE
-        AND qa.exists_in_management_layer IS TRUE
-        AND qa.exists_in_client_tabular_bill_data IS TRUE
-      )`);
-      break;
-    default:
-      break;
-  }
-}
-
-function addActionabilityStateFilter(clauses: string[], params: unknown[], value: unknown) {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if (!VALID_ACTIONABILITY_STATES.includes(normalized as QuestionActionabilityState)) {
-    return;
-  }
-
-  params.push(normalized);
-  clauses.push(`qa.actionability_state = $${params.length}`);
-}
-
 function buildQuestionAreaWhereClause(req: Request): QuestionAreaWhereClause {
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -200,8 +154,6 @@ function buildQuestionAreaWhereClause(req: Request): QuestionAreaWhereClause {
     req.query.assignedReviewer ?? req.query.reviewer ?? req.query.assignee,
     "COALESCE(qa.assigned_reviewer, '')",
   );
-  addActionabilityFilter(clauses, req.query.actionability);
-  addActionabilityStateFilter(clauses, params, req.query.actionabilityState);
   addBooleanAvailabilityFilter(clauses, req.query.hasLegalData, "qa.exists_in_legal_layer");
   addBooleanAvailabilityFilter(clauses, req.query.hasManagementData, "qa.exists_in_management_layer");
   addBooleanAvailabilityFilter(
@@ -251,7 +203,6 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
     code: string;
     status: string;
     severity: string;
-    actionability_state: string;
     title: string;
     summary: string;
     county: string | null;
@@ -281,7 +232,6 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
         code,
         status,
         severity,
-        actionability_state,
         title,
         summary,
         county,
@@ -322,7 +272,6 @@ router.get("/", requirePermission("question_areas:read"), async (req, res) => {
           code: row.code,
           status: row.status,
           severity: row.severity,
-          actionabilityState: row.actionability_state,
           title: row.title,
           summary: row.summary,
           county: row.county,
@@ -403,7 +352,6 @@ router.get("/export.xlsx", requirePermission("question_areas:read"), async (req,
     code: string;
     status: string;
     severity: string;
-    actionability_state: string;
     title: string;
     summary: string;
     description: string | null;
@@ -433,7 +381,6 @@ router.get("/export.xlsx", requirePermission("question_areas:read"), async (req,
         code,
         status,
         severity,
-        actionability_state,
         title,
         summary,
         description,
@@ -470,7 +417,6 @@ router.get("/export.xlsx", requirePermission("question_areas:read"), async (req,
     Status: row.status,
     Priority: row.severity,
     Risk: formatRisk(row.risk),
-    Actionability: row.actionability_state,
     Title: row.title,
     Summary: row.summary,
     "Spatial Overlay Notes": safeReportValue(row.spatial_overlay_notes),
@@ -560,7 +506,6 @@ router.get("/:code", requirePermission("question_areas:read"), async (req, res) 
     source_layer: string;
     status: string;
     severity: string;
-    actionability_state: string;
     title: string;
     summary: string;
     description: string | null;
@@ -594,7 +539,6 @@ router.get("/:code", requirePermission("question_areas:read"), async (req, res) 
         source_layer,
         status,
         severity,
-        actionability_state,
         title,
         summary,
         description,
@@ -672,7 +616,6 @@ router.get("/:code", requirePermission("question_areas:read"), async (req, res) 
     sourceLayer: row.source_layer,
     status: row.status,
     severity: row.severity,
-    actionabilityState: row.actionability_state,
     title: row.title,
     summary: row.summary,
     description: row.description,

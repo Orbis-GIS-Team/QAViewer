@@ -56,8 +56,7 @@ type SearchResult = {
 
 type SearchField = "all" | "parcel_code" | "county" | "qa_id";
 type DataAvailabilityFilter = "all" | "available" | "missing" | "unknown";
-type ActionabilityFilter = "all" | "open" | "closed" | "assigned" | "unassigned" | "needs_data" | "ready";
-type QuestionActionabilityState = "normal" | "high_pain" | "no_parcel_data" | "in_progress";
+type QuestionRiskLevel = "high" | "medium" | "low" | "unspecified";
 
 const MAP_VIEWPORT_DEBOUNCE_MS = 160;
 const MAP_DATA_FETCH_DEBOUNCE_MS = 220;
@@ -73,7 +72,6 @@ type QuestionAreaFilters = {
   county: string;
   propertyName: string;
   assignedReviewer: string;
-  actionability: ActionabilityFilter;
   hasLegalData: DataAvailabilityFilter;
   hasManagementData: DataAvailabilityFilter;
   hasClientBillData: DataAvailabilityFilter;
@@ -100,7 +98,6 @@ type QuestionAreaProperties = {
   code: string;
   status: string;
   severity: string;
-  actionabilityState: string | null;
   title: string;
   summary: string;
   county: string | null;
@@ -195,7 +192,6 @@ type QuestionAreaDetail = {
   sourceLayer: string;
   status: string;
   severity: string;
-  actionabilityState: string | null;
   title: string;
   summary: string;
   description: string | null;
@@ -315,32 +311,18 @@ type ManagementLegendItem = {
 
 const STATUS_OPTIONS = ["review", "active", "resolved", "hold"];
 const SEVERITY_OPTIONS = ["high", "medium", "low"];
-const QA_ACTIONABILITY_STATES: QuestionActionabilityState[] = [
-  "normal",
-  "high_pain",
-  "no_parcel_data",
-  "in_progress",
-];
-const QA_ACTIONABILITY_META: Record<QuestionActionabilityState, { label: string; symbol: string }> = {
-  normal: { label: "Normal", symbol: "?" },
-  high_pain: { label: "High Pain", symbol: "!" },
-  no_parcel_data: { label: "No Parcel Data", symbol: "X" },
-  in_progress: { label: "In Progress", symbol: "..." },
+const QA_RISK_LEVELS: QuestionRiskLevel[] = ["high", "medium", "low", "unspecified"];
+const QA_RISK_META: Record<QuestionRiskLevel, { label: string; symbol: string }> = {
+  high: { label: "High", symbol: "!" },
+  medium: { label: "Medium", symbol: "?" },
+  low: { label: "Low", symbol: "·" },
+  unspecified: { label: "Unspecified", symbol: "?" },
 };
 const SEARCH_FIELD_OPTIONS: Array<{ value: SearchField; label: string }> = [
   { value: "all", label: "All fields" },
   { value: "qa_id", label: "Question Area ID" },
   { value: "parcel_code", label: "Support Context" },
   { value: "county", label: "County / State" },
-];
-const ACTIONABILITY_OPTIONS: Array<{ value: ActionabilityFilter; label: string }> = [
-  { value: "all", label: "All actionability" },
-  { value: "open", label: "Open workflow" },
-  { value: "closed", label: "Closed workflow" },
-  { value: "assigned", label: "Assigned" },
-  { value: "unassigned", label: "Unassigned" },
-  { value: "needs_data", label: "Needs data" },
-  { value: "ready", label: "All data present" },
 ];
 const DATA_AVAILABILITY_OPTIONS: Array<{ value: DataAvailabilityFilter; label: string }> = [
   { value: "all", label: "Any" },
@@ -357,7 +339,6 @@ const DEFAULT_QA_FILTERS: QuestionAreaFilters = {
   county: "",
   propertyName: "",
   assignedReviewer: "",
-  actionability: "all",
   hasLegalData: "all",
   hasManagementData: "all",
   hasClientBillData: "all",
@@ -468,17 +449,8 @@ const MANAGEMENT_AREA_LEGEND_ITEMS: ManagementLegendItem[] = [
 ];
 const IDENTIFY_LAYER_ORDER: LayerKey[] = ["management_areas", "land_records"];
 
-const LAND_RECORD_IDENTIFY_WIDE_KEYS = new Set(["current_owner", "previous_owner", "fundname", "docname"]);
 const PROPERTY_TAX_ADMIN_SOURCE_LABEL = "Property Tax Administration";
 const REGRID_PARCEL_SOURCE_LABEL = "Regrid Parcel";
-const PROPERTY_TAX_IDENTIFY_WIDE_KEYS = new Set([
-  "ownerName",
-  "propertyName",
-  "tractName",
-  "description",
-  "notes",
-]);
-const REGRID_IDENTIFY_WIDE_KEYS = new Set(["ownerName", "address"]);
 
 const IDENTIFY_LAYER_CONFIG: Record<LayerKey, IdentifyLayerConfig> = {
   land_records: {
@@ -1429,7 +1401,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       <header className="workspace-header">
         <div className="header-main">
           <div className="header-brand">
-            <h1>Question Land Services Review Console</h1>
+            <h1>Land Services Review Console</h1>
           </div>
           {selectedDetail ? (
             <div className="header-active-record">
@@ -1637,21 +1609,6 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                               {SEVERITY_OPTIONS.map((severity) => (
                                 <option key={severity} value={severity}>
                                   {humanize(severity)}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label>
-                            Actionability
-                            <select
-                              value={filters.actionability}
-                              onChange={(event) =>
-                                updateFilters({ actionability: event.target.value as ActionabilityFilter })
-                              }
-                            >
-                              {ACTIONABILITY_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
                                 </option>
                               ))}
                             </select>
@@ -2075,7 +2032,6 @@ function buildQuestionAreaQueryParams(filters: QuestionAreaFilters, mapBbox: str
   appendFilterParam(params, "county", filters.county);
   appendFilterParam(params, "propertyName", filters.propertyName);
   appendFilterParam(params, "assignedReviewer", filters.assignedReviewer);
-  appendFilterParam(params, "actionability", filters.actionability, "all");
   appendFilterParam(params, "hasLegalData", filters.hasLegalData, "all");
   appendFilterParam(params, "hasManagementData", filters.hasManagementData, "all");
   appendFilterParam(params, "hasClientBillData", filters.hasClientBillData, "all");
@@ -2178,13 +2134,21 @@ function ReviewRecordSections({
         </dl>
         <div className="services-spotlight">
           <div className="services-spotlight-header">
-            <span className="services-spotlight-eyebrow">Primary Direction</span>
             <h3>Land Service Guidance</h3>
+            <div className="services-spotlight-risk">
+              <span className="services-spotlight-risk-label">Risk</span>
+              <span
+                className={`badge ${severityBadgeClass(
+                  normalizeRiskLevel(selectedDetail.risk, selectedDetail.severity),
+                )}`}
+              >
+                {humanize(normalizeRiskLevel(selectedDetail.risk, selectedDetail.severity))}
+              </span>
+            </div>
           </div>
           <p className="services-spotlight-copy">{formatTextValue(selectedDetail.landServices)}</p>
         </div>
         <dl className="detail-grid detail-grid-secondary">
-          <DetailItem label="Risk">{formatRisk(selectedDetail.risk)}</DetailItem>
           <DetailItem label="Legal/Deed Evidence">{formatBoolean(selectedDetail.existsInLegalLayer)}</DetailItem>
           <DetailItem label="Management Data">
             {formatBoolean(selectedDetail.existsInManagementLayer)}
@@ -3092,6 +3056,9 @@ function IdentifyPanel({
     "map-identify-panel",
     identifiedItem.kind === "regrid" ? "regrid-identify-panel property-tax-identify-panel" : "",
     identifiedItem.kind === "layer" && identifiedItem.layerKey === "land_records" ? "atlas-land-records-identify-panel" : "",
+    identifiedItem.kind === "layer" && identifiedItem.layerKey === "management_areas"
+      ? "management-areas-identify-panel"
+      : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -3108,7 +3075,7 @@ function IdentifyPanel({
             {header.label}
           </span>
           <div className="identify-heading-copy">
-            <h2>{header.title}</h2>
+            {header.title ? <h2>{header.title}</h2> : null}
             {header.subtitle ? <p className="identify-subtitle">{header.subtitle}</p> : null}
           </div>
         </div>
@@ -3197,11 +3164,7 @@ function LayerIdentifyDetails({ identifiedFeature }: { identifiedFeature: Identi
   }
 
   const rows = [...primaryRows, ...attributeRows, ...contextRows]
-    .filter((row) => !excludedKeys.has(row.key))
-    .map((row) => ({
-      ...row,
-      wide: identifiedFeature.layerKey === "land_records" && LAND_RECORD_IDENTIFY_WIDE_KEYS.has(row.key),
-    }));
+    .filter((row) => !excludedKeys.has(row.key));
 
   return <IdentifyFieldList rows={rows} />;
 }
@@ -3210,16 +3173,10 @@ function RegridIdentifyDetails({ identifiedFeature }: { identifiedFeature: Ident
   const result = identifiedFeature.result;
   const primaryMatch = result?.matches[0] ?? null;
   const propertyTaxRows = primaryMatch
-    ? configuredIdentifyRows(primaryMatch, PROPERTY_TAX_POINT_IDENTIFY_FIELDS).map((row) => ({
-        ...row,
-        wide: PROPERTY_TAX_IDENTIFY_WIDE_KEYS.has(row.key),
-      }))
+    ? configuredIdentifyRows(primaryMatch, PROPERTY_TAX_POINT_IDENTIFY_FIELDS)
     : [];
   const parcelRows = result?.regridParcel
-    ? configuredIdentifyRows(result.regridParcel.properties, REGRID_PARCEL_IDENTIFY_FIELDS).map((row) => ({
-        ...row,
-        wide: REGRID_IDENTIFY_WIDE_KEYS.has(row.key),
-      }))
+    ? configuredIdentifyRows(result.regridParcel.properties, REGRID_PARCEL_IDENTIFY_FIELDS)
     : [];
   const hasMatch = Boolean(result?.matchCount);
 
@@ -3311,22 +3268,31 @@ function layerIdentifyHeader(identifiedFeature: IdentifiedLayerFeature): Identif
 
 function regridIdentifyHeader(identifiedFeature: IdentifiedRegridFeature): IdentifyPanelHeader {
   const result = identifiedFeature.result;
-  const primaryMatch = result?.matches[0] ?? null;
-  const propertyTaxRows = primaryMatch ? objectIdentifyRows(primaryMatch) : [];
-  const hasMatch = Boolean(result?.matchCount);
   const regridProperties = result?.regridParcel?.properties;
+  const hasMatch = Boolean(result?.matchCount);
   const label = hasMatch ? PROPERTY_TAX_ADMIN_SOURCE_LABEL : REGRID_PARCEL_SOURCE_LABEL;
-  const title = hasMatch
-    ? firstKnownValue(propertyTaxRows) ?? "Matched tax record"
-    : regridParcelIdentifyTitle(regridProperties) ?? REGRID_PARCEL_SOURCE_LABEL;
+
+  if (identifiedFeature.status === "loading") {
+    return {
+      badgeClass: hasMatch ? "regrid-matched" : "regrid",
+      label,
+      title: "Identifying parcel...",
+    };
+  }
+
+  if (hasMatch) {
+    return {
+      badgeClass: "regrid-matched",
+      label,
+      title: "",
+    };
+  }
 
   return {
-    badgeClass: hasMatch ? "regrid-matched" : "regrid",
+    badgeClass: "regrid",
     label,
-    title: identifiedFeature.status === "loading" ? "Identifying parcel..." : title,
-    subtitle: hasMatch
-      ? "Matched to this Regrid parcel"
-      : "Assessor parcel data from Regrid",
+    title: regridParcelIdentifyTitle(regridProperties) ?? REGRID_PARCEL_SOURCE_LABEL,
+    subtitle: "Assessor parcel data from Regrid",
   };
 }
 
@@ -4065,7 +4031,7 @@ function QAMarkerLayer({
           <Marker
             key={code}
             eventHandlers={{ click: () => onSelect(code) }}
-            icon={createQAMarker(selectedCode, code, feature.properties.actionabilityState)}
+            icon={createQAMarker(selectedCode, code, feature.properties.risk, feature.properties.severity)}
             position={[lat, lng]}
           />
         );
@@ -4198,7 +4164,7 @@ function MapLegendRail({
                   <div key={item.key} className="legend-group">
                     <div className="legend-item">
                       <span className={`legend-swatch legend-swatch-${item.swatch}`}>
-                        {item.key === "qa_markers" ? QA_ACTIONABILITY_META.normal.symbol : null}
+                        {item.key === "qa_markers" ? QA_RISK_META.medium.symbol : null}
                       </span>
                       <span className="legend-label">{item.label}</span>
                       {item.toggleable ? (
@@ -4215,12 +4181,12 @@ function MapLegendRail({
                     </div>
                     {item.key === "qa_markers" ? (
                       <div className="legend-sublist">
-                        {QA_ACTIONABILITY_STATES.map((state) => (
-                          <div key={state} className="legend-item legend-item-indented">
-                            <span className={`legend-swatch legend-swatch-qa-marker qa-marker-${state}`}>
-                              {QA_ACTIONABILITY_META[state].symbol}
+                        {QA_RISK_LEVELS.map((riskLevel) => (
+                          <div key={riskLevel} className="legend-item legend-item-indented">
+                            <span className={`legend-swatch legend-swatch-qa-marker qa-marker-${riskLevel}`}>
+                              {QA_RISK_META[riskLevel].symbol}
                             </span>
-                            <span className="legend-label">{QA_ACTIONABILITY_META[state].label}</span>
+                            <span className="legend-label">{QA_RISK_META[riskLevel].label}</span>
                           </div>
                         ))}
                       </div>
@@ -4329,14 +4295,19 @@ function SkeletonDetail() {
   );
 }
 
-function createQAMarker(selectedCode: string | null, code: string, actionabilityState: string | null) {
+function createQAMarker(
+  selectedCode: string | null,
+  code: string,
+  risk: string | null,
+  severity: string | null,
+) {
   const isSelected = selectedCode === code;
-  const state = normalizeActionabilityState(actionabilityState);
-  const meta = QA_ACTIONABILITY_META[state];
+  const riskLevel = normalizeRiskLevel(risk, severity);
+  const meta = QA_RISK_META[riskLevel];
 
   return L.divIcon({
     className: "qa-marker-icon",
-    html: `<div class="qa-marker-inner qa-marker-${state} ${isSelected ? "selected pulse" : ""}">${meta.symbol}</div>`,
+    html: `<div class="qa-marker-inner qa-marker-${riskLevel} ${isSelected ? "selected pulse" : ""}">${meta.symbol}</div>`,
     iconAnchor: [12, 12],
     iconSize: [24, 24],
   });
@@ -4417,19 +4388,21 @@ function severityBadgeClass(value: string | null | undefined) {
   }
 }
 
-function normalizeActionabilityState(value: string | null | undefined): QuestionActionabilityState {
-  const normalized = value?.toLowerCase();
-  return QA_ACTIONABILITY_STATES.includes(normalized as QuestionActionabilityState)
-    ? (normalized as QuestionActionabilityState)
-    : "normal";
-}
+function normalizeRiskLevel(
+  risk: string | null | undefined,
+  severity: string | null | undefined,
+): QuestionRiskLevel {
+  const normalizedRisk = risk?.trim().toLowerCase();
+  if (normalizedRisk === "high" || normalizedRisk === "medium" || normalizedRisk === "low") {
+    return normalizedRisk;
+  }
 
-function actionabilityLabel(value: string | null | undefined) {
-  return QA_ACTIONABILITY_META[normalizeActionabilityState(value)].label;
-}
+  const normalizedSeverity = severity?.trim().toLowerCase();
+  if (normalizedSeverity === "high" || normalizedSeverity === "medium" || normalizedSeverity === "low") {
+    return normalizedSeverity;
+  }
 
-function actionabilityBadgeClass(value: string | null | undefined) {
-  return `actionability-${normalizeActionabilityState(value)}`;
+  return "unspecified";
 }
 
 function isWorkflowOpen(value: string | null | undefined) {

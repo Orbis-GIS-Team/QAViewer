@@ -10,7 +10,6 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "db:apply-actionability": "tsx src/db/applyActionabilityStates.ts",
     "db:apply-user-roles": "tsx src/db/applyUserRoles.ts",
     "db:counts": "tsx src/db/reportRuntimeCounts.ts",
     "db:dump:prepared": "tsx src/db/dumpPreparedDatabase.ts",

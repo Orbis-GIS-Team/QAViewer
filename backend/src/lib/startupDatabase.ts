@@ -29,7 +29,6 @@ const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
     "source_layer",
     "status",
     "severity",
-    "actionability_state",
     "title",
     "summary",
     "description",

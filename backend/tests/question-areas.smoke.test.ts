@@ -75,7 +75,6 @@ const minimalQaRow = {
   source_group: "group-a",
   status: "review",
   severity: "medium",
-  actionability_state: "normal",
   title: "Test QA",
   summary: "A test question area",
   county: "Clatsop",
@@ -105,7 +104,6 @@ const qaDetailRow = {
   source_group: "group-a",
   status: "review",
   severity: "medium",
-  actionability_state: "normal",
   title: "Test QA",
   summary: "summary",
   description: null,
@@ -182,7 +180,6 @@ describe("GET /api/question-areas", () => {
     expect(Array.isArray(res.body.features)).toBe(true);
     expect(res.body.features[0].properties).toHaveProperty("code", "QA-001");
     expect(res.body.features[0].properties).toHaveProperty("status", "review");
-    expect(res.body.features[0].properties).toHaveProperty("actionabilityState", "normal");
     expect(res.body.features[0].properties).toHaveProperty("risk", "medium");
     expect(res.body.features[0].properties).toHaveProperty("spatialOverlayNotes", "A test question area");
     expect(res.body.features[0].properties).toHaveProperty("existsInLegalLayer", true);
@@ -241,8 +238,6 @@ describe("GET /api/question-areas", () => {
         county: "Clatsop",
         propertyName: "Lewis",
         assignedReviewer: "Ada",
-        actionability: "needs_data",
-        actionabilityState: "high_pain",
         hasLegalData: "available",
         hasManagementData: "missing",
         hasClientBillData: "unknown",
@@ -257,7 +252,6 @@ describe("GET /api/question-areas", () => {
     expect(sql).toContain("COALESCE(qa.county, '') ILIKE");
     expect(sql).toContain("COALESCE(qa.property_name, '') ILIKE");
     expect(sql).toContain("COALESCE(qa.assigned_reviewer, '') ILIKE");
-    expect(sql).toContain("qa.actionability_state =");
     expect(sql).toContain("qa.exists_in_legal_layer IS TRUE");
     expect(sql).toContain("qa.exists_in_management_layer IS FALSE");
     expect(sql).toContain("qa.exists_in_client_tabular_bill_data IS NULL");
@@ -268,7 +262,6 @@ describe("GET /api/question-areas", () => {
       "%Clatsop%",
       "%Lewis%",
       "%Ada%",
-      "high_pain",
     ]);
   });
 });
@@ -279,11 +272,10 @@ describe("GET /api/question-areas/export.xlsx", () => {
   const exportRow = {
     code: "QA-001",
     status: "review",
-    severity: "medium",
-    actionability_state: "high_pain",
-    title: "Test QA",
-    summary: "A test question area",
-    description: "Exportable description",
+  severity: "medium",
+  title: "Test QA",
+  summary: "A test question area",
+  description: "Exportable description",
     county: "Clatsop",
     state: "OR",
     parcel_code: "PARCEL-001",
@@ -338,7 +330,6 @@ describe("GET /api/question-areas/export.xlsx", () => {
         county: "Clatsop",
         propertyName: "Lewis",
         assignedReviewer: "Ada",
-        actionability: "ready",
         hasLegalData: "available",
         hasManagementData: "available",
         hasClientBillData: "available",
@@ -391,7 +382,6 @@ describe("GET /api/question-areas/:code", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty("code", "QA-001");
-    expect(res.body).toHaveProperty("actionabilityState", "normal");
     expect(Array.isArray(res.body.comments)).toBe(true);
     expect(Array.isArray(res.body.documents)).toBe(true);
   });

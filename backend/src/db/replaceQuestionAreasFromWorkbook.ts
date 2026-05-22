@@ -23,7 +23,6 @@ type WorkbookRow = {
   sourceLayer: string;
   status: "review";
   severity: "high" | "medium" | "low";
-  actionabilityState: "normal";
   title: string;
   summary: string;
   description: string | null;
@@ -178,7 +177,6 @@ function loadWorkbookRows(workbookPath: string): WorkbookRow[] {
       sourceLayer: "PTA Spatial Overlay Results",
       status: "review",
       severity: riskToSeverity(risk),
-      actionabilityState: "normal",
       title: propertyName ?? parcelCode,
       summary: spatialOverlayNotes ?? landServices ?? "Questionnaire review item",
       description: null,
@@ -255,7 +253,6 @@ async function insertQuestionArea(client: PoolClient, row: WorkbookRow): Promise
         source_layer,
         status,
         severity,
-        actionability_state,
         title,
         summary,
         description,
@@ -284,10 +281,10 @@ async function insertQuestionArea(client: PoolClient, row: WorkbookRow): Promise
         geom
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-        ST_SetSRID(ST_MakePoint($23, $22), 4326)
+        $1, $2, $3, $4, $5, $6, $7, $8, $9,
+        $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+        $20, $21, $22, $23, $24, $25, $26, $27, $28, $29,
+        ST_SetSRID(ST_MakePoint($22, $21), 4326)
       )
     `,
     [
@@ -295,7 +292,6 @@ async function insertQuestionArea(client: PoolClient, row: WorkbookRow): Promise
       row.sourceLayer,
       row.status,
       row.severity,
-      row.actionabilityState,
       row.title,
       row.summary,
       row.description,

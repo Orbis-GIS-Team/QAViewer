@@ -2344,15 +2344,24 @@ textarea {
   gap: 4px;
 }
 
-.atlas-land-records-identify-panel .identify-field-grid {
+.atlas-land-records-identify-panel .identify-field-grid,
+.management-areas-identify-panel .identify-field-grid,
+.property-tax-identify-panel .identify-source-section .identify-field-grid {
   gap: 10px;
 }
 
-.atlas-land-records-identify-panel .identify-field-grid div {
+.atlas-land-records-identify-panel .identify-field-grid div,
+.management-areas-identify-panel .identify-field-grid div,
+.property-tax-identify-panel .identify-source-section .identify-field-grid div {
   padding: 10px 12px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 8px;
   background: #f8fafc;
+}
+
+.management-areas-identify-panel .identify-details {
+  padding-top: 4px;
+  border-top: 1px solid var(--panel-edge);
 }
 
 .identify-field-wide {
@@ -2501,17 +2510,6 @@ textarea {
 
 .identify-source-note {
   margin-top: -4px;
-}
-
-.property-tax-identify-panel .identify-source-section .identify-field-grid {
-  gap: 10px;
-}
-
-.property-tax-identify-panel .identify-source-section .identify-field-grid div {
-  padding: 10px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.88);
 }
 
 .identify-context-footer {
@@ -3216,6 +3214,26 @@ textarea {
   pointer-events: none;
 }
 
+.qa-marker-high {
+  background: #dc2626;
+  color: #fff;
+}
+
+.qa-marker-medium {
+  background: #d97706;
+  color: #fff;
+}
+
+.qa-marker-low {
+  background: #15803d;
+  color: #fff;
+}
+
+.qa-marker-unspecified {
+  background: #6b7280;
+  color: #fff;
+}
+
 .qa-marker-normal {
   background: #2ab7a9;
   color: #fff;
@@ -3236,26 +3254,6 @@ textarea {
   color: #fff;
   font-size: 0.72rem;
   letter-spacing: 0;
-}
-
-.badge.actionability-normal {
-  background: #ccfbf1;
-  color: #0f766e;
-}
-
-.badge.actionability-high_pain {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-
-.badge.actionability-no_parcel_data {
-  background: #e5e7eb;
-  color: #111827;
-}
-
-.badge.actionability-in_progress {
-  background: #dbeafe;
-  color: #1d4ed8;
 }
 
 /* Marker Pulse Animation */
@@ -3707,16 +3705,26 @@ textarea:focus {
 }
 
 .services-spotlight-header {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.services-spotlight-eyebrow {
+.services-spotlight-risk {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+  flex: 0 0 auto;
+}
+
+.services-spotlight-risk-label {
   font-size: 0.6875rem;
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--muted);
+  line-height: 1.2;
 }
 
 .services-spotlight-header h3 {
@@ -3784,6 +3792,22 @@ textarea:focus {
 .legend-swatch-qa-marker,
 .qa-marker-inner {
   border-color: #17211d;
+}
+
+.qa-marker-high {
+  background: #dc2626;
+}
+
+.qa-marker-medium {
+  background: #d97706;
+}
+
+.qa-marker-low {
+  background: #15803d;
+}
+
+.qa-marker-unspecified {
+  background: #6b7280;
 }
 
 .qa-marker-normal {

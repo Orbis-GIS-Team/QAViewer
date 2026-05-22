@@ -44,7 +44,6 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
       source_layer TEXT NOT NULL,
       status TEXT NOT NULL CHECK (status IN ('review', 'active', 'resolved', 'hold')),
       severity TEXT NOT NULL CHECK (severity IN ('high', 'medium', 'low')),
-      actionability_state TEXT NOT NULL DEFAULT 'normal' CHECK (actionability_state IN ('normal', 'high_pain', 'no_parcel_data', 'in_progress')),
       title TEXT NOT NULL,
       summary TEXT NOT NULL,
       description TEXT,
@@ -78,40 +77,12 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
 
   await client.query(`
     ALTER TABLE question_areas
-    ADD COLUMN IF NOT EXISTS actionability_state TEXT
-  `);
-
-  await client.query(`
-    ALTER TABLE question_areas
     ADD COLUMN IF NOT EXISTS spatial_overlay_notes TEXT,
     ADD COLUMN IF NOT EXISTS legal_description TEXT,
     ADD COLUMN IF NOT EXISTS risk TEXT,
     ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION,
     ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION,
     ADD COLUMN IF NOT EXISTS questionnaire_source TEXT
-  `);
-
-  await client.query(`
-    UPDATE question_areas
-    SET actionability_state = 'normal'
-    WHERE actionability_state IS NULL
-  `);
-
-  await client.query(`
-    ALTER TABLE question_areas
-    ALTER COLUMN actionability_state SET DEFAULT 'normal',
-    ALTER COLUMN actionability_state SET NOT NULL
-  `);
-
-  await client.query(`
-    ALTER TABLE question_areas
-    DROP CONSTRAINT IF EXISTS question_areas_actionability_state_check
-  `);
-
-  await client.query(`
-    ALTER TABLE question_areas
-    ADD CONSTRAINT question_areas_actionability_state_check
-    CHECK (actionability_state IN ('normal', 'high_pain', 'no_parcel_data', 'in_progress'))
   `);
 
   await client.query(`
@@ -466,7 +437,6 @@ export async function ensureSchema(client: PoolClient): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS question_areas_status_idx ON question_areas (status);
     CREATE INDEX IF NOT EXISTS question_areas_severity_idx ON question_areas (severity);
-    CREATE INDEX IF NOT EXISTS question_areas_actionability_state_idx ON question_areas (actionability_state);
     CREATE UNIQUE INDEX IF NOT EXISTS question_areas_parcel_code_unique_idx
       ON question_areas (parcel_code)
       WHERE parcel_code IS NOT NULL;
