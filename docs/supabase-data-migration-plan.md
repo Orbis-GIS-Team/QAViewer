@@ -35,6 +35,7 @@ In scope:
 
 - Supabase database setup.
 - PostGIS and `pg_trgm` enablement.
+- PostGIS placement outside the exposed `public` schema.
 - Migration framework.
 - Production startup validation mode.
 - Explicit CLI commands for seeding/loading.
@@ -53,7 +54,7 @@ Out of scope:
 ### 1. Create Supabase Project
 
 - Create a Supabase project for QAViewer.
-- Enable PostGIS.
+- Enable PostGIS in a non-exposed schema such as `extensions`, not `public`.
 - Enable `pg_trgm`.
 - Store these secrets outside the repo:
   - `DATABASE_URL`

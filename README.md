@@ -151,6 +151,8 @@ FRONTEND_ORIGIN=http://localhost:5173
 
 Use the Supabase owner/runtime database connection for the backend. The Supabase migrations enable RLS on public runtime tables as Data API defense-in-depth, but the Express API is still the application authorization boundary and connects as the database owner/service role.
 
+For Supabase environments, install PostGIS into the non-exposed `extensions` schema instead of `public`. The backend connection adds `extensions` to the session `search_path` so existing `geometry` and `ST_*` SQL continues to work after relocation.
+
 Then run:
 
 ```bash

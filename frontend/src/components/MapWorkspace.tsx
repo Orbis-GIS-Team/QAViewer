@@ -5,8 +5,6 @@ import type { Feature, FeatureCollection, Geometry, Point } from "geojson";
 import L from "leaflet";
 import type { LatLngExpression, PathOptions } from "leaflet";
 import * as esriLeaflet from "esri-leaflet";
-import Supercluster from "supercluster";
-import type { ClusterFeature, PointFeature } from "supercluster";
 import {
   GeoJSON,
   MapContainer,
@@ -20,7 +18,6 @@ import {
 import type { Session } from "../App";
 import { apiDownload, apiRequest } from "../lib/api";
 import {
-  PROPERTY_TAX_CLUSTER_MAX_ZOOM,
   PROPERTY_TAX_POINT_MIN_ZOOM,
   PROPERTY_TAX_REGRID_MIN_ZOOM,
   fetchRegridParcels,
@@ -312,11 +309,13 @@ type ManagementLegendItem = {
 const STATUS_OPTIONS = ["review", "active", "resolved", "hold"];
 const SEVERITY_OPTIONS = ["high", "medium", "low"];
 const QA_RISK_LEVELS: QuestionRiskLevel[] = ["high", "medium", "low", "unspecified"];
+const QA_MARKER_SYMBOL = "?";
+
 const QA_RISK_META: Record<QuestionRiskLevel, { label: string; symbol: string }> = {
-  high: { label: "High", symbol: "!" },
-  medium: { label: "Medium", symbol: "?" },
-  low: { label: "Low", symbol: "·" },
-  unspecified: { label: "Unspecified", symbol: "?" },
+  high: { label: "High", symbol: QA_MARKER_SYMBOL },
+  medium: { label: "Medium", symbol: QA_MARKER_SYMBOL },
+  low: { label: "Low", symbol: QA_MARKER_SYMBOL },
+  unspecified: { label: "Unspecified", symbol: QA_MARKER_SYMBOL },
 };
 const SEARCH_FIELD_OPTIONS: Array<{ value: SearchField; label: string }> = [
   { value: "all", label: "All fields" },
@@ -555,10 +554,10 @@ const managementAreaStyle: PathOptions = {
 
 const regridParcelStyle: PathOptions = {
   className: "regrid-parcel-path",
-  color: "#6b7280",
+  color: "#9ca3af",
   fillOpacity: 0,
-  opacity: 0.92,
-  weight: 1.6,
+  opacity: 0.75,
+  weight: 1.4,
 };
 
 const matchedRegridParcelStyle: PathOptions = {
@@ -876,7 +875,8 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       return;
     }
 
-    const shouldFetchPropertyTaxPoints = propertyTaxLayerVisibility.propertyTaxPoints;
+    const shouldFetchPropertyTaxPoints =
+      propertyTaxLayerVisibility.propertyTaxPoints && mapZoom >= PROPERTY_TAX_POINT_MIN_ZOOM;
     if (!shouldFetchPropertyTaxPoints) {
       setPropertyTaxPoints(null);
       setPropertyTaxMapError(null);
@@ -908,7 +908,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       window.clearTimeout(timeoutId);
       abortController.abort();
     };
-  }, [canReadPropertyTaxMap, mapBbox, propertyTaxLayerVisibility.propertyTaxPoints, session.token]);
+  }, [canReadPropertyTaxMap, mapBbox, mapZoom, propertyTaxLayerVisibility.propertyTaxPoints, session.token]);
 
   useEffect(() => {
     if (!canReadPropertyTaxMap || !propertyTaxLayerVisibility.regridParcels || mapZoom < PROPERTY_TAX_REGRID_MIN_ZOOM) {
@@ -1674,7 +1674,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                         </div>
                         <div className="filter-grid data-filter-grid">
                           <label>
-                            Legal data
+                            Title evidence
                             <select
                               value={filters.hasLegalData}
                               onChange={(event) =>
@@ -1689,7 +1689,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                             </select>
                           </label>
                           <label>
-                            Management data
+                            Property asset
                             <select
                               value={filters.hasManagementData}
                               onChange={(event) =>
@@ -1704,7 +1704,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                             </select>
                           </label>
                           <label>
-                            Client bill data
+                            Tax bill received
                             <select
                               value={filters.hasClientBillData}
                               onChange={(event) =>
@@ -1869,7 +1869,10 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
               </Pane>
             ) : null}
 
-            {canReadPropertyTaxMap && propertyTaxLayerVisibility.propertyTaxPoints && propertyTaxPoints ? (
+            {canReadPropertyTaxMap
+            && propertyTaxLayerVisibility.propertyTaxPoints
+            && mapZoom >= PROPERTY_TAX_POINT_MIN_ZOOM
+            && propertyTaxPoints ? (
               <Pane name="property-tax-points" style={{ zIndex: 430 }}>
                 <MapLayerErrorBoundary
                   label="Property tax point layer"
@@ -2130,7 +2133,7 @@ function ReviewRecordSections({
       <section className="panel-section">
         <dl className="acres-summary-grid">
           <DetailItem label="Tax Bill Acres" mono>{formatMetric(selectedDetail.taxBillAcres)}</DetailItem>
-          <DetailItem label="GIS Acres" mono>{formatMetric(selectedDetail.gisAcres)}</DetailItem>
+          <DetailItem label="Regrid GIS Acres" mono>{formatMetric(selectedDetail.gisAcres)}</DetailItem>
         </dl>
         <div className="services-spotlight">
           <div className="services-spotlight-header">
@@ -2149,11 +2152,11 @@ function ReviewRecordSections({
           <p className="services-spotlight-copy">{formatTextValue(selectedDetail.landServices)}</p>
         </div>
         <dl className="detail-grid detail-grid-secondary">
-          <DetailItem label="Legal/Deed Evidence">{formatBoolean(selectedDetail.existsInLegalLayer)}</DetailItem>
-          <DetailItem label="Management Data">
+          <DetailItem label="Title Evidence">{formatBoolean(selectedDetail.existsInLegalLayer)}</DetailItem>
+          <DetailItem label="Property Asset">
             {formatBoolean(selectedDetail.existsInManagementLayer)}
           </DetailItem>
-          <DetailItem label="In Client Bill Data">
+          <DetailItem label="Tax Bill Received">
             {formatBoolean(selectedDetail.existsInClientTabularBillData)}
           </DetailItem>
           {canReviewQuestionAreas || canAssignQuestionAreas ? (
@@ -2165,14 +2168,18 @@ function ReviewRecordSections({
             <dt>Spatial Overlay Notes</dt>
             <dd>{formatTextValue(selectedDetail.spatialOverlayNotes)}</dd>
           </div>
-          <div className="qa-reason">
-            <dt>Legal Description</dt>
-            <dd>{formatTextValue(selectedDetail.legalDescription)}</dd>
-          </div>
-          <div className="qa-reason">
-            <dt>Review Notes</dt>
-            <dd>{formatTextValue(selectedDetail.description)}</dd>
-          </div>
+          {canReviewQuestionAreas ? (
+            <>
+              <div className="qa-reason">
+                <dt>Legal Description</dt>
+                <dd>{formatTextValue(selectedDetail.legalDescription)}</dd>
+              </div>
+              <div className="qa-reason">
+                <dt>Review Notes</dt>
+                <dd>{formatTextValue(selectedDetail.description)}</dd>
+              </div>
+            </>
+          ) : null}
         </dl>
       </section>
 
@@ -2251,28 +2258,28 @@ function ReviewRecordSections({
         </section>
       ) : null}
 
-      <section className="panel-section">
-        <div className="section-heading">
-          <h2>Comments</h2>
-          <span>{selectedDetail.comments.length} entries</span>
-        </div>
-        <div className="comment-list">
-          {selectedDetail.comments.length > 0 ? (
-            selectedDetail.comments.map((comment) => (
-              <article key={comment.id} className="comment-card">
-                <div>
-                  <strong>{comment.authorName}</strong>
-                  <small>{comment.authorRole}</small>
-                </div>
-                <p>{comment.body}</p>
-                <span>{new Date(comment.createdAt).toLocaleString()}</span>
-              </article>
-            ))
-          ) : (
-            <p className="panel-note">No comments have been added yet.</p>
-          )}
-        </div>
-        {canCommentOnQuestionAreas ? (
+      {canCommentOnQuestionAreas ? (
+        <section className="panel-section">
+          <div className="section-heading">
+            <h2>Comments</h2>
+            <span>{selectedDetail.comments.length} entries</span>
+          </div>
+          <div className="comment-list">
+            {selectedDetail.comments.length > 0 ? (
+              selectedDetail.comments.map((comment) => (
+                <article key={comment.id} className="comment-card">
+                  <div>
+                    <strong>{comment.authorName}</strong>
+                    <small>{comment.authorRole}</small>
+                  </div>
+                  <p>{comment.body}</p>
+                  <span>{new Date(comment.createdAt).toLocaleString()}</span>
+                </article>
+              ))
+            ) : (
+              <p className="panel-note">No comments have been added yet.</p>
+            )}
+          </div>
           <form className="form-stack" onSubmit={handleCommentSubmit}>
             <label>
               Add comment
@@ -2282,32 +2289,32 @@ function ReviewRecordSections({
               {busy.commenting ? "Posting..." : "Post comment"}
             </button>
           </form>
-        ) : null}
-      </section>
+        </section>
+      ) : null}
 
-      <section className="panel-section">
-        <div className="section-heading">
-          <h2>Documents</h2>
-          <span>{selectedDetail.documents.length} attached</span>
-        </div>
-        <div className="document-list">
-          {selectedDetail.documents.length > 0 ? (
-            selectedDetail.documents.map((document) => (
-              <article key={document.id} className="document-card">
-                <div>
-                  <strong>{document.originalName}</strong>
-                  <small>{formatFileSize(document.sizeBytes)}</small>
-                </div>
-                <button className="ghost-button" onClick={() => void handleDownloadDocument(document)} type="button">
-                  Download
-                </button>
-              </article>
-            ))
-          ) : (
-            <p className="panel-note">No documents have been uploaded yet.</p>
-          )}
-        </div>
-        {canUploadQuestionAreaDocuments ? (
+      {canUploadQuestionAreaDocuments ? (
+        <section className="panel-section">
+          <div className="section-heading">
+            <h2>Documents</h2>
+            <span>{selectedDetail.documents.length} attached</span>
+          </div>
+          <div className="document-list">
+            {selectedDetail.documents.length > 0 ? (
+              selectedDetail.documents.map((document) => (
+                <article key={document.id} className="document-card">
+                  <div>
+                    <strong>{document.originalName}</strong>
+                    <small>{formatFileSize(document.sizeBytes)}</small>
+                  </div>
+                  <button className="ghost-button" onClick={() => void handleDownloadDocument(document)} type="button">
+                    Download
+                  </button>
+                </article>
+              ))
+            ) : (
+              <p className="panel-note">No documents have been uploaded yet.</p>
+            )}
+          </div>
           <div className="upload-row">
             <input
               key={`question-area-upload-${uploadInputKey}`}
@@ -2323,8 +2330,8 @@ function ReviewRecordSections({
               {busy.uploading ? "Uploading..." : "Upload"}
             </button>
           </div>
-        ) : null}
-      </section>
+        </section>
+      ) : null}
     </>
   );
 }
@@ -2650,7 +2657,6 @@ function PropertyTaxPointLayer({
   data,
   matchedPointIds,
   onIdentify,
-  zoom,
 }: {
   data: PropertyTaxPointCollection;
   mapBbox: string;
@@ -2660,29 +2666,14 @@ function PropertyTaxPointLayer({
 }) {
   const map = useMap();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const hitTargetsRef = useRef<
-    Array<{
-      clusterId: number | null;
-      lat: number;
-      lng: number;
-      point: PropertyTaxParcelPointProperties | null;
-      radius: number;
-      x: number;
-      y: number;
-    }>
-  >([]);
+  const hitTargetsRef = useRef<PropertyTaxHitTarget[]>([]);
   const onIdentifyRef = useRef(onIdentify);
   const matchedPointIdsRef = useRef(matchedPointIds);
 
-  const clusterIndex = useMemo(() => {
-    const renderableFeatures = data.features.filter(isRenderablePropertyTaxPointFeature);
-    const index = new Supercluster<PropertyTaxParcelPointProperties, PropertyTaxParcelPointProperties>({
-      maxZoom: PROPERTY_TAX_CLUSTER_MAX_ZOOM,
-      radius: 58,
-    });
-    index.load(renderableFeatures as Array<PointFeature<PropertyTaxParcelPointProperties>>);
-    return index;
-  }, [data]);
+  const renderableFeatures = useMemo(
+    () => data.features.filter(isRenderablePropertyTaxPointFeature),
+    [data],
+  );
 
   useEffect(() => {
     onIdentifyRef.current = onIdentify;
@@ -2690,12 +2681,13 @@ function PropertyTaxPointLayer({
 
   useEffect(() => {
     matchedPointIdsRef.current = matchedPointIds;
-    hitTargetsRef.current = drawPropertyTaxCanvas(map, canvasRef.current, clusterIndex, matchedPointIdsRef.current);
-  }, [clusterIndex, map, matchedPointIds]);
-
-  useEffect(() => {
-    hitTargetsRef.current = drawPropertyTaxCanvas(map, canvasRef.current, clusterIndex, matchedPointIdsRef.current);
-  }, [clusterIndex, map, zoom]);
+    hitTargetsRef.current = drawPropertyTaxCanvas(
+      map,
+      canvasRef.current,
+      renderableFeatures,
+      matchedPointIdsRef.current,
+    );
+  }, [map, matchedPointIds, renderableFeatures]);
 
   useEffect(() => {
     const pane = map.getPane("property-tax-points") ?? map.getPanes().overlayPane;
@@ -2713,7 +2705,7 @@ function PropertyTaxPointLayer({
         hitTargetsRef.current = drawPropertyTaxCanvas(
           map,
           canvas,
-          clusterIndex,
+          renderableFeatures,
           matchedPointIdsRef.current,
         );
       });
@@ -2721,23 +2713,13 @@ function PropertyTaxPointLayer({
 
     function handleClick(event: L.LeafletMouseEvent) {
       const point = map.latLngToContainerPoint(event.latlng);
-      const x = point.x;
-      const y = point.y;
-      const target = findPropertyTaxHitTarget(hitTargetsRef.current, x, y);
-      if (!target) {
+      const target = findPropertyTaxHitTarget(hitTargetsRef.current, point.x, point.y);
+      if (!target?.point) {
         return;
       }
 
       L.DomEvent.stopPropagation(event.originalEvent);
-      if (target.point) {
-        onIdentifyRef.current(target.point);
-        return;
-      }
-
-      if (target.clusterId !== null) {
-        const expansionZoom = clusterIndex.getClusterExpansionZoom(target.clusterId);
-        map.setView([target.lat, target.lng], Math.max(map.getZoom() + 1, expansionZoom));
-      }
+      onIdentifyRef.current(target.point);
     }
 
     redraw();
@@ -2754,7 +2736,7 @@ function PropertyTaxPointLayer({
       canvasRef.current = null;
       hitTargetsRef.current = [];
     };
-  }, [clusterIndex, map]);
+  }, [map, renderableFeatures]);
 
   return null;
 }
@@ -3579,9 +3561,11 @@ function isAbortError(error: unknown) {
   return error instanceof Error && error.name === "AbortError";
 }
 
+type PropertyTaxPointFeature = Feature<Point, PropertyTaxParcelPointProperties>;
+
 function isRenderablePropertyTaxPointFeature(
-  feature: Feature<Point, PropertyTaxParcelPointProperties>,
-): feature is PointFeature<PropertyTaxParcelPointProperties> {
+  feature: PropertyTaxPointFeature,
+): feature is PropertyTaxPointFeature {
   const coordinates = feature.geometry?.coordinates;
   return (
     feature.type === "Feature"
@@ -3621,38 +3605,10 @@ function hasFiniteCoordinatePair(value: unknown): boolean {
   return value.some((child) => hasFiniteCoordinatePair(child));
 }
 
-function isClusterFeature(
-  feature: ClusterFeature<PropertyTaxParcelPointProperties> | PointFeature<PropertyTaxParcelPointProperties>,
-): feature is ClusterFeature<PropertyTaxParcelPointProperties> {
-  return Boolean(feature.properties.cluster);
-}
-
-function clusterRadius(count: number) {
-  if (count >= 1000) {
-    return 22;
-  }
-  if (count >= 100) {
-    return 18;
-  }
-  if (count >= 10) {
-    return 14;
-  }
-  return 11;
-}
-
-function formatClusterCount(count: number) {
-  if (count >= 1000) {
-    return `${(count / 1000).toFixed(1)}k`;
-  }
-
-  return count.toLocaleString();
-}
-
 type PropertyTaxHitTarget = {
-  clusterId: number | null;
   lat: number;
   lng: number;
-  point: PropertyTaxParcelPointProperties | null;
+  point: PropertyTaxParcelPointProperties;
   radius: number;
   x: number;
   y: number;
@@ -3661,7 +3617,7 @@ type PropertyTaxHitTarget = {
 function drawPropertyTaxCanvas(
   map: L.Map,
   canvas: HTMLCanvasElement | null,
-  clusterIndex: Supercluster<PropertyTaxParcelPointProperties, PropertyTaxParcelPointProperties>,
+  features: PropertyTaxPointFeature[],
   matchedPointIds: Set<number>,
 ): PropertyTaxHitTarget[] {
   if (!canvas) {
@@ -3690,15 +3646,12 @@ function drawPropertyTaxCanvas(
   context.setTransform(density, 0, 0, density, 0, 0);
   context.clearRect(0, 0, width, height);
 
-  const bbox = parseMapBbox(map.getBounds().toBBoxString()) ?? [-180, -90, 180, 90];
-  const zoom = Math.floor(map.getZoom());
-  const features = clusterIndex.getClusters(bbox, zoom);
+  const bounds = map.getBounds();
   const targets: PropertyTaxHitTarget[] = [];
-  const pointFeatures: Array<PointFeature<PropertyTaxParcelPointProperties>> = [];
 
   for (const feature of features) {
     const [lng, lat] = feature.geometry.coordinates;
-    if (!isFiniteCoordinatePair(lng, lat)) {
+    if (!isFiniteCoordinatePair(lng, lat) || !bounds.contains([lat, lng])) {
       continue;
     }
 
@@ -3707,33 +3660,10 @@ function drawPropertyTaxCanvas(
       continue;
     }
 
-    if (isClusterFeature(feature)) {
-      const count = Number(feature.properties.point_count ?? 0);
-      const radius = clusterRadius(count);
-      drawPropertyTaxCluster(context, point.x, point.y, radius, count);
-      targets.push({
-        clusterId: Number(feature.properties.cluster_id),
-        lat,
-        lng,
-        point: null,
-        radius: radius + 4,
-        x: point.x,
-        y: point.y,
-      });
-      continue;
-    }
-
-    pointFeatures.push(feature);
-  }
-
-  for (const feature of pointFeatures) {
-    const [lng, lat] = feature.geometry.coordinates;
-    const point = map.latLngToContainerPoint([lat, lng]);
     const isMatchedPoint = matchedPointIds.has(feature.properties.id);
     const radius = isMatchedPoint ? 7 : 5;
     drawPropertyTaxPoint(context, point.x, point.y, radius, isMatchedPoint);
     targets.push({
-      clusterId: null,
       lat,
       lng,
       point: feature.properties,
@@ -3744,28 +3674,6 @@ function drawPropertyTaxCanvas(
   }
 
   return targets;
-}
-
-function drawPropertyTaxCluster(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  radius: number,
-  count: number,
-) {
-  context.beginPath();
-  context.arc(x, y, radius, 0, Math.PI * 2);
-  context.fillStyle = "rgba(245, 158, 11, 0.82)";
-  context.fill();
-  context.lineWidth = 2;
-  context.strokeStyle = "#854d0e";
-  context.stroke();
-
-  context.fillStyle = "#ffffff";
-  context.font = "700 12px Inter, system-ui, sans-serif";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillText(formatClusterCount(count), x, y + 0.5);
 }
 
 function drawPropertyTaxPoint(
@@ -4164,7 +4072,7 @@ function MapLegendRail({
                   <div key={item.key} className="legend-group">
                     <div className="legend-item">
                       <span className={`legend-swatch legend-swatch-${item.swatch}`}>
-                        {item.key === "qa_markers" ? QA_RISK_META.medium.symbol : null}
+                        {item.key === "qa_markers" ? QA_MARKER_SYMBOL : null}
                       </span>
                       <span className="legend-label">{item.label}</span>
                       {item.toggleable ? (

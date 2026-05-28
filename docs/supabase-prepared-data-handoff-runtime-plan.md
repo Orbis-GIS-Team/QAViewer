@@ -98,13 +98,37 @@ Before loading data:
 2. Enable required extensions:
 
 ```sql
-create extension if not exists postgis;
+create schema if not exists extensions;
+create extension if not exists postgis with schema extensions;
 create extension if not exists pg_trgm;
+```
+
+PostGIS should not remain in the exposed `public` schema for Supabase environments. New projects should install it into `extensions` from the start. If an older Supabase project already has `postgis` in `public`, relocate it before production promotion using the Supabase-documented path below; this may require elevated privileges or Supabase Support:
+
+```sql
+begin;
+  update pg_extension
+    set extrelocatable = true
+    where extname = 'postgis';
+
+  alter extension postgis
+    set schema extensions;
+
+  alter extension postgis
+    update to '<POSTGIS_VERSION>next';
+
+  alter extension postgis update;
+
+  update pg_extension
+    set extrelocatable = false
+    where extname = 'postgis';
+commit;
 ```
 
 3. Run QAViewer migrations.
 4. Confirm runtime tables exist.
 5. Confirm no startup seed mode is required for the API to boot.
+6. Confirm PostGIS objects are not left in `public`, including `public.spatial_ref_sys`.
 
 For the first proof, prefer copying the current prepared local PostGIS state into Supabase before rebuilding all import commands. A dump/restore path is acceptable if it preserves PostGIS geometries, indexes, lookup tables, comments, document metadata, users, and seed/import metadata needed by the current API.
 
@@ -189,6 +213,7 @@ Where `runStartupDatabaseStep()` runs readiness checks only.
 
 - database connection works
 - PostGIS is installed
+- backend connection search path resolves `extensions` so PostGIS types/functions work after relocation
 - required migrations have run
 - required tables exist
 - required runtime columns exist, including `question_areas.actionability_state`

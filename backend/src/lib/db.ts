@@ -7,6 +7,12 @@ function buildPoolConfig(): ConstructorParameters<typeof Pool>[0] {
   const sslMode = parsed.searchParams.get("sslmode");
   parsed.searchParams.delete("sslmode");
   parsed.searchParams.delete("uselibpqcompat");
+  const options = parsed.searchParams.get("options");
+  const searchPathOption = "-c search_path=public,extensions";
+
+  if (!options?.includes("search_path=")) {
+    parsed.searchParams.set("options", options ? `${options} ${searchPathOption}` : searchPathOption);
+  }
 
   const needsSsl =
     sslMode === "require" ||

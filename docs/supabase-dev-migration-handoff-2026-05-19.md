@@ -93,6 +93,7 @@ C:\Program Files\QGIS 4.0.0\bin\pg_restore.exe
 - `backend/src/lib/db.ts` now strips `sslmode` from the connection URL and supplies Node `pg` SSL config directly so Supabase pooler URLs work.
 - The restore helper uses the same SSL detection for its truncation/sequence-reset client, so Supabase URLs use TLS while local non-TLS database URLs are still supported.
 - RLS is enabled on public runtime tables as Data API defense-in-depth. The Express API should use the Supabase owner/runtime database connection; browser-facing authorization remains in QAViewer's API layer.
+- The current dev project still needs PostGIS relocated out of `public` before production promotion. `public.spatial_ref_sys` is extension-owned and should be addressed by moving PostGIS into `extensions`, not by trying to force RLS directly onto that table.
 - `.env` was updated by the user with Supabase settings and remains gitignored.
 
 ## Verification Completed
@@ -158,6 +159,7 @@ GitHub issues updated with migration status:
 - rerun local backend/frontend smoke checks
 
 3. Review and commit the repo changes.
+4. Before production hardening/signoff, relocate the Supabase `postgis` extension from `public` to `extensions` using the documented Supabase workflow and confirm the security advisor warning is cleared.
 
 ## Notes For Fresh Context
 

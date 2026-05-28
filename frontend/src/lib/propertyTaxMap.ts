@@ -5,8 +5,7 @@ import type { Feature, FeatureCollection, Geometry, Point } from "geojson";
 import { apiRequest } from "./api";
 
 export const PROPERTY_TAX_REGRID_MIN_ZOOM = 12;
-export const PROPERTY_TAX_POINT_MIN_ZOOM = 12;
-export const PROPERTY_TAX_CLUSTER_MAX_ZOOM = PROPERTY_TAX_POINT_MIN_ZOOM - 1;
+export const PROPERTY_TAX_POINT_MIN_ZOOM = PROPERTY_TAX_REGRID_MIN_ZOOM;
 
 export type PropertyTaxPointProperties = {
   id: number;

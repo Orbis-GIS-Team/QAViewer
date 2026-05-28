@@ -39,7 +39,7 @@ create table if not exists public.question_areas (
   assigned_reviewer text,
   search_keywords text,
   raw_properties jsonb not null default '{}'::jsonb,
-  geom geometry(Point, 4326) not null,
+  geom extensions.geometry(Point, 4326) not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -84,7 +84,7 @@ create table if not exists public.land_records (
   regionname varchar(255),
   shape_length double precision,
   shape_area double precision,
-  geom geometry(MultiPolygon, 4326) not null
+  geom extensions.geometry(MultiPolygon, 4326) not null
 );
 
 create table if not exists public.management_areas (
@@ -113,7 +113,7 @@ create table if not exists public.management_areas (
   gis_acres double precision,
   gis_hectares double precision,
   raw_properties jsonb not null default '{}'::jsonb,
-  geom geometry(MultiPolygon, 4326) not null
+  geom extensions.geometry(MultiPolygon, 4326) not null
 );
 
 create table if not exists public.atlas_land_records (
@@ -142,7 +142,7 @@ create table if not exists public.atlas_land_records (
   source_workbook_path text,
   source_sheet text,
   source_row_number integer,
-  geom geometry(Geometry, 4326)
+  geom extensions.geometry(Geometry, 4326)
 );
 
 create table if not exists public.atlas_documents (
@@ -223,7 +223,7 @@ create table if not exists public.tax_parcels (
   tract_name text,
   notes text,
   raw_properties jsonb not null default '{}'::jsonb,
-  geom geometry(MultiPolygon, 4326) not null
+  geom extensions.geometry(MultiPolygon, 4326) not null
 );
 
 create table if not exists public.tax_bill_manifest (
@@ -267,7 +267,7 @@ create table if not exists public.property_tax_parcel_points (
   source_sheet text,
   source_row_number integer,
   imported_at timestamptz not null default now(),
-  geom geometry(Point, 4326)
+  geom extensions.geometry(Point, 4326)
 );
 
 create table if not exists public.comments (

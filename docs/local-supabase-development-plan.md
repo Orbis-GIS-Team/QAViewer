@@ -66,6 +66,7 @@ FRONTEND_ORIGIN=http://localhost:5173
 
 For local long-running Node development, the direct connection can work. For deployed Render runtime, use the runtime connection string selected for the API service.
 The backend expects an owner/service database connection. RLS is enabled on public runtime tables to keep accidental Supabase Data API access closed; app authorization remains in the Express API.
+For Supabase projects, PostGIS should live in `extensions`, not `public`, and the backend session search path should include `extensions`.
 
 Current dev proof target:
 

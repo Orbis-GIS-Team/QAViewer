@@ -1,7 +1,8 @@
 import type { PoolClient } from "pg";
 
 export async function ensureSchema(client: PoolClient): Promise<void> {
-  await client.query(`CREATE EXTENSION IF NOT EXISTS postgis`);
+  await client.query(`CREATE SCHEMA IF NOT EXISTS extensions`);
+  await client.query(`CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA extensions`);
   await client.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
 
   await client.query(`

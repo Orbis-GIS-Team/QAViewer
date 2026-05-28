@@ -106,9 +106,13 @@ backend  -> Render Web Service, root directory backend
 - Enable required extensions:
 
 ```sql
-create extension if not exists postgis;
+create schema if not exists extensions;
+create extension if not exists postgis with schema extensions;
 create extension if not exists pg_trgm;
 ```
+
+- Keep PostGIS out of the exposed `public` schema. `public.spatial_ref_sys` with RLS disabled is a known Supabase advisory when PostGIS is installed in `public`.
+- If the target Supabase project already has PostGIS in `public`, relocate it before production signoff using Supabase's documented `ALTER EXTENSION ... SET SCHEMA extensions` workflow. This may require elevated privileges or Supabase Support.
 
 - Create a private storage bucket for QAViewer documents, for example:
 
@@ -283,6 +287,7 @@ QA_SMOKE_API_URL=https://<render-api-host>/api npm run test:smoke
 - Disable demo mode.
 - Use a strong `JWT_SECRET`.
 - Set exact `FRONTEND_ORIGIN`; do not allow wildcard CORS.
+- Verify PostGIS extension objects live in `extensions`, not `public`, before production signoff.
 - Keep Supabase Storage bucket private.
 - Restrict Supabase service role key to backend environment only.
 - Supabase DB password rotation is complete as of 2026-05-20; use only the refreshed secret in local `.env`, Render, and any restore/runtime profiles.
