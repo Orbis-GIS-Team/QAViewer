@@ -615,6 +615,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const [filterOptions, setFilterOptions] = useState<QuestionAreaFilterOptions>(EMPTY_QA_FILTER_OPTIONS);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [filtersCollapsed, setFiltersCollapsed] = useState(true);
+  const [limitResultsToMapView, setLimitResultsToMapView] = useState(false);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<QuestionAreaDetail | null>(null);
   const [identifySelection, setIdentifySelection] = useState<IdentifySelection | null>(null);
@@ -674,6 +675,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       setMapZoom((current) => (current === zoom ? current : zoom));
     });
   }, []);
+  const questionAreaBbox = limitResultsToMapView ? mapBbox : null;
   const atlasState = useAtlasQuery({
     token: session.token,
     questionAreaCode: selectedCode,
@@ -788,7 +790,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   useEffect(() => {
     let alive = true;
     const abortController = new AbortController();
-    const params = buildQuestionAreaQueryParams(filters, mapBbox, "600");
+    const params = buildQuestionAreaQueryParams(filters, questionAreaBbox, "600");
 
     const timeoutId = window.setTimeout(() => {
       apiRequest<QuestionAreaCollection>(`/question-areas?${params.toString()}`, {
@@ -817,7 +819,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
       window.clearTimeout(timeoutId);
       abortController.abort();
     };
-  }, [filters, mapBbox, session.token]);
+  }, [filters, questionAreaBbox, session.token]);
 
   useEffect(() => {
     const visibleLayers = (Object.keys(layerVisibility) as LayerKey[]).filter(
@@ -1210,7 +1212,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   async function handleExportQuestionAreas() {
     setBusy((current) => ({ ...current, exporting: true }));
     try {
-      const params = buildQuestionAreaQueryParams(filters, mapBbox);
+      const params = buildQuestionAreaQueryParams(filters, questionAreaBbox);
       const queryString = params.toString();
       const path = `/api/question-areas/export.xlsx${queryString ? `?${queryString}` : ""}`;
       const blob = await apiDownload(path, session.token);
@@ -1381,6 +1383,12 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   }
 
   const filteredAreaCount = questionAreas?.features.length ?? 0;
+  const resultScopeLabel = limitResultsToMapView
+    ? `${filteredAreaCount} in map view`
+    : `${filteredAreaCount} results`;
+  const emptyResultsMessage = limitResultsToMapView
+    ? "No question areas match the current map view and filters."
+    : "No question areas match the current filters.";
   const selectedLocation = [selectedDetail?.county, selectedDetail?.state].filter(Boolean).join(", ");
   const selectedContext = selectedLocation;
   const selectedSupportTarget: AtlasTarget & TaxParcelTarget | null = selectedDetail
@@ -1517,7 +1525,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                     <span>{busy.summary ? "Refreshing..." : "Select a record to review"}</span>
                   </div>
                   <p className="panel-note">
-                    Search and filter the current map extent, then pick a question area to open its review workflow.
+                    Search and filter question areas, then pick a record to open its review workflow.
                   </p>
                 </section>
 
@@ -1733,10 +1741,18 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 </section>
 
                 <section className="panel-section">
-                  <div className="section-heading">
+                  <div className="section-heading results-heading">
                     <h2>Visible Results</h2>
-                    <div className="section-heading-actions">
-                      <span>{filteredAreaCount} in map extent</span>
+                    <div className="section-heading-actions results-heading-actions">
+                      <label className="map-filter-toggle">
+                        <input
+                          checked={limitResultsToMapView}
+                          onChange={(event) => setLimitResultsToMapView(event.target.checked)}
+                          type="checkbox"
+                        />
+                        <span>Limit to map view</span>
+                      </label>
+                      <span>{resultScopeLabel}</span>
                       <button
                         className="ghost-button compact-button"
                         disabled={busy.exporting || filteredAreaCount === 0}
@@ -1773,7 +1789,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                       );
                     })}
                     {!questionAreas || questionAreas.features.length === 0 ? (
-                      <p className="empty-state">No question areas match the current map extent and filters.</p>
+                      <p className="empty-state">{emptyResultsMessage}</p>
                     ) : null}
                   </div>
                 </section>
@@ -2014,8 +2030,12 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   );
 }
 
-function buildQuestionAreaQueryParams(filters: QuestionAreaFilters, mapBbox: string, limit?: string) {
-  const params = new URLSearchParams({ bbox: mapBbox });
+function buildQuestionAreaQueryParams(filters: QuestionAreaFilters, mapBbox: string | null, limit?: string) {
+  const params = new URLSearchParams();
+
+  if (mapBbox) {
+    params.set("bbox", mapBbox);
+  }
 
   if (limit) {
     params.set("limit", limit);
@@ -2592,12 +2612,6 @@ function SelectedRegridParcelOverlay({ selectedParcel }: { selectedParcel: Selec
     <GeoJSON
       key={`selected-regrid-parcel-${selectedParcel.parcelId ?? "unknown"}`}
       data={feature}
-      onEachFeature={(selectedFeature, layer) => {
-        const label = regridParcelLabel(selectedFeature as RegridParcelFeature);
-        if (label) {
-          layer.bindTooltip(label, { direction: "top", opacity: 0.95, sticky: true });
-        }
-      }}
       style={() => activeRegridParcelStyle}
     />
   );
@@ -3457,19 +3471,6 @@ function createFeatureOnlyRegridIdentifyResult(
       ? "Property Tax Administration matching is not available for this account."
       : "No Regrid parcel attributes were returned for this click.",
   };
-}
-
-function regridParcelLabel(feature: RegridParcelFeature) {
-  const properties = feature.properties;
-  return [
-    properties.parcelnumb,
-    properties.account_number,
-    properties.ll_uuid,
-    properties.owner,
-    properties.address,
-  ]
-    .filter(Boolean)
-    .join(" | ");
 }
 
 function regridParcelIdentity(properties: RegridParcelProperties) {
