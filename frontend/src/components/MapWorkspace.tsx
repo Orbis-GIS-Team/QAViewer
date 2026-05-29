@@ -308,7 +308,7 @@ type ManagementLegendItem = {
 
 const STATUS_OPTIONS = ["review", "active", "resolved", "hold"];
 const SEVERITY_OPTIONS = ["high", "medium", "low"];
-const QA_RISK_LEVELS: QuestionRiskLevel[] = ["high", "medium", "low", "unspecified"];
+const QA_LEGEND_RISK_LEVELS: QuestionRiskLevel[] = ["high", "medium", "low"];
 const QA_MARKER_SYMBOL = "?";
 
 const QA_RISK_META: Record<QuestionRiskLevel, { label: string; symbol: string }> = {
@@ -658,6 +658,7 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
   const canReadQuestionAreas = hasPermission(session.user.role, "question_areas:read");
   const canReviewQuestionAreas = hasPermission(session.user.role, "question_areas:review");
   const canAssignQuestionAreas = hasPermission(session.user.role, "question_areas:assign");
+  const canUseReviewWorkflow = canReviewQuestionAreas || canAssignQuestionAreas;
   const canCommentOnQuestionAreas = hasPermission(session.user.role, "question_areas:comment");
   const canUploadQuestionAreaDocuments = hasPermission(session.user.role, "question_areas:upload_document");
   const canReadAtlas = hasPermission(session.user.role, "atlas_land_records:read");
@@ -1490,7 +1491,9 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 {!busy.detail && !selectedDetail ? (
                   <section className="panel-section">
                     <p className="empty-state">
-                      The selected review record could not be loaded. Return to the results list and try again.
+                      {canUseReviewWorkflow
+                        ? "The selected review record could not be loaded. Return to the results list and try again."
+                        : "The selected question area could not be loaded. Return to the results list and try again."}
                     </p>
                   </section>
                 ) : null}
@@ -1522,10 +1525,18 @@ export function MapWorkspace({ session, onLogout, onOpenAdmin }: MapWorkspacePro
                 <section className="panel-section browse-panel-intro">
                   <div className="section-heading">
                     <h2>Browse Question Areas</h2>
-                    <span>{busy.summary ? "Refreshing..." : "Select a record to review"}</span>
+                    <span>
+                      {busy.summary
+                        ? "Refreshing..."
+                        : canUseReviewWorkflow
+                          ? "Select a record to review"
+                          : "Select a record to view"}
+                    </span>
                   </div>
                   <p className="panel-note">
-                    Search and filter question areas, then pick a record to open its review workflow.
+                    {canUseReviewWorkflow
+                      ? "Search and filter question areas, then pick a record to open its review workflow."
+                      : "Search and filter question areas, then pick a record to view its details."}
                   </p>
                 </section>
 
@@ -4090,7 +4101,7 @@ function MapLegendRail({
                     </div>
                     {item.key === "qa_markers" ? (
                       <div className="legend-sublist">
-                        {QA_RISK_LEVELS.map((riskLevel) => (
+                        {QA_LEGEND_RISK_LEVELS.map((riskLevel) => (
                           <div key={riskLevel} className="legend-item legend-item-indented">
                             <span className={`legend-swatch legend-swatch-qa-marker qa-marker-${riskLevel}`}>
                               {QA_RISK_META[riskLevel].symbol}
